@@ -93,9 +93,6 @@ struct OnGpu { enum : bool { value = false }; };
 template <>
 struct OnGpu<HommexxGPU> { enum : bool { value = true }; };
 
-// Call this instead of Kokkos::initialize.
-void initialize_kokkos();
-
 // What follows provides utilities to parameterize the parallel machine (CPU/KNL
 // cores within a rank, GPU attached to a rank) optimally. The parameterization
 // is a nontrivial function of available resources, number of parallel

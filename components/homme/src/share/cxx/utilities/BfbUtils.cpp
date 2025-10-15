@@ -6,16 +6,17 @@
 #include "ExecSpaceDefs.hpp"
 #include "scream_tridiag.hpp"
 
+#include <ekat_kokkos_session.hpp>
+
 extern "C" {
 // These can be used by fortran targets to initialize/finalize kokkos
 // when running bfb end-to-end runs.
 void initialize_kokkos_f90 () {
-  // Use this rather than Kokkos::initialize. See comment in ExecSpaceDefs.hpp
-  Homme::initialize_kokkos();
+  ekat::initialize_kokkos_session(false);
 }
 
 void finalize_kokkos_f90 () {
-  Kokkos::finalize();
+  ekat::finalize_kokkos_session();
 }
 
 } // extern "C"

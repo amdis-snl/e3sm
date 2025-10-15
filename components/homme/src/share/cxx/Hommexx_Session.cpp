@@ -18,6 +18,9 @@
 #include "Sacado_Version.hpp"
 #endif
 
+#include <ekat_arch.hpp>
+#include <ekat_kokkos_session.hpp>
+
 #include <iostream>
 
 namespace Homme
@@ -28,35 +31,20 @@ bool Session::m_inited = false;
 bool Session::m_handle_kokkos = true;
 bool Session::m_throw_instead_of_abort = false;
 
-std::string active_avx_string () {
-  std::string s;
-#if defined __AVX512F__
-  s += " - AVX512F";
-#endif
-#if defined __AVX2__
-  s += " - AVX2";
-#endif
-#if defined __AVX__
-  s += " - AVX";
-#endif
-  return s;
-}
-
 void print_homme_config_settings () {
   // Print configure-time settings.
 #ifdef HOMMEXX_SHA1
   std::cout << "HOMMEXX SHA1: " << HOMMEXX_SHA1 << "\n";
 #endif
-    std::cout << "HOMMEXX VECTOR_SIZE: " << VECTOR_SIZE << "\n";
-    std::cout << "HOMMEXX vector tag: " << Scalar::label() << "\n";
-    std::cout << "HOMMEXX active AVX set:" << active_avx_string() << "\n";
-    std::cout << "HOMMEXX MPI_ON_DEVICE: " << HOMMEXX_MPI_ON_DEVICE << "\n";
+  std::cout << "HOMMEXX VECTOR_SIZE: " << VECTOR_SIZE << "\n";
+  std::cout << "HOMMEXX Active AVX settings: " + ekat::active_avx_string () + "\n";
+  std::cout << "HOMMEXX MPI_ON_DEVICE: " << HOMMEXX_MPI_ON_DEVICE << "\n";
 #ifdef HOMMEXX_CUDA_SHARE_BUFFER
-    std::cout << "HOMMEXX CUDA_SHARE_BUFFER: on\n";
+  std::cout << "HOMMEXX CUDA_SHARE_BUFFER: on\n";
 #else
-    std::cout << "HOMMEXX CUDA_SHARE_BUFFER: off\n";
+  std::cout << "HOMMEXX CUDA_SHARE_BUFFER: off\n";
 #endif
-    std::cout << "HOMMEXX CUDA_(MIN/MAX)_WARP_PER_TEAM: " << HOMMEXX_CUDA_MIN_WARP_PER_TEAM
+  std::cout << "HOMMEXX CUDA_(MIN/MAX)_WARP_PER_TEAM: " << HOMMEXX_CUDA_MIN_WARP_PER_TEAM
               << " / " << HOMMEXX_CUDA_MAX_WARP_PER_TEAM << "\n";
 #ifndef HOMMEXX_NO_VECTOR_PRAGMAS
   std::cout << "HOMMEXX has vector pragmas\n";
@@ -90,7 +78,7 @@ void initialize_hommexx_session ()
     /* Set Environment variables to control how many
      * threads/processors Kokkos uses */
     if (Session::m_handle_kokkos) {
-      initialize_kokkos();
+      ekat::initialize_kokkos_session(false);
     }
 
     // Note: at this point, the Comm *should* already be created.
@@ -116,7 +104,7 @@ void finalize_hommexx_session ()
     Context::finalize_singleton();
 
     if (Session::m_handle_kokkos) {
-      Kokkos::finalize();
+      ekat::finalize_kokkos_session();
     }
   }
 
