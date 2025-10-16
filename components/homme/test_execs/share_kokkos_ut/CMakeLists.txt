@@ -271,3 +271,21 @@ ELSE()
 ENDIF()
 cxx_unit_test (ppm_remap_ut "${PPM_REMAP_UT_F90_SRCS}" "${PPM_REMAP_UT_CXX_SRCS}" "${PPM_REMAP_UT_INCLUDE_DIRS}" "${CONFIG_DEFINES}" ${NUM_CPUS})
 endif ()
+
+if(HOMMEXX_ENABLE_FAD_TYPES)
+  set (SACADO_UT_CXX_SRCS
+    ${SRC_SHARE_DIR}/cxx/Context.cpp
+    ${SRC_SHARE_DIR}/cxx/Hommexx_Session.cpp
+    ${SRC_SHARE_DIR}/cxx/ErrorDefs.cpp
+    ${SRC_SHARE_DIR}/cxx/ExecSpaceDefs.cpp
+    ${SRC_SHARE_DIR}/cxx/mpi/Comm.cpp
+    ${SHARE_UT_DIR}/sacado_ut.cpp
+  )
+  SET (CONFIG_DEFINES PLEV=12 QSIZE_D=4 _MPI=1 _PRIM ${COMMON_DEFINITIONS})
+  set (SACADO_UT_INCLUDE_DIRS
+    ${SRC_SHARE_DIR}/cxx
+    ${CMAKE_BINARY_DIR}/src/share/cxx
+    ${UTILS_TIMING_DIRS}
+  )
+  cxx_unit_test (sacado_ut "${SACADO_UT_F90_SRCS}" "${SACADO_UT_CXX_SRCS}" "${SACADO_UT_INCLUDE_DIRS}" "${CONFIG_DEFINES}" 1)
+endif()
