@@ -229,7 +229,11 @@ IF (${BUILD_HOMME_THETA_KOKKOS})
 
     ADD_SUBDIRECTORY(theta-nlev128-kokkos)
     ADD_SUBDIRECTORY(theta-l-nlev72-kokkos)
-
+  elseif(HOMME_AMDIS_PROJECT)
+    # The AMDIS LDRD project does not need to test many configurations
+    # So limit the code built to the standard 128 levs and unit tests
+    add_subdirectory(theta-nlev128-kokkos)
+    add_subdirectory(thetal_kokkos_ut)
   else()
 
     ADD_SUBDIRECTORY(theta-l-nlev30-kokkos)
