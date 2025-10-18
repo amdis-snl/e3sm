@@ -76,12 +76,12 @@ macro(createTestExec execName execType macroNP macroNC
   SET(NUM_CELLS ${macroNC})
   SET(NUM_PLEV ${macroPLEV})
 
-  IF (${macroUSE_PIO})
-    SET(PIO TRUE)
-    SET(PIO_INTERP)
-  ELSE ()
+  IF (BUILD_HOMME_WITHOUT_PIOLIBRARY OR NOT ${macroUSE_PIO})
     SET(PIO)
     SET(PIO_INTERP TRUE)
+  ELSE ()
+    SET(PIO TRUE)
+    SET(PIO_INTERP)
   ENDIF ()
 
   IF(BUILD_HOMME_WITHOUT_PIOLIBRARY AND (NOT PIO_INTERP))

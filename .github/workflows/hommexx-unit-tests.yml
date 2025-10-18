@@ -1,0 +1,74 @@
+name: hommexx-unit-tests
+
+on:
+  # Runs on PRs against master
+  pull_request:
+    branches: [ master ]
+    types: [opened, synchronize, ready_for_review, reopened]
+    paths:
+      - '.github/workflows/hommexx-unit-tests.yml'
+      - 'components/homme/**'
+      - 'externals/ekat'
+
+  # Manual run is used to bless
+  workflow_dispatch:
+
+  # Also run nightly
+  schedule:
+    - cron: '0 7 * * *'  # Runs at 7 AM UTC, which is midnight MT during Standard Time
+
+concurrency:
+  # Two runs are in the same group if they are testing the same git ref
+  #  - if trigger=pull_request, the ref is refs/pull/<PR_NUMBER>/merge
+  #  - for other triggers, the ref is the branch tested
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  cpu-gcc:
+    runs-on:  [ubuntu-latest]
+    name: cpu-gcc
+    steps:
+      - name: install dependencies
+        run:
+          sudo apt-get install -y libblas-dev liblapack-dev libopenmpi-dev openmpi-bin
+      - name: Check out the repository
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          show-progress: false
+          submodules: recursive
+      - name: Show action trigger
+        uses: ./.github/actions/show-workflow-trigger
+      - name: configure
+        run: |
+          mkdir ../build && cd ../build
+          cmake \
+           -D CMAKE_CXX_COMPILER:STRING=mpicxx        \
+           -D CMAKE_C_COMPILER:STIRNG=mpicc           \
+           -D CMAKE_Fortran_COMPILER:STRING=mpifort   \
+           -D CMAKE_BUILD_TYPE:STRING=DEBUG           \
+           \
+           -D BUILD_HOMME_THETA_KOKKOS:BOOL=ON        \
+           -D HOMME_FIND_BLASLAPACK:BOOL=ON           \
+           -D HOMME_AMDIS_PROJECT:BOOL=ON             \
+           -D BUILD_HOMME_WITHOUT_PIOLIBRARY:BOOL=ON  \
+           \
+           -S ../E3SM/components/homme
+      - name: build
+        run: |
+          cd ../build
+          make -j4
+      - name: test
+        run: |
+          cd ../build
+          ctest --output-on-failure -L unit
+      - name: Upload log files
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: logs
+          path: |
+            /home/runner/work/E3SM/build/CMakeCache.txt
+            /home/runner/work/E3SM/build/Testing/Temporary/Last*
+          retention-days: 14
