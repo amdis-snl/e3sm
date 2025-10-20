@@ -33,6 +33,12 @@
 #cmakedefine HOMMEXX_CUDA_MIN_WARP_PER_TEAM ${HOMMEXX_CUDA_MIN_WARP_PER_TEAM}
 #cmakedefine HOMMEXX_CUDA_MAX_WARP_PER_TEAM ${HOMMEXX_CUDA_MAX_WARP_PER_TEAM}
 
+/* Whether Sacado's Fad types are available */
+#cmakedefine HOMMEXX_ENABLE_FAD_TYPES
+
+// If HOMMEXX_ENABLE_FAD_TYPES is defined, this sets the Sacado SFad type length
+#define HOMMEXX_SFAD_SIZE ${HOMMEXX_SFAD_SIZE}
+
 // User-defined VECTOR_SIZE
 #define HOMMEXX_VECTOR_SIZE ${HOMMEXX_VECTOR_SIZE}
 

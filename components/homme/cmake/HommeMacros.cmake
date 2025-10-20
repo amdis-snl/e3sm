@@ -165,6 +165,10 @@ macro(createTestExec execName execType macroNP macroNC
     TARGET_LINK_LIBRARIES(${execName} Kokkos::kokkos)
   ENDIF ()
 
+  if (HOMMEXX_ENABLE_FAD_TYPES)
+    target_link_libraries(${execName} Sacado::sacado)
+  endif()
+
   # Move the module files out of the way so the parallel build
   # doesn't have a race condition
   SET_TARGET_PROPERTIES(${execName}
@@ -248,6 +252,10 @@ macro(createExecLib libName execType libSrcs inclDirs macroNP
   IF(BUILD_HOMME_WITHOUT_PIOLIBRARY)
     TARGET_COMPILE_DEFINITIONS(${libName} PUBLIC HOMME_WITHOUT_PIOLIBRARY)
   ENDIF()
+
+  if (HOMMEXX_ENABLE_FAD_TYPES)
+    target_link_libraries(${libName} PUBLIC Sacado::sacado)
+  endif()
 
   target_link_libraries(${libName} PUBLIC csm_share)
   if (NOT HOMME_BUILD_SCORPIO)
