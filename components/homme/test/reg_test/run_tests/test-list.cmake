@@ -9,38 +9,62 @@
 #//this is what is tested now -- 26 and 72 levels,  dry/moist, rsplit 0 and 3, 
 #nudiv==nu and nudiv != nu, tensorhv and const hv, lim9 and lim8 (do we want lim8 still?), qsplit 1 and 6
 
-SET(HOMME_TESTS 
-  swtc1.cmake
-  swtc2.cmake
-  swtc5.cmake
-  swtc6.cmake
-  swimtc5.cmake
-  baro2b.cmake
-  baro2c.cmake
-  baro2d.cmake
-  baroCamMoist.cmake
-  baroCamMoist-acc.cmake
-  baro2d-imp.cmake
-  thetah-test22.cmake
-  thetanh-test22.cmake
-  preqx-TC-ftype4.cmake
-  thetah-TC-ftype4.cmake
-  thetah-TC.cmake
-  thetanh-TC.cmake
-  thetanh-TC-nudiv.cmake
-  thetanh-TC-nutop.cmake
-  thetanhwet-TC.cmake
-  hommetool.cmake
-  thetah-nhgw.cmake
-  thetanh-nhgw.cmake
-  preqx-nhgw.cmake
-  thetah-nhgw-slice.cmake
-  thetanh-nhgw-slice.cmake
-  preqx-nhgw-slice.cmake
-  sweqx-dbvor.cmake
-  thetanh-moist-bubble.cmake
-  thetanh-dry-bubble.cmake
-)
+set(HOMME_TESTS)
+
+if (BUILD_HOMME_SWEQX)
+  list (APPEND HOMME_TESTS
+    swtc1.cmake
+    swtc2.cmake
+    swtc5.cmake
+    swtc6.cmake
+    sweqx-dbvor.cmake
+  )
+endif()
+
+if (BUILD_HOMME_SWIM)
+  list (APPEND HOMME_TESTS
+    swimtc5.cmake
+  )
+endif()
+
+if (BUILD_HOMME_PREQX)
+  list (APPEND HOMME_TESTS
+    baro2b.cmake
+    baro2c.cmake
+    baro2d.cmake
+    baroCamMoist.cmake
+    baroCamMoist-acc.cmake
+    baro2d-imp.cmake
+    preqx-TC-ftype4.cmake
+    preqx-nhgw.cmake
+    preqx-nhgw-slice.cmake
+  )
+endif()
+
+if (BUILD_HOMME_THETA)
+  list (APPEND HOMME_TESTS
+    thetah-test22.cmake
+    thetanh-test22.cmake
+    thetah-TC-ftype4.cmake
+    thetah-TC.cmake
+    thetanh-TC.cmake
+    thetanh-TC-nudiv.cmake
+    thetanh-TC-nutop.cmake
+    thetanhwet-TC.cmake
+    thetah-nhgw.cmake
+    thetanh-nhgw.cmake
+    thetah-nhgw-slice.cmake
+    thetanh-nhgw-slice.cmake
+    thetanh-moist-bubble.cmake
+    thetanh-dry-bubble.cmake
+  )
+endif()
+
+if (BUILD_HOMME_TOOL)
+  list (APPEND HOMME_TESTS
+    hommetool.cmake
+  )
+endif()
 
 IF (HOMME_ENABLE_COMPOSE)
   LIST(APPEND HOMME_TESTS
@@ -52,7 +76,7 @@ ENDIF()
 
 SET(HOMME_RUN_TESTS_DIR ${HOMME_SOURCE_DIR}/test/reg_test/run_tests)
 
-IF (${BUILD_HOMME_PREQX_KOKKOS})
+IF (BUILD_HOMME_PREQX_KOKKOS)
   # Lists of test files for the HOMME kokkos regression tests.
   # These tests come in pairs, so that, besides checking
   # performance, we can compare the kokkos output with the
@@ -71,11 +95,11 @@ IF (${BUILD_HOMME_PREQX_KOKKOS})
   #Note: we run both a cprnc on the output nc files AND
   #      a comparison of the values of diagnostic quantities
   #      on the raw output files
-  IF (${HOMMEXX_BFB_TESTING})
+  IF (HOMMEXX_BFB_TESTING)
     SET (PREQX_COMPARE_F_C_TEST
-    preqx-nlev26-dry-r0-samenu-consthv-lim8-q1
-    preqx-nlev72-dry-r3-diffnu-consthv-lim9-q6
-    preqx-nlev72-moist-r3-samenu-tensorhv-lim9-q1
+      preqx-nlev26-dry-r0-samenu-consthv-lim8-q1
+      preqx-nlev72-dry-r3-diffnu-consthv-lim9-q6
+      preqx-nlev72-moist-r3-samenu-tensorhv-lim9-q1
     )
   ENDIF ()
 
@@ -171,7 +195,7 @@ IF (BUILD_HOMME_THETA_KOKKOS)
 ENDIF()
 
 IF (BUILD_HOMME_PREQX_KOKKOS OR BUILD_HOMME_THETA_KOKKOS)
-  IF (HOMMEXX_BFB_TESTING)
+  IF (NOT HOMME_AMDIS_PROJECT AND HOMMEXX_BFB_TESTING)
     CREATE_CXX_VS_F90_TESTS_WITH_PROFILE(HOMME_ONEOFF_CVF_TESTS short)
   ENDIF()
 ENDIF()
