@@ -8,7 +8,6 @@ on:
     paths:
       - '.github/workflows/hommexx-unit-tests.yml'
       - 'components/homme/**'
-      - 'externals/ekat'
 
   # Manual run is used to bless
   workflow_dispatch:
@@ -30,38 +29,68 @@ jobs:
     name: cpu-gcc
     steps:
       - name: install dependencies
-        run:
+        run: |
           sudo apt-get install -y libblas-dev liblapack-dev libopenmpi-dev openmpi-bin
+          mkdir ${GITHUB_WORKSPACE}/e3sm
       - name: Check out the repository
         uses: actions/checkout@v5
         with:
           persist-credentials: false
           show-progress: false
           submodules: recursive
+          path: e3sm/source
       - name: Show action trigger
-        uses: ./.github/actions/show-workflow-trigger
-      - name: configure
+        uses: ./e3sm/source/.github/actions/show-workflow-trigger
+      - name: trilinos-clone
         run: |
-          mkdir ../build && cd ../build
+          cd ${GITHUB_WORKSPACE}
+          mkdir trilinos && cd trilinos
+          git clone https://github.com/trilinos/Trilinos.git source
+      - name: trilinos-config
+        run: |
+          cd ${GITHUB_WORKSPACE}/trilinos
+          mkdir build && cd build
+          cmake -Wno-dev \
+            -D CMAKE_CC_COMPILER:STRING=gcc                               \
+            -D CMAKE_CXX_COMPILER:STRING=g++                              \
+            -D CMAKE_INSTALL_PREFIX=${GITHUB_WORKSPACE}/trilinos/install  \
+            \
+            -D Trilinos_ENABLE_EXAMPLES:BOOL=OFF                          \
+            -D Trilinos_ENABLE_TESTS:BOOL=OFF                             \
+            -D Trilinos_ENABLE_OpenMP:BOOL=OFF                            \
+            -D Trilinos_ENABLE_ALL_PACKAGES:BOOL=OFF                      \
+            -D Trilinos_ENABLE_ALL_OPTIONAL_PACKAGES:BOOL=OFF             \
+            -D Trilinos_ENABLE_Sacado:BOOL=ON                             \
+            \
+            -S ${GITHUB_WORKSPACE}/trilinos/source
+      - name: trilinos-build-install
+        run : |
+          cd ${GITHUB_WORKSPACE}/trilinos/build
+          make -j4 install
+      - name: hommexx-configure
+        run: |
+          cd ${GITHUB_WORKSPACE}/e3sm
+          export Trilinos_ROOT=${GITHUB_WORKSPACE}/trilinos/install
+          mkdir build && cd build
           cmake \
            -D CMAKE_CXX_COMPILER:STRING=mpicxx        \
            -D CMAKE_C_COMPILER:STIRNG=mpicc           \
            -D CMAKE_Fortran_COMPILER:STRING=mpifort   \
            -D CMAKE_BUILD_TYPE:STRING=DEBUG           \
            \
-           -D BUILD_HOMME_THETA_KOKKOS:BOOL=ON        \
            -D HOMME_FIND_BLASLAPACK:BOOL=ON           \
            -D HOMME_AMDIS_PROJECT:BOOL=ON             \
+           -D HOMMEXX_ENABLE_FAD_TYPES:BOOL=ON        \
            -D BUILD_HOMME_WITHOUT_PIOLIBRARY:BOOL=ON  \
            \
-           -S ../E3SM/components/homme
-      - name: build
+           -S ${GITHUB_WORKSPACE}/e3sm/source/components/homme
+      - name: hommexx-build
         run: |
-          cd ../build
+          cd ${GITHUB_WORKSPACE}/e3sm/build
           make -j4
-      - name: test
+      - name: hommexx-test
         run: |
-          cd ../build
+          cd ${GITHUB_WORKSPACE}/e3sm/build
           ctest --output-on-failure -L unit
       - name: Upload log files
         if: ${{ always() }}
@@ -69,6 +98,6 @@ jobs:
         with:
           name: logs
           path: |
-            /home/runner/work/E3SM/build/CMakeCache.txt
-            /home/runner/work/E3SM/build/Testing/Temporary/Last*
+            e3sm/build/CMakeCache.txt
+            e3sm/build/Testing/Temporary/Last*
           retention-days: 14
