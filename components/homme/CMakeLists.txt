@@ -64,10 +64,10 @@ ENDIF()
 
 option (HOMMEXX_ENABLE_FAD_TYPES "Whether to enable FAD types via Sacado" OFF)
 if (HOMMEXX_ENABLE_FAD_TYPES)
-  set (HOMMEXX_SFAD_SIZE CACHE STRING "Length of the SFad sacado type" 1)
+  set (HOMMEXX_SFAD_SIZE 1 CACHE STRING "Length of the SFad sacado type")
   # Ensure the use picked a valid SFAD size
   if (NOT HOMMEXX_SFAD_SIZE MATCHES "^[0-9]+$" OR HOMMEXX_SFAD_SIZE LESS_EQUAL 0)
-    message (FATAL_ERROR "HOMMEXX_SFAD_SIZE must be a positive integer")
+    message (FATAL_ERROR "HOMMEXX_SFAD_SIZE (${HOMMEXX_SFAD_SIZE}) must be a positive integer")
   endif()
   find_package(Trilinos REQUIRED COMPONENTS Sacado)
 endif()
