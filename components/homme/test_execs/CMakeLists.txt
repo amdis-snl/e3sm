@@ -202,7 +202,7 @@ IF(BUILD_HOMME_TOOL)
   ADD_SUBDIRECTORY(tool-nlev26)
 ENDIF()
 
-IF(${BUILD_HOMME_THETA})
+IF(BUILD_HOMME_THETA AND NOT HOMME_AMDIS_PROJECT)
   ADD_SUBDIRECTORY(theta-l-nlev20)
   ADD_SUBDIRECTORY(theta-l-nlev30)
   ADD_SUBDIRECTORY(theta-l-nlev40)
@@ -223,7 +223,7 @@ IF(${BUILD_HOMME_THETA})
   ADD_SUBDIRECTORY(stt)
 ENDIF()
 
-IF (${BUILD_HOMME_THETA_KOKKOS})
+IF (BUILD_HOMME_THETA_KOKKOS)
   #summit-gpu will have only gpu targets
   if (${HOMME_MACHINE} MATCHES "summit-gpu")
 
@@ -232,6 +232,9 @@ IF (${BUILD_HOMME_THETA_KOKKOS})
   elseif(HOMME_AMDIS_PROJECT)
     # The AMDIS LDRD project does not need to test many configurations
     # So limit the code built to the standard 128 levs and unit tests
+    if (BUILD_HOMME_THETA)
+      add_subdirectory(theta-nlev128)
+    endif()
     add_subdirectory(theta-nlev128-kokkos)
     add_subdirectory(thetal_kokkos_ut)
   else()
