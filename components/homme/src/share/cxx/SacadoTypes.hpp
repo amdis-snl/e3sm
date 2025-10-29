@@ -1,7 +1,7 @@
 #ifndef HOMMEXX_SACADO_TYPES_HPP
 #define HOMMEXX_SACADO_TYPES_HPP
 
-#include "Hommexx_Config.h"
+#include "Hommexx_config.h"
 
 #include <Sacado_Fad_SFad.hpp>
 
