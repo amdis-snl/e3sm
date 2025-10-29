@@ -9,16 +9,14 @@
 TEST_CASE ("Sacado") {
 
   using RT = Homme::Real;
-  using ST = Homme::SFad<RT>;
+  using ST = Homme::SFadN<RT,2>;
 
   // Do some simple Fad ops to ensure we are linking correctly
-  int nder = 2;
-
   RT x0 = 2.0;
   RT y0 = -3.0;
 
-  ST x(nder,x0);
-  ST y(nder,y0);
+  ST x(x0);
+  ST y(y0);
 
   x.fastAccessDx(0) = 1;
   y.fastAccessDx(1) = 1;

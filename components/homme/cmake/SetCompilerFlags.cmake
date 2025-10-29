@@ -112,7 +112,11 @@ ENDIF()
 # 3) OPT_CFLAGS if specified sets the C optimization flags
 # 4) OPT_CXXFLAGS if specified sets the CXX optimization flags
 ##############################################################################
-IF (OPT_FLAGS)
+IF (HOMME_AMDIS_PROJECT)
+  set (CMAKE_CXX_FLAGS_RELEASE "-O3")
+  set (CMAKE_C_FLAGS_RELEASE "-O3")
+  set (CMAKE_Fortran_FLAGS_RELEASE "-O0 -g")
+ELSEIF (OPT_FLAGS)
   # Flags for Fortran C and CXX
   SET (CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} ${OPT_FLAGS}")
   SET (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OPT_FLAGS}")
@@ -182,7 +186,11 @@ ENDIF ()
 # 3) DEBUG_CFLAGS if specified sets the C debug flags
 # 4) DEBUG_CXXFLAGS if specified sets the CXX debug flags
 ##############################################################################
-IF (DEBUG_FLAGS)
+IF (HOMME_AMDIS_PROJECT)
+  set (CMAKE_CXX_FLAGS_DEBUG "-O0 -g")
+  set (CMAKE_C_FLAGS_DEBUG "-O0 -g")
+  set (CMAKE_Fortran_FLAGS_DEBUG "-O0 -g")
+ELSEIF (DEBUG_FLAGS)
   SET (CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} ${DEBUG_FLAGS}")
   SET (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${DEBUG_FLAGS}")
   SET (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${DEBUG_FLAGS}")
