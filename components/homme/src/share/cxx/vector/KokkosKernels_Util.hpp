@@ -53,8 +53,8 @@ namespace Experimental {
 // Requested compiler vectorization
 template <typename T, typename SpT = Kokkos::DefaultHostExecutionSpace>
 struct SIMD {
-  static_assert(std::is_same<T, double>::value || std::is_same<T, float>::value,
-                "KokkosKernels:: Invalid SIMD<> type.");
+  // static_assert(std::is_same<T, double>::value || std::is_same<T, float>::value,
+  //               "KokkosKernels:: Invalid SIMD<> type.");
 
   using value_type = T;
   using exec_space = SpT;

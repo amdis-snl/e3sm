@@ -34,7 +34,7 @@ public:
   void init_buffers(const FunctorsBuffersManager& fbm);
   void init_boundary_exchanges();
 
-  typedef ExecViewUnmanaged<Real**>   Phys1T; // ie, col
+  typedef ExecViewUnmanaged<ScalarValue**>   Phys1T; // ie, col
   typedef ExecViewUnmanaged<Real***>  Phys2T; // ie, col, lev
   typedef ExecViewUnmanaged<Real****> Phys3T; // ie, col, idx, lev
   typedef Phys2T::const_type CPhys2T;

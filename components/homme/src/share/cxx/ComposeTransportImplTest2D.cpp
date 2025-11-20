@@ -102,11 +102,11 @@ static void finish (const ComposeTransportImpl& cti, const Comm& comm,
         Real num = 0, den = 0;
         for (int i = 0; i < cti.np; ++i)
           for (int j = 0; j < cti.np; ++j) {
-            num += spheremp(ie,i,j)*square(qdp(ie,n0_qdp,q,i,j,p)[s]/dp3d(ie,np1,i,j,p)[s] -
-                                           qdp(ie,nother_qdp,q,i,j,p)[s]);
-            den += spheremp(ie,i,j)*square(qdp(ie,nother_qdp,q,i,j,p)[s]);
-            m0 += spheremp(ie,i,j)*qdp(ie,nother_qdp,q,i,j,p)[s] /* times rho = 1 */;
-            mf += spheremp(ie,i,j)*qdp(ie,n0_qdp,q,i,j,p)[s];
+            num += ADValue(spheremp(ie,i,j))*square(ADValue(qdp(ie,n0_qdp,q,i,j,p)[s]/dp3d(ie,np1,i,j,p)[s] -
+                                           qdp(ie,nother_qdp,q,i,j,p)[s]));
+            den += ADValue(spheremp(ie,i,j))*square(ADValue(qdp(ie,nother_qdp,q,i,j,p)[s]));
+            m0 += ADValue(spheremp(ie,i,j)*qdp(ie,nother_qdp,q,i,j,p)[s]) /* times rho = 1 */;
+            mf += ADValue(spheremp(ie,i,j)*qdp(ie,n0_qdp,q,i,j,p)[s]);
           }
         l2_num(k,q,ie) = num;
         l2_den(k,q,ie) = den;

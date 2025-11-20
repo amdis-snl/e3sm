@@ -170,7 +170,7 @@ TEST_CASE("remap", "remap_testing") {
             Kokkos::deep_copy(h_dp3d,pt_dp3d);
             for (int ilev=0; ilev<NUM_LEV; ++ilev) {
               for (int iv=0; iv<VECTOR_SIZE; ++iv) {
-                the_min = std::min(the_min,h_dp3d(ilev)[iv]);
+                the_min = std::min(the_min,ADValue(h_dp3d(ilev)[iv]));
               }
             }
           }
@@ -217,7 +217,8 @@ TEST_CASE("remap", "remap_testing") {
           sync_to_host(elems.m_state.m_w_i, w_i_f90);
           sync_to_host(elems.m_state.m_phinh_i, phinh_i_f90);
           sync_to_host(elems.m_state.m_v, v_f90);
-          Kokkos::deep_copy(ps_f90,elems.m_state.m_ps_v); // Same mem layout, use Kokkos::deep_copy
+          //Kokkos::deep_copy(ps_f90,elems.m_state.m_ps_v); // Same mem layout, use Kokkos::deep_copy
+          sync_to_host(elems.m_state.m_ps_v,ps_f90);
           sync_to_host(elems.m_derived.m_eta_dot_dpdn, eta_dot_dpdn_f90);
           sync_to_host(tracers.qdp, qdp_f90);
 

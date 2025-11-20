@@ -365,7 +365,7 @@ TEST_CASE("bfb_pow", "test taylor appx of pow function") {
         dh(y,yh);
 
         Real yex = std::pow(b,e);
-        Real yn = yh()[0];
+        Real yn = ADValue(yh()[0]);
 
         Real aerr = fabs(yn-yex);
         Real rerr = aerr/yex;

@@ -260,13 +260,13 @@ public:
   }
 
   KOKKOS_INLINE_FUNCTION
-  Real compute_fqdt (const int& k,
+  ScalarValue compute_fqdt (const int& k,
                      const ExecViewUnmanaged<Scalar[NUM_LEV]>& fq,
                      const ExecViewUnmanaged<Scalar[NUM_LEV]>& qdp) const {
     const int ilev = k / VECTOR_SIZE;
     const int ivec = k % VECTOR_SIZE;
-    Real fqdt = m_dt * fq(ilev)[ivec];
-    const Real& qdp_s = qdp(ilev)[ivec];
+    ScalarValue fqdt = m_dt * fq(ilev)[ivec];
+    const ScalarValue& qdp_s = qdp(ilev)[ivec];
     if (qdp_s + fqdt < 0.0 && fqdt < 0.0) {
       if (qdp_s < 0.0) {
         fqdt = 0.0;
@@ -307,7 +307,7 @@ public:
       const int jgp = idx % NP;
 
       auto dp = Homme::subview(m_state.m_dp3d,kv.ie,m_np1,igp,jgp);
-      Real& ps = m_state.m_ps_v(kv.ie,m_np1,igp,jgp);
+      ScalarValue& ps = m_state.m_ps_v(kv.ie,m_np1,igp,jgp);
 
       // The hydrostatic pressure in compute_pnh_and_exner in EOS is only used
       // for the theta_hydrostatic_mode case. So only compute it then
@@ -356,10 +356,10 @@ public:
         auto qdp = Homme::subview(m_tracers.qdp,kv.ie,m_np1_qdp,0,igp,jgp);
         auto dp_adj = Homme::subview(m_dp_adj,kv.ie,igp,jgp);
         if (m_adjustment) {
-          Real added_mass = 0;
+          ScalarValue added_mass = 0;
           Dispatch<ExecSpace>::parallel_reduce(
             kv.team, Kokkos::ThreadVectorRange(kv.team, NUM_PHYSICAL_LEV),
-            [&](const int &k, Real &accumulator) {
+            [&](const int &k, ScalarValue &accumulator) {
               const int ilev = k / VECTOR_SIZE;
               const int ivec = k % VECTOR_SIZE;
               accumulator += dp(ilev)[ivec]*(fq(ilev)[ivec]-q(ilev)[ivec]);
@@ -374,10 +374,10 @@ public:
             });
           }
         } else {
-          Real ps_forcing = 0.0;
+          ScalarValue ps_forcing = 0.0;
           Dispatch<ExecSpace>::parallel_reduce(
             kv.team, Kokkos::ThreadVectorRange(kv.team, NUM_PHYSICAL_LEV),
-            [&](const int &k, Real &accumulator) {
+            [&](const int &k, ScalarValue &accumulator) {
               accumulator += compute_fqdt(k,fq,qdp)/m_dt;
             },ps_forcing);
           Kokkos::single(Kokkos::PerThread(kv.team), [&]() {
@@ -456,7 +456,7 @@ public:
       auto dp_adj = Homme::subview(m_dp_adj,kv.ie,igp,jgp);
       auto ft     = Homme::subview(m_forcing.m_ft,kv.ie,igp,jgp);
       auto fphi   = Homme::subview(m_forcing.m_fphi,kv.ie,igp,jgp);
-      const Real ps = m_state.m_ps_v(kv.ie,m_np1,igp,jgp);
+      const ScalarValue ps = m_state.m_ps_v(kv.ie,m_np1,igp,jgp);
 
       if (m_moist) {
         // Need to update dp, pnh and exner. Currently, pnh is storing pnh-pi

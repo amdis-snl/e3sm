@@ -81,7 +81,7 @@ void HyperviscosityFunctorImpl::init_params(const SimulationParams& params)
       const int ilev = phys_lev / VECTOR_SIZE;
       const int ivec = phys_lev % VECTOR_SIZE;
 
-      Real ptop_over_press;
+      ScalarValue ptop_over_press;
 
       //prevent padding of nu_scale to get nans to avoid last interface levels
       //of w, phi to be nans, too
@@ -97,7 +97,7 @@ void HyperviscosityFunctorImpl::init_params(const SimulationParams& params)
           ptop_over_press = 0.0;
       }
 
-      auto val = 16.0*ptop_over_press*ptop_over_press / (ptop_over_press*ptop_over_press + 1);
+      ScalarValue val = 16.0*ptop_over_press*ptop_over_press / (ptop_over_press*ptop_over_press + 1);
       if ( val < 0.15 ) val = 0.0;
       h_nu_scale_top(ilev)[ivec] = val;
 
@@ -148,9 +148,15 @@ int HyperviscosityFunctorImpl::requested_buffer_size () const {
   const int int_scalars_nelems = 0;
   const int mid_scalars_nelems = 2 + (m_process_nh_vars ? 2 : 0);
 
+#ifdef HOMMEXX_ENABLE_FWD_SENS
+  const int fad_size = Sacado::StaticSize<FadType>::value+1;
+#else
+  const int fad_size = 1;
+#endif
+
   const int size = m_num_elems*(mid_scalars_nelems*size_mid_scalar +
                                 mid_vectors_nelems*size_mid_vector +
-                                int_scalars_nelems*size_int_scalar);
+                                int_scalars_nelems*size_int_scalar)*fad_size;
 
   return size;
 }

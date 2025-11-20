@@ -254,7 +254,10 @@ IF (BUILD_HOMME_THETA_KOKKOS)
       ADD_SUBDIRECTORY(theta-nlev128)
     ENDIF()
 
-    ADD_SUBDIRECTORY(thetal_kokkos_ut)
+    # ETP  Turn off unit tests for now when building forward sensitivities
+    IF (NOT HOMMEXX_ENABLE_FWD_SENS)
+      ADD_SUBDIRECTORY(thetal_kokkos_ut)
+    ENDIF()
   endif()
 
 ENDIF()
@@ -270,7 +273,10 @@ IF(${BUILD_HOMME_SWIM})
 ENDIF()
 
 # Test some stuff in the shared folder
-ADD_SUBDIRECTORY (share_kokkos_ut)
+# ETP  Turn off unit tests for now when building forward sensitivities
+IF (NOT HOMMEXX_ENABLE_FWD_SENS)      
+  ADD_SUBDIRECTORY (share_kokkos_ut)
+ENDIF()
 
 IF (${BUILD_HOMME_PREQX_KOKKOS})
   ADD_SUBDIRECTORY(preqx-nlev26-kokkos)

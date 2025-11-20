@@ -144,9 +144,9 @@ public:
       // Top: pnh_i = pi_i = hyai(0)*ps0.
       // Bottom: approximate with hydrostatic, so that dpnh_dp_i=1
       dpnh_dp_i(0)[0] = 2*(pnh(0)[0] - m_hvcoord.hybrid_ai(0)*m_hvcoord.ps0)/dp_i(0)[0];
-      const Real pnh_last = pnh(LAST_MID_PACK)[LAST_MID_PACK_END];
-      const Real dp_last = dp_i(LAST_INT_PACK)[LAST_INT_PACK_END];
-      const Real pnh_i_last = pnh_last + dp_last/2;
+      const ScalarValue pnh_last = pnh(LAST_MID_PACK)[LAST_MID_PACK_END];
+      const ScalarValue dp_last = dp_i(LAST_INT_PACK)[LAST_INT_PACK_END];
+      const ScalarValue pnh_i_last = pnh_last + dp_last/2;
 
       dpnh_dp_i(LAST_INT_PACK)[LAST_INT_PACK_END] = 2*(pnh_i_last - pnh_last)/dp_last;
     }

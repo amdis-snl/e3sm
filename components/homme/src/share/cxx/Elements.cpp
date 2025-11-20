@@ -55,7 +55,7 @@ void Elements::randomize(const int seed, const Real max_pressure, const Real ps0
           Kokkos::deep_copy(h_dp3d,pt_dp3d);
           for (int ilev=0; ilev<NUM_LEV; ++ilev) {
             for (int iv=0; iv<VECTOR_SIZE; ++iv) {
-              dp3d_min = std::min(dp3d_min,h_dp3d(ilev)[iv]);
+              dp3d_min = std::min(dp3d_min,ADValue(h_dp3d(ilev)[iv]));
             }
           }
         }

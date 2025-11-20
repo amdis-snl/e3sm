@@ -72,6 +72,11 @@ if (HOMMEXX_ENABLE_FAD_TYPES)
   find_package(Trilinos REQUIRED COMPONENTS Sacado)
 endif()
 
+OPTION (HOMMEXX_ENABLE_FWD_SENS "Whether to build HOMEXX in forward sensitivity mode (experimental)" OFF)
+IF (HOMMEXX_ENABLE_FWD_SENS)
+  MESSAGE(STATUS "Building HOMEXX in forward sensitivity mode")
+ENDIF()
+
 #option to discard forcings call and push to/from F
 #set it on in cmake file
 SET(BUILD_HOMMEXX_BENCHMARK_NOFORCING OFF CACHE BOOL "")

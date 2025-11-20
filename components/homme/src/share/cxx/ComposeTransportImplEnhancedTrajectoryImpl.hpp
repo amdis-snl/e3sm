@@ -33,30 +33,35 @@ using S2elNlev  = cti::S2Nlev;
 using R2elNlev  = cti::R2Nlev;
 using S2elNlevp = cti::S2Nlevp;
 
-using RelV = ExecViewUnmanaged<Real[NP][NP]>;
+using RelV = ExecViewUnmanaged<ScalarValue[NP][NP]>;
 using CRelV = typename ViewConst<RelV>::type;
 
 template <int N> using SelNV = ExecViewUnmanaged<Scalar[NP][NP][N]>;
 template <int N> using CSelNV = typename ViewConst<SelNV<N>>::type;
 
-template <int N> using RelNV = ExecViewUnmanaged<Real[NP][NP][N]>;
+template <int N> using RelNV = ExecViewUnmanaged<ScalarValue[NP][NP][N]>;
 template <int N> using CRelNV = typename ViewConst<RelNV<N>>::type;
 
-template <int N> using RNV = ExecViewUnmanaged<Real[N]>;
+template <int N> using RNVR = ExecViewUnmanaged<Real[N]>;
+template <int N> using CRNVR = typename ViewConst<RNVR<N>>::type;
+
+template <int N> using RNV = ExecViewUnmanaged<ScalarValue[N]>;
 template <int N> using CRNV = typename ViewConst<RNV<N>>::type;
 using RNlevp = RNV<cti::num_phys_lev+1>;
 using CRNlevp = CRNV<cti::num_phys_lev+1>;
 
-using RnV = ExecViewUnmanaged<Real*>;
-using CRnV = ExecViewUnmanaged<const Real*>;
+using CRnVR = ExecViewUnmanaged<const Real*>;
+
+using RnV = ExecViewUnmanaged<ScalarValue*>;
+using CRnV = ExecViewUnmanaged<const ScalarValue*>;
 using SnV = ExecViewUnmanaged<Scalar*>;
 using CSnV = ExecViewUnmanaged<const Scalar*>;
 
 template <int N> using SNV = ExecViewUnmanaged<Scalar[N]>;
 template <int N> using CSNV = typename ViewConst<SNV<N>>::type;
 
-using RelnV = ExecViewUnmanaged<Real***>;
-using CRelnV = ExecViewUnmanaged<const Real***>;
+using RelnV = ExecViewUnmanaged<ScalarValue***>;
+using CRelnV = ExecViewUnmanaged<const ScalarValue***>;
 using SelnV = ExecViewUnmanaged<Scalar***>;
 using CSelnV = ExecViewUnmanaged<const Scalar***>;
 
@@ -121,7 +126,7 @@ void assert_eln (const CSelnV& a, const int nlev) {
 template <typename ConstRealArray>
 KOKKOS_FUNCTION static
 int find_support (const int n, const ConstRealArray& x, const int x_idx,
-                  const Real xi) {
+                  const ScalarValue xi) {
   assert(xi >= x[0] and xi <= x[n-1]);
   // Handle the most common case.
   if (x_idx < n-1 and xi >= x[x_idx  ] and xi <= x[x_idx+1]) return x_idx;
@@ -140,10 +145,10 @@ int find_support (const int n, const ConstRealArray& x, const int x_idx,
 
 // Linear interpolation core formula.
 template <typename XT, typename YT>
-KOKKOS_FUNCTION Real
-linterp (const int n, const XT& x, const YT& y, const int x_idx, const Real xi) {
+KOKKOS_FUNCTION ScalarValue
+linterp (const int n, const XT& x, const YT& y, const int x_idx, const ScalarValue xi) {
   const auto isup = find_support(n, x, x_idx, xi);
-  const Real a = (xi - x[isup])/(x[isup+1] - x[isup]);
+  const ScalarValue a = (xi - x[isup])/(x[isup+1] - x[isup]);
   return (1-a)*y[isup] + a*y[isup+1];
 }
 
@@ -178,12 +183,13 @@ linterp (const Range& range,
 
 // Compute Lagrangian level midpoints at t1 on arrival column:
 //     eta_arr_mid = I[eta_ref_mid([eta(0),eta_dep_mid,eta(1)])](eta_ref_mid).
+template <typename xi_type>
 KOKKOS_FUNCTION void
 eta_interp_eta (const KernelVariables& kv, const int nlev,
-                const CRnV& hy_etai, const CRelnV& x, const CRnV& y,
+                const CRnVR& hy_etai, const CRelnV& x, const CRnV& y,
                 const RelnV& xwrk, const RnV& ywrk,
                 // Use xi(i_os:), yi(i,j,i_os:).
-                const int ni, const CRnV& xi, const RelnV& yi, const int i_os = 0) {
+                const int ni, const xi_type& xi, const RelnV& yi, const int i_os = 0) {
   const auto& xbdy = xwrk;
   const auto& ybdy = ywrk;
   assert(hy_etai.extent_int(0) >= nlev+1);
@@ -229,7 +235,7 @@ eta_interp_eta (const KernelVariables& kv, const int nlev,
 //     p_dep_mid(eta_arr_mid) = I[p_dep_mid(eta_ref_mid)](eta_arr_mid)
 KOKKOS_FUNCTION void
 eta_interp_horiz (const KernelVariables& kv, const int nlev,
-                  const CRnV& hy_etai, const CRnV& x, const CRelnV& y,
+                  const CRnVR& hy_etai, const CRnV& x, const CRelnV& y,
                   const RnV& xwrk, const RelnV& ywrk,
                   const CRelnV& xi, const RelnV& yi) {
   const auto& xbdy = xwrk;
@@ -283,7 +289,7 @@ eta_interp_horiz (const KernelVariables& kv, const int nlev,
 */
 KOKKOS_FUNCTION void
 eta_to_dp (const KernelVariables& kv, const int nlev,
-           const Real hy_ps0, const CRnV& hy_bi, const CRnV& hy_etai,
+           const Real hy_ps0, const CRnVR& hy_bi, const CRnVR& hy_etai,
            const CRelV& ps, const CRelnV& etai, const RelnV& wrk,
            const RelnV& dp) {
   const int nlevp = nlev + 1;
@@ -346,10 +352,10 @@ eta_to_dp (const KernelVariables& kv, const int nlev,
 template <typename Range>
 KOKKOS_FUNCTION void
 deta_caas (const KernelVariables& kv, const Range& tvr_nlevp,
-           const CRnV& deta_ref, const Real low, const RnV& w,
+           const CRnVR& deta_ref, const Real low, const RnV& w,
            const RnV& deta) {
-  const auto g1 = [&] (const int k, Kokkos::Real2& sums) {
-    Real wk;
+  const auto g1 = [&] (const int k, Kokkos::ScalarValue2& sums) {
+    ScalarValue wk;
     if (deta(k) < low) {
       sums.v[0] += deta(k) - low;
       deta(k) = low;
@@ -357,17 +363,17 @@ deta_caas (const KernelVariables& kv, const Range& tvr_nlevp,
     } else {
       wk = (deta(k) > deta_ref(k) ?
             deta(k) - deta_ref(k) :
-            0);
+            ScalarValue(0));
     }
     sums.v[1] += wk;
     w(k) = wk;
   };
-  Kokkos::Real2 sums;
+  Kokkos::ScalarValue2 sums;
   Dispatch<>::parallel_reduce(kv.team, tvr_nlevp, g1, sums);
-  const Real wneeded = sums.v[0];
+  const ScalarValue wneeded = sums.v[0];
   if (wneeded == 0) return;
   // Remove what is needed from the donors.
-  const Real wavail = sums.v[1];
+  const ScalarValue wavail = sums.v[1];
   const auto g2 = [&] (const int k) {
     deta(k) += wneeded*(w(k)/wavail);
   };
@@ -376,7 +382,7 @@ deta_caas (const KernelVariables& kv, const Range& tvr_nlevp,
 
 // Wrapper to above.
 KOKKOS_FUNCTION void
-deta_caas (const KernelVariables& kv, const int nlevp, const CRnV& deta_ref,
+deta_caas (const KernelVariables& kv, const int nlevp, const CRnVR& deta_ref,
            const Real low, const RelnV& wrk, const RelnV& deta) {
   assert(deta_ref.extent_int(0) >= nlevp);
   assert_eln(wrk, nlevp);
@@ -394,8 +400,8 @@ deta_caas (const KernelVariables& kv, const int nlevp, const CRnV& deta_ref,
 // values. On output, deta_caas has been applied, if necessary, to
 // diff(eta(i,j,:)).
 KOKKOS_FUNCTION void
-limit_etam (const KernelVariables& kv, const int nlev, const CRnV& hy_etai,
-            const CRnV& deta_ref, const Real deta_tol, const RelnV& wrk1,
+limit_etam (const KernelVariables& kv, const int nlev, const CRnVR& hy_etai,
+            const CRnVR& deta_ref, const Real deta_tol, const RelnV& wrk1,
             const RelnV& wrk2, const RelnV& eta) {
   assert(hy_etai.extent_int(0) >= nlev+1);
   assert(deta_ref.extent_int(0) >= nlev+1);
@@ -411,9 +417,9 @@ limit_etam (const KernelVariables& kv, const int nlev, const CRnV& hy_etai,
     const auto  etaij = getcolc( eta,i,j);
     const auto detaij = getcol(deta,i,j);
     const auto g1 = [&] (const int k, int& nbad) {
-      const auto d = (k == 0    ? etaij(0) - hy_etai(0) :
-                      k == nlev ? hy_etai(nlev) - etaij(nlev-1) :
-                      /**/        etaij(k) - etaij(k-1));
+      const auto d = (k == 0    ? ScalarValue(etaij(0) - hy_etai(0)) :
+                      k == nlev ? ScalarValue(hy_etai(nlev) - etaij(nlev-1)) :
+                      /**/        ScalarValue(etaij(k) - etaij(k-1)));
       const bool ok = d >= deta_tol;
       if (not ok) ++nbad;
       detaij(k) = d;
@@ -435,9 +441,9 @@ limit_etam (const KernelVariables& kv, const int nlev, const CRnV& hy_etai,
     const auto  etaij = getcol( eta,i,j);
     const auto detaij = getcol(deta,i,j);
     if (detaij(0) == -1) return;
-    const auto g = [&] (const int k, Real& accum, const bool final) {
+    const auto g = [&] (const int k, ScalarValue& accum, const bool final) {
       assert(k != 0 or accum == 0);
-      const Real d = k == 0 ? hy_etai(0) + detaij(0) : detaij(k);
+      const ScalarValue d = k == 0 ? hy_etai(0) + detaij(0) : detaij(k);
       accum += d;
       if (final) etaij(k) = accum;
     };
@@ -451,7 +457,7 @@ KOKKOS_FUNCTION void calc_ps (
   const KernelVariables& kv, const int nlev,
   const Real& ps0, const Real& hyai0,
   const CSelnV& dp,
-  const ExecViewUnmanaged<Real[NP][NP]>& ps)
+  const ExecViewUnmanaged<ScalarValue[NP][NP]>& ps)
 {
   assert_eln(dp, nlev);
   const auto ttr = Kokkos::TeamThreadRange(kv.team, NP*NP);
@@ -459,8 +465,8 @@ KOKKOS_FUNCTION void calc_ps (
   const CRelnV dps = elp2r(dp);
   const auto f1 = [&] (const int idx) {
     const int i = idx / NP, j = idx % NP;
-    const auto g = [&] (int k, Real& sum) { sum += dps(i,j,k); };
-    Real sum;
+    const auto g = [&] (int k, ScalarValue& sum) { sum += dps(i,j,k); };
+    ScalarValue sum;
     Dispatch<>::parallel_reduce(kv.team, tvr_snlev, g, sum);
     Kokkos::single(Kokkos::PerThread(kv.team),
                    [&] { ps(i,j) = hyai0*ps0 + sum; });
@@ -474,7 +480,7 @@ KOKKOS_FUNCTION void calc_ps (
   const KernelVariables& kv, const int nlev,
   const Real& ps0, const Real& hyai0,
   const Real alpha[2], const CSelnV& dp1, const CSelnV& dp2,
-  const ExecViewUnmanaged<Real[2][NP][NP]>& ps)
+  const ExecViewUnmanaged<ScalarValue[2][NP][NP]>& ps)
 {
   assert_eln(dp1, nlev);
   assert_eln(dp2, nlev);
@@ -485,8 +491,8 @@ KOKKOS_FUNCTION void calc_ps (
     const int i = idx / NP, j = idx % NP;
     for (int t = 0; t < 2; ++t) {
       const auto& dp = dps[t];
-      const auto g = [&] (int k, Real& sum) { sum += dp(i,j,k); };
-      Real sum;
+      const auto g = [&] (int k, ScalarValue& sum) { sum += dp(i,j,k); };
+      ScalarValue sum;
       Dispatch<>::parallel_reduce(kv.team, tvr_snlev, g, sum);
       Kokkos::single(Kokkos::PerThread(kv.team), [&] { ps(t,i,j) = sum; });
     }
@@ -496,7 +502,7 @@ KOKKOS_FUNCTION void calc_ps (
   const auto f2 = [&] (const int idx) {
     const int i = idx / NP, j = idx % NP;
     const auto g = [&] () {
-      Real vals[2];
+      ScalarValue vals[2];
       for (int t = 0; t < 2; ++t)
         vals[t] = (hyai0*ps0 +
                    (1 - alpha[t])*ps(0,i,j) +
@@ -563,7 +569,7 @@ KOKKOS_FUNCTION void calc_eta_dot_ref_mid (
   const int nlev = NUM_PHYSICAL_LEV;
   const SelNlev divdp(wrk1.data());
   const S2elNlev vdp(vwrk1.data());
-  const ExecViewUnmanaged<Real[2][NP][NP]> ps(cti::pack2real(wrk2));
+  const ExecViewUnmanaged<ScalarValue[2][NP][NP]> ps(cti::pack2real(wrk2));
   // Calc surface pressure for use at the end.
   calc_ps(kv, nlev,
           ps0, hyai0,
@@ -608,7 +614,7 @@ KOKKOS_FUNCTION void calc_vel_horiz_formula_node_ref_mid (
   // Velocities are at midpoints. Final eta_dot entry is ignored.
   const Real dtsub, const CS2elNlev vsph[2], const CSelNlevp eta_dot[2],
   const SelNlevp& wrk1, const S2elNlevp& vwrk1, const S2elNlevp& vwrk2,
-  const ExecViewUnmanaged<Real****>& vnode)
+  const ExecViewUnmanaged<ScalarValue****>& vnode)
 {
   using Kokkos::ALL;
   const S2elNlev vfsph(vwrk1.data()), vw2(vwrk2.data());
@@ -632,7 +638,7 @@ KOKKOS_FUNCTION void calc_vel_horiz_formula_node_ref_mid (
     const CRelNlevp eds(cti::cpack2real(eta_dot[1]));
     for (int d = 0; d < 2; ++d) {
       const auto f = [&] (const int i, const int j, const int k) {
-        Real deriv;
+        ScalarValue deriv;
         if (k == 0 or k+1 == NUM_PHYSICAL_LEV) {
           const int k1 = k == 0 ? 0 : NUM_PHYSICAL_LEV-2;
           const int k2 = k == 0 ? 1 : NUM_PHYSICAL_LEV-1;
@@ -664,11 +670,11 @@ KOKKOS_FUNCTION void calc_vel_horiz_formula_node_ref_mid (
 // estimates at midpoint nodes.
 KOKKOS_FUNCTION void calc_eta_dot_formula_node_ref_mid (
   const KernelVariables& kv, const SphereOperators& sphere_ops,
-  const CRNV<NUM_INTERFACE_LEV>& hyetai, const CSNV<NUM_LEV>& hyetam,
+  const CRNVR<NUM_INTERFACE_LEV>& hyetai, const CSNV<NUM_LEV>& hyetam,
   // Velocities are at midpoints. Final eta_dot entry is ignored.
   const Real dtsub, const CS2elNlev vsph[2], const CSelNlevp eta_dot[2],
   const SelNlevp& wrk1, const S2elNlevp& vwrk1,
-  const ExecViewUnmanaged<Real****>& vnode)
+  const ExecViewUnmanaged<ScalarValue****>& vnode)
 {
   const SelNlev ed1_vderiv(wrk1.data());
   {
@@ -676,7 +682,7 @@ KOKKOS_FUNCTION void calc_eta_dot_formula_node_ref_mid (
     const CRelNlevp ed1s(cti::cpack2real(eta_dot[0]));
     const RelNlev ed1_vderiv_s(cti::pack2real(ed1_vderiv));
     const auto f = [&] (const int i, const int j, const int k) {
-      Real deriv;
+      ScalarValue deriv;
       if (k == 0 or k+1 == NUM_PHYSICAL_LEV) {
         deriv = cti::approx_derivative(
           k == 0 ? hyetai(0) : etams(k-1),

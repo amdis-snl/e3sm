@@ -23,8 +23,8 @@ typedef ExecViewUnmanaged<Scalar*  > evus1;
 typedef ExecViewUnmanaged<Scalar** > evus2;
 typedef ExecViewUnmanaged<Scalar***> evus3;
 typedef ExecViewUnmanaged<const Scalar***> evucs3;
-typedef ExecViewUnmanaged<Real*  > evur1;
-typedef ExecViewUnmanaged<Real** > evur2;
+typedef ExecViewUnmanaged<ScalarValue*  > evur1;
+typedef ExecViewUnmanaged<ScalarValue** > evur2;
 typedef ExecViewUnmanaged<Real***> evur3;
 typedef ExecViewUnmanaged<const Real*  > evucr1;
 typedef ExecViewUnmanaged<const Real** > evucr2;
@@ -234,13 +234,13 @@ calc_extrema (const KernelVariables& kv, const int n, const int nlev,
 template <typename TA>
 static KOKKOS_FUNCTION void
 calc_extrema_real1 (const KernelVariables& kv, const int n, const TA& q,
-                    Real& qmin, Real& qmax) {
+                    ScalarValue& qmin, ScalarValue& qmax) {
   GllFvRemapImpl::team_parallel_for_with_linear_index(
     kv.team, 1, 
     [&] (const int k) {
       qmin = qmax = q(0);
       for (int i = 1; i < n; ++i) {
-        const auto qi = q(i);
+        const ScalarValue qi = q(i);
         qmin = min(qmin, qi);
         qmax = max(qmax, qi);
       }
@@ -418,7 +418,7 @@ void GllFvRemapImpl
     const auto rw1 = Kokkos::subview(buf10, kv.team_idx, all, all, all);
     const auto rw2 = Kokkos::subview(buf11, kv.team_idx, all, all, all);
     const auto r2w = Kokkos::subview(buf20, kv.team_idx, all, all, all, all);
-    const EVU<Real*> rw1s(pack2real(rw1), nreal_per_slot1);
+    const EVU<ScalarValue*> rw1s(pack2real(rw1), nreal_per_slot1);
 
     const auto ttrf = Kokkos::TeamThreadRange(kv.team, nf2);
     const auto tvr = Kokkos::ThreadVectorRange(kv.team, nlevpk);
@@ -432,7 +432,7 @@ void GllFvRemapImpl
       remapd(team, nf2, np2, 1, g2f_remapd, gll_metdet_ie, w_ff, fv_metdet_ie,
              ps_v_ie, wrk, evur2(&ps(ie,0), nf2, 1));
       kv.team_barrier();
-      calc_dp_fv(team, hvcoord, nf2, nlevpk, EVU<Real*>(&ps(ie,0), nf2), dp_fv_ie);
+      calc_dp_fv(team, hvcoord, nf2, nlevpk, EVU<ScalarValue*>(&ps(ie,0), nf2), dp_fv_ie);
       if (want_dp_fv_out)
         loop_ik(ttrf, tvr, [&] (int i, int k) { dp_fv_out(ie,i,k) = dp_fv_ie(i,k); });
       kv.team_barrier();
@@ -440,7 +440,7 @@ void GllFvRemapImpl
 
     { // phis
       const evucr1 phis_g_ie(&phis_g(ie,0,0), np2);
-      Real qmin, qmax;
+      ScalarValue qmin, qmax;
       calc_extrema_real1(kv, np2, phis_g_ie, qmin, qmax);
       kv.team_barrier();
       const evur2 wrk(rw1s.data(), np2, 1), phis_f_ie(&phis(ie,0), nf2, 1);
@@ -621,7 +621,7 @@ run_fv_phys_to_dyn (const int timeidx, const CPhys2T& Ts, const CPhys3T& uvs,
     const auto all = Kokkos::ALL();
     const auto rw1 = Kokkos::subview(buf10, kv.team_idx, all, all, all);
     const auto r2w = Kokkos::subview(buf20, kv.team_idx, all, all, all, all);
-    const EVU<Real*> rw1s(pack2real(rw1), nreal_per_slot1);
+    const EVU<ScalarValue*> rw1s(pack2real(rw1), nreal_per_slot1);
     
     const evucr1 fv_metdet_ie(&fv_metdet(ie,0), nf2),
       gll_metdet_ie(&gll_metdet(ie,0,0), np2);
@@ -629,11 +629,11 @@ run_fv_phys_to_dyn (const int timeidx, const CPhys2T& Ts, const CPhys3T& uvs,
     // ps and dp_fv
     const evus2 dp_fv_ie(&dp_fv(ie,0,0,0), nf2, nlevpk); {
       const evur2 ps_v_ie(&ps_v(ie,timeidx,0,0), np2, 1), w1(rw1s.data(), np2, 1);
-      Real* const w2 = rw1s.data() + np2;
+      ScalarValue* const w2 = rw1s.data() + np2;
       remapd(team, nf2, np2, 1, g2f_remapd, gll_metdet_ie, w_ff, fv_metdet_ie,
              ps_v_ie, w1, evur2(w2, nf2, 1));
       kv.team_barrier();
-      calc_dp_fv(team, hvcoord, nf2, nlevpk, EVU<Real*>(w2, nf2), dp_fv_ie);
+      calc_dp_fv(team, hvcoord, nf2, nlevpk, EVU<ScalarValue*>(w2, nf2), dp_fv_ie);
       kv.team_barrier();
     }
 
@@ -859,7 +859,7 @@ void GllFvRemapImpl
 
     const auto all = Kokkos::ALL();
     const auto rw1 = Kokkos::subview(buf10, kv.team_idx, all, all, all);
-    const EVU<Real*> rw1s(pack2real(rw1), nreal_per_slot1);
+    const EVU<ScalarValue*> rw1s(pack2real(rw1), nreal_per_slot1);
     
     const evucr1 fv_metdet_ie(&fv_metdet(ie,0), nf2),
       gll_metdet_ie(&gll_metdet(ie,0,0), np2);
@@ -870,7 +870,7 @@ void GllFvRemapImpl
       remapd(team, nf2, np2, 1, g2f_remapd, gll_metdet_ie, w_ff, fv_metdet_ie,
              ps_v_ie, wrk, ps_v_fv_ie);
       kv.team_barrier();
-      calc_dp_fv(team, hvcoord, nf2, nlevpk, EVU<Real*>(ps_v_fv_ie.data(), nf2),
+      calc_dp_fv(team, hvcoord, nf2, nlevpk, EVU<ScalarValue*>(ps_v_fv_ie.data(), nf2),
                  dp_fv_ie);
     }
   };

@@ -48,7 +48,7 @@ public:
   ExecViewManaged<Scalar * [NUM_TIME_LEVELS]   [NP][NP][NUM_LEV_P]> m_phinh_i;    // Geopotential used by NH model at interfaces
   ExecViewManaged<Scalar * [NUM_TIME_LEVELS]   [NP][NP][NUM_LEV  ]> m_dp3d;       // Delta p on levels
 
-  ExecViewManaged<Real   * [NUM_TIME_LEVELS]   [NP][NP]           > m_ps_v;       // Surface pressure
+  ExecViewManaged<ScalarValue * [NUM_TIME_LEVELS]   [NP][NP]           > m_ps_v;       // Surface pressure
 
   void init_storage(const int num_elems);
 

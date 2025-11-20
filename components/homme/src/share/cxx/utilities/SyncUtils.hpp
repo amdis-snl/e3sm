@@ -52,6 +52,28 @@ template <typename ViewT, typename ArrayT> struct host_view_mappable {
 template <typename Source_T, typename Dest_T>
 typename std::enable_if
   <
+    (exec_view_mappable<Source_T, ScalarValue * [NUM_TIME_LEVELS][NP][NP]>::value &&
+     host_view_mappable<Dest_T, Real * [NUM_TIME_LEVELS][NP][NP]>::value),
+    void
+  >::type
+sync_to_host(Source_T source, Dest_T dest)
+{
+  typename Source_T::HostMirror source_mirror = Kokkos::create_mirror_view(source);
+  Kokkos::deep_copy(source_mirror, source);
+  for (int ie = 0; ie < source.extent_int(0); ++ie) {
+    for (int tl = 0; tl < NUM_TIME_LEVELS; ++tl) {
+      for (int igp = 0; igp < NP; ++igp) {
+        for (int jgp = 0; jgp < NP; ++jgp) {
+          dest(ie, tl, igp, jgp) = ADValue(source_mirror(ie, tl, igp, jgp));
+        }
+      }
+    }
+  }
+}
+
+template <typename Source_T, typename Dest_T>
+typename std::enable_if
+  <
     (exec_view_mappable<Source_T, Scalar * [NUM_TIME_LEVELS][NP][NP][NUM_LEV_P]>::value &&
      host_view_mappable<Dest_T, Real * [NUM_TIME_LEVELS][NUM_INTERFACE_LEV][NP][NP]>::value),
     void
@@ -67,7 +89,7 @@ sync_to_host(Source_T source, Dest_T dest)
         const int ivec = level % VECTOR_SIZE;
         for (int igp = 0; igp < NP; ++igp) {
           for (int jgp = 0; jgp < NP; ++jgp) {
-            dest(ie, tl, level, igp, jgp) = source_mirror(ie, tl, igp, jgp, ilev)[ivec];
+            dest(ie, tl, level, igp, jgp) = ADValue(source_mirror(ie, tl, igp, jgp, ilev)[ivec]);
           }
         }
       }
@@ -93,7 +115,7 @@ sync_to_host(Source_T source, Dest_T dest)
         const int ivec = level % VECTOR_SIZE;
         for (int igp = 0; igp < NP; ++igp) {
           for (int jgp = 0; jgp < NP; ++jgp) {
-            dest(ie, tl, level, igp, jgp) = source_mirror(ie, tl, igp, jgp, ilev)[ivec];
+            dest(ie, tl, level, igp, jgp) = ADValue(source_mirror(ie, tl, igp, jgp, ilev)[ivec]);
           }
         }
       }
@@ -119,8 +141,8 @@ sync_to_host(Source_T source, Dest_T dest)
         const int ivec = level % VECTOR_SIZE;
         for (int igp = 0; igp < NP; ++igp) {
           for (int jgp = 0; jgp < NP; ++jgp) {
-            dest(ie, tl, level, 0, igp, jgp) = source_mirror(ie, tl, 0, igp, jgp, ilev)[ivec];
-            dest(ie, tl, level, 1, igp, jgp) = source_mirror(ie, tl, 1, igp, jgp, ilev)[ivec];
+            dest(ie, tl, level, 0, igp, jgp) = ADValue(source_mirror(ie, tl, 0, igp, jgp, ilev)[ivec]);
+            dest(ie, tl, level, 1, igp, jgp) = ADValue(source_mirror(ie, tl, 1, igp, jgp, ilev)[ivec]);
           }
         }
       }
@@ -146,7 +168,7 @@ sync_to_host(Source_T source, Dest_T dest)
       const int ivec = level % VECTOR_SIZE;
       for (int igp = 0; igp < NP; ++igp) {
         for (int jgp = 0; jgp < NP; ++jgp) {
-          dest(ie, level, igp, jgp) = source_mirror(ie, igp, jgp, ilev)[ivec];
+          dest(ie, level, igp, jgp) = ADValue(source_mirror(ie, igp, jgp, ilev)[ivec]);
         }
       }
     }
@@ -167,7 +189,7 @@ sync_to_host(Source_T source, Dest_T dest)
   for (int ie = 0; ie < source.extent_int(0); ++ie) {
     for (int igp = 0; igp < NP; ++igp) {
       for (int jgp = 0; jgp < NP; ++jgp) {
-        dest(ie, igp, jgp) = source_mirror(ie, igp, jgp);
+        dest(ie, igp, jgp) = ADValue(source_mirror(ie, igp, jgp));
       }
     }
   }
@@ -187,7 +209,7 @@ sync_to_host(Source_T source, Dest_T dest) {
     const int ivec = level % VECTOR_SIZE;
     for (int igp = 0; igp < NP; ++igp) {
       for (int jgp = 0; jgp < NP; ++jgp) {
-        dest(level, igp, jgp) = source_mirror(igp, jgp, ilev)[ivec];
+        dest(level, igp, jgp) = ADValue(source_mirror(igp, jgp, ilev)[ivec]);
       }
     }
   }
@@ -211,7 +233,7 @@ sync_to_host(Source_T source, Dest_T dest)
       for (int igp = 0; igp < NP; ++igp) {
         for (int jgp = 0; jgp < NP; ++jgp) {
           for (int idim=0 ; idim<DIM; ++idim) {
-            dest(ie, level, idim, igp, jgp) = source_mirror(ie, idim, igp, jgp, ilev)[ivec];
+            dest(ie, level, idim, igp, jgp) = ADValue(source_mirror(ie, idim, igp, jgp, ilev)[ivec]);
           }
         }
       }
@@ -238,7 +260,7 @@ sync_to_host(Source_T source, Dest_T dest)
           const int ivec = level % VECTOR_SIZE;
           for (int igp = 0; igp < NP; ++igp) {
             for (int jgp = 0; jgp < NP; ++jgp) {
-              dest(ie, time, tracer, level, igp, jgp) = source_mirror(ie, time, tracer, igp, jgp, ilev)[ivec];
+              dest(ie, time, tracer, level, igp, jgp) = ADValue(source_mirror(ie, time, tracer, igp, jgp, ilev)[ivec]);
             }
           }
         }
@@ -283,7 +305,7 @@ sync_to_host(Source_T source, Dest_T dest)
       const int ivec = level % VECTOR_SIZE;
       for (int igp = 0; igp < NP; ++igp) {
         for (int jgp = 0; jgp < NP; ++jgp) {
-          dest(ie, level, igp, jgp) = source_mirror(ie, igp, jgp, ilev)[ivec];
+          dest(ie, level, igp, jgp) = ADValue(source_mirror(ie, igp, jgp, ilev)[ivec]);
         }
       }
     }
@@ -307,7 +329,7 @@ sync_to_host_p2i(Source_T source, Dest_T dest)
       const int ivec = level % VECTOR_SIZE;
       for (int igp = 0; igp < NP; ++igp) {
         for (int jgp = 0; jgp < NP; ++jgp) {
-          dest(ie, level, igp, jgp) = source_mirror(ie, igp, jgp, ilev)[ivec];
+          dest(ie, level, igp, jgp) = ADValue(source_mirror(ie, igp, jgp, ilev)[ivec]);
         }
       }
     }

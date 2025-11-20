@@ -663,7 +663,7 @@ struct DirkFunctorImpl {
         const auto v = w(k,i);
         for (int s = 0; s < packn; ++s) {
           if (scaln % packn != 0 && i*packn + s >= scaln) break;
-          lmaxval = max(lmaxval, std::abs(v[s]));
+          lmaxval = max(lmaxval, ADValue(std::abs(v[s])));
         }
       };
       Real lmaxval;
@@ -691,7 +691,7 @@ struct DirkFunctorImpl {
         const auto v = x(k,i);
         for (int s = 0; s < packn; ++s) {
           if (scaln % packn != 0 && i*packn + s >= scaln) break;
-          lmaxval = max(lmaxval, std::abs(v[s]));
+          lmaxval = max(lmaxval, ADValue(std::abs(v[s])));
         }
       };
       Real lmaxval;
@@ -810,7 +810,7 @@ struct DirkFunctorImpl {
           wrk(nlev,i)[s] = 0;
           continue;
         }
-        Real dx, dw;
+        ScalarValue dx, dw;
         if (k < nlev-1) {
           dx =     x(k+1,i)[s] -     x(k,i)[s];
           dw = w_np1(k+1,i)[s] - w_np1(k,i)[s];
@@ -820,7 +820,7 @@ struct DirkFunctorImpl {
         }
         if (dx != 0) {
           // Step length at which dphi(k,i)[s] would = 0.
-          const Real alpha = -(dphi_n0(k,i)[s] + dt2*grav*dw)/(dt2*grav*dx);
+          const ScalarValue alpha = -(dphi_n0(k,i)[s] + dt2*grav*dw)/(dt2*grav*dx);
           // A negative step is irrelevant.
           if (alpha >= 0) wrk(k,i)[s] = alpha;
         }
@@ -835,7 +835,7 @@ struct DirkFunctorImpl {
     const auto f = [&] (int idx) {
       const int i = idx / packn, s = idx % packn;
       if (wrk(nlev,i)[s] == 0) return;
-      const auto g = [&] (int k, Real& lalpha) { lalpha = min(lalpha, wrk(k,i)[s]); };
+      const auto g = [&] (int k, Real& lalpha) { lalpha = min(lalpha, ADValue(wrk(k,i)[s])); };
       Real alpha;
       const auto vr = ThreadVectorRange(kv.team, nlev);
       parallel_reduce(vr, g, Kokkos::Min<Real>(alpha));

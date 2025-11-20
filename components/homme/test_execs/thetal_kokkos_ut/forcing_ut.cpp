@@ -181,7 +181,8 @@ TEST_CASE("forcing", "forcing") {
           sync_to_host(state.m_dp3d,dp_f90);
           sync_to_host(state.m_phinh_i,phinh_f90);
           // ps has same layout in cxx and f90
-          Kokkos::deep_copy(ps_f90,state.m_ps_v);
+          //Kokkos::deep_copy(ps_f90,state.m_ps_v);
+          sync_to_host(state.m_ps_v,ps_f90);
 
           sync_to_host<3>(forcing.m_fm,fm_f90);
           sync_to_host(forcing.m_ft,ft_f90);

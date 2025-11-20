@@ -158,7 +158,7 @@ struct LimiterFunctor {
         });
 
         // Gotta apply vertical mixing, to prevent levels from getting too thin.
-        Real mass = 0.0;
+        ScalarValue mass = 0.0;
         ColumnOps::column_reduction<NUM_PHYSICAL_LEV>(kv.team,diff,mass);
 
         if (mass<0) {

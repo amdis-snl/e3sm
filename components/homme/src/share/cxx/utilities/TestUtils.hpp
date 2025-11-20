@@ -36,6 +36,15 @@ void genRandArray(Scalar *const x, int length, rngAlg &engine, PDF &&pdf) {
   }
 }
 
+#ifdef HOMMEXX_ENABLE_FAD_TYPES
+template <typename rngAlg, typename PDF>
+void genRandArray(FadType *const x, int length, rngAlg &engine, PDF &&pdf) {
+  for (int i = 0; i < length; ++i) {
+    x[i] = pdf(engine);
+  }
+}
+#endif
+
 template <typename ViewType, typename rngAlg, typename PDF>
 typename std::enable_if<Kokkos::is_view<ViewType>::value, void>::type
 genRandArray(ViewType view, rngAlg &engine, PDF &&pdf,

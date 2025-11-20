@@ -142,8 +142,9 @@ public:
   }
 
   // Input is in radians.
+  template <typename Sc>
   static void init(const Shape shape, const Size n, const Real* const lat,
-                   const Real* const lon, Real* const u);
+                   const Real* const lon, Sc* const u);
 
   static std::string get_inputs ()
   { return format_strings_as_list(inputs, 7); }
@@ -217,6 +218,83 @@ offset_latlon (const Int nlev, const Int k, Real& lat, Real& lon) {
 
 inline InitialCondition::Shape get_ic (const Int qsize, const Int k, const Int q) {
   return static_cast<InitialCondition::Shape>((k*qsize + q) % InitialCondition::nshapes);
+}
+
+template <typename Sc>
+void InitialCondition
+::init (const Shape shape, const Size n, const Real* const lat,
+        const Real* const lon, Sc* const u) {
+  const Real lon1 = 5*(M_PI/6), lat1 = 0, lon2 = -5*(M_PI/6), lat2 = 0;
+  Real x1, y1, z1, x2, y2, z2;
+  ll2xyz(lat1, lon1, x1, y1, z1);
+  ll2xyz(lat2, lon2, x2, y2, z2);
+  switch (shape) {
+  case XYZTrig: {
+    for (Size i = 0; i < n; ++i) {
+      Real x, y, z;
+      ll2xyz(lat[i], lon[i], x, y, z, 1);
+      u[i] = 0.5*(1 + std::sin(3*x)*std::sin(3*y)*std::sin(4*z));
+    }
+  } break;
+  case GaussianHills: {
+    for (Size i = 0; i < n; ++i) {
+      Real x, y, z;
+      ll2xyz(lat[i], lon[i], x, y, z, 1);
+      u[i] = GH(x, y, z, x1, y1, z1) + GH(x, y, z, x2, y2, z2);
+    }
+  } break;
+  case CosineBells: {
+    const Real r = 0.5, b = 0.1, c = 0.9;
+    for (Size i = 0; i < n; ++i) {
+      const Real r1 = great_circle_dist(lat[i], lon[i], lat1, lon1);
+      Real h = 0;
+      if (r1 < r)
+        h = CB(r1, r);
+      else {
+        const Real r2 = great_circle_dist(lat[i], lon[i], lat2, lon2);
+        if (r2 < r)
+          h = CB(r2, r);
+      }
+      u[i] = b + c*h;
+    }
+  } break;
+  case SlottedCylinders: {
+    const Real b = 0.1, c = 1, R = 1, r = 0.5*R, lon_thr = r/(6*R),
+      lat_thr = 5*(r/(12*R));
+    for (Size i = 0; i < n; ++i) {
+      const Real r1 = great_circle_dist(lat[i], lon[i], lat1, lon1);
+      if (r1 <= r) {
+        if (std::abs(lon[i] - lon1) >= lon_thr) {
+          u[i] = c;
+          continue;
+        }
+        if (std::abs(lon[i] - lon1) < lon_thr && lat[i] - lat1 < -lat_thr) {
+          u[i] = c;
+          continue;
+        }
+      }
+      const Real r2 = great_circle_dist(lat[i], lon[i], lat2, lon2);
+      if (r2 <= r) {
+        if (std::abs(lon[i] - lon2) >= lon_thr) {
+          u[i] = c;
+          continue;
+        }
+        if (std::abs(lon[i] - lon2) < lon_thr && lat[i] - lat2 > lat_thr) {
+          u[i] = c;
+          continue;
+        }
+      }
+      u[i] = b;
+    }      
+  } break;
+  case CorrelatedCosineBells: {
+    const Real a = -0.8, b = 0.9;
+    init(CosineBells, n, lat, lon, u);
+    for (Size i = 0; i < n; ++i)
+      u[i] = a*square(u[i]) + b;
+  } break;
+  default: assert(0);
+  }
 }
 
 } // namespace test

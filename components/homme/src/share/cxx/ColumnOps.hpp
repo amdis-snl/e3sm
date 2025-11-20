@@ -309,7 +309,7 @@ public:
   static void column_scan (const KernelVariables& kv,
                     const InputProvider& input_provider,
                     const ExecViewUnmanaged<Scalar [ColInfo<LENGTH>::NumPacks]>& sum,
-                    const Real s0 = 0.0)
+                    const ScalarValue s0 = 0.0)
   {
     column_scan_impl<VECTOR_SIZE,Forward,Inclusive,LENGTH>(kv,input_provider,sum,s0);
   }
@@ -320,7 +320,7 @@ public:
   column_scan_impl (const KernelVariables& /* kv */,
                     const InputProvider& input_provider,
                     const ExecViewUnmanaged<Scalar [ColInfo<LENGTH>::NumPacks]>& sum,
-                    const Real s0 = 0.0)
+                    const ScalarValue s0 = 0.0)
   {
     constexpr int OFFSET             = Inclusive ? 0 : 1;
     constexpr int LOOP_RAW_SIZE      = LENGTH - OFFSET;
@@ -334,7 +334,7 @@ public:
     // since the if is evaluated at compile time, so no big deal.
     if (Forward) {
       // Running integral
-      Real integration = s0;
+      ScalarValue integration = s0;
 
       for (int ilev = 0; ilev<LOOP_SIZE; ++ilev) {
         // In all but the last level pack, the loop is over the whole pack
@@ -359,7 +359,7 @@ public:
       }
     } else {
       // Running integral
-      Real integration = s0;
+      ScalarValue integration = s0;
 
       // In an exclusive sum, the procedure below would fail to add 
       // the input's last level to the output's second-to-last level
@@ -393,7 +393,7 @@ public:
   column_scan_impl (const KernelVariables& kv,
                     const InputProvider& input_provider,
                     const ExecViewUnmanaged<Scalar [ColInfo<LENGTH>::NumPacks]>& sum,
-                    const Real s0 = 0.0)
+                    const ScalarValue s0 = 0.0)
   {
     if (Forward) {
       // If exclusive, no need to go to access last input level
@@ -401,7 +401,7 @@ public:
       constexpr int loop_size = LENGTH - offset;
 
       Dispatch<>::parallel_scan(kv.team, loop_size,
-                                [&](const int k, Real& accumulator, const bool last) {
+                                [&](const int k, ScalarValue& accumulator, const bool last) {
         if (k==0) {
           // First entry from the bottom: set initial value
           accumulator = s0;
@@ -418,7 +418,7 @@ public:
       constexpr int loop_size = LENGTH - offset;
 
       Dispatch<>::parallel_scan(kv.team, loop_size,
-                                [&](const int k, Real& accumulator, const bool last) {
+                                [&](const int k, ScalarValue& accumulator, const bool last) {
         // k_bwd must range in (loop_size,0], while k ranges in [0, loop_size).
         const int k_bwd = LENGTH - k - 1;
 
@@ -461,7 +461,7 @@ public:
       constexpr int LAST_INT_PACK_END = INTERFACES::LastPackEnd;
 
       ExecViewUnmanaged<Scalar[NUM_LEV]> sum_cropped(sum.data());
-      const Real s0 = sum(LAST_INT_PACK)[LAST_INT_PACK_END];
+      const ScalarValue s0 = sum(LAST_INT_PACK)[LAST_INT_PACK_END];
       Kokkos::single(Kokkos::PerThread(kv.team),[&](){
         sum_cropped(LAST_MID_PACK)[LAST_MID_PACK_END] = s0;
       });
@@ -481,7 +481,7 @@ public:
   KOKKOS_INLINE_FUNCTION
   static void column_reduction (const KernelVariables& kv,
                                 const InputProvider& input,
-                                Real& sum)
+                                ScalarValue& sum)
   {
     if (PackedReduction) {
       // To squeeze some perf out on CPU, do reduction at Scalar level,
@@ -513,7 +513,7 @@ public:
       sum = packed_sum.reduce_add();
     } else {
       Dispatch<>::parallel_reduce(kv.team,Kokkos::ThreadVectorRange(kv.team,LENGTH),
-                                  [&](const int k, Real& accumulator) {
+                                  [&](const int k, ScalarValue& accumulator) {
         if (VECTOR_SIZE>1) {
           const int ilev = k / VECTOR_SIZE;
           const int ivec = k % VECTOR_SIZE;

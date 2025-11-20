@@ -42,7 +42,7 @@ void ElementsState::init(const int num_elems) {
   m_phinh_i   = ExecViewManaged<Scalar * [NUM_TIME_LEVELS]   [NP][NP][NUM_LEV_P]>("Geopotential at interfaces", num_elems);
   m_dp3d      = ExecViewManaged<Scalar * [NUM_TIME_LEVELS]   [NP][NP][NUM_LEV  ]>("Delta p at levels", num_elems);
 
-  m_ps_v = ExecViewManaged<Real * [NUM_TIME_LEVELS][NP][NP]>("PS_V", num_elems);
+  m_ps_v = ExecViewManaged<ScalarValue * [NUM_TIME_LEVELS][NP][NP]>("PS_V", num_elems);
 
   m_ref_states.init(num_elems);
 
@@ -133,8 +133,8 @@ void ElementsState::randomize(const int seed,
   //       Rather than using a constraint (which may call the function many times,
   //       we simply ask that there are no duplicates, then we sort it later.
   auto sort_and_chek = [](const ExecViewManaged<Scalar[NUM_LEV_P]>::HostMirror v)->bool {
-    Real* start = reinterpret_cast<Real*>(v.data());
-    Real* end   = reinterpret_cast<Real*>(v.data()) + NUM_LEV_P*VECTOR_SIZE;
+    ScalarValue* start = reinterpret_cast<ScalarValue*>(v.data());
+    ScalarValue* end   = reinterpret_cast<ScalarValue*>(v.data()) + NUM_LEV_P*VECTOR_SIZE;
     std::sort(start,end);
     std::reverse(start,end);
     auto it = std::unique(start,end);
@@ -157,12 +157,12 @@ void ElementsState::randomize(const int seed,
 
     auto h_pt_dp = Kokkos::create_mirror_view(pt_dp);
     Kokkos::deep_copy(h_pt_dp,pt_dp);
-    Real* data     = reinterpret_cast<Real*>(h_pt_dp.data());
-    Real* data_end = data + NUM_PHYSICAL_LEV;
+    ScalarValue* data     = reinterpret_cast<ScalarValue*>(h_pt_dp.data());
+    ScalarValue* data_end = data + NUM_PHYSICAL_LEV;
 
-    Real p[NUM_INTERFACE_LEV];
-    Real* p_start = &p[0];
-    Real* p_end   = p_start+NUM_INTERFACE_LEV;
+    ScalarValue p[NUM_INTERFACE_LEV];
+    ScalarValue* p_start = &p[0];
+    ScalarValue* p_end   = p_start+NUM_INTERFACE_LEV;
 
     for (int i=0; i<NUM_PHYSICAL_LEV; ++i) {
       p[i+1] = data[i];
@@ -192,7 +192,7 @@ void ElementsState::randomize(const int seed,
     }
 
     // Fill remainder of last vector pack with quiet nan's
-    Real* alloc_end = data+NUM_LEV*VECTOR_SIZE;
+    ScalarValue* alloc_end = data+NUM_LEV*VECTOR_SIZE;
     for (auto it=data_end; it!=alloc_end; ++it) {
       *it = std::numeric_limits<Real>::quiet_NaN();
     }

@@ -56,14 +56,14 @@ struct ComposeTransportImpl {
 
   using Buf2 = ExecViewUnmanaged<Scalar*[2][NP][NP][NUM_LEV_P]>;
 
-  using DeparturePoints = ExecViewManaged<Real*****>;
+  using DeparturePoints = ExecViewManaged<ScalarValue*****>;
 
   typedef ExecViewUnmanaged<Scalar[NP][NP][NUM_LEV]> SNlev;
-  typedef ExecViewUnmanaged<Real[NP][NP][NUM_LEV*VECTOR_SIZE]> RNlev;
+  typedef ExecViewUnmanaged<ScalarValue[NP][NP][NUM_LEV*VECTOR_SIZE]> RNlev;
   typedef ExecViewUnmanaged<Scalar[NP][NP][NUM_LEV_P]> SNlevp;
-  typedef ExecViewUnmanaged<Real[NP][NP][NUM_LEV_P*VECTOR_SIZE]> RNlevp;
+  typedef ExecViewUnmanaged<ScalarValue[NP][NP][NUM_LEV_P*VECTOR_SIZE]> RNlevp;
   typedef ExecViewUnmanaged<Scalar[2][NP][NP][NUM_LEV]> S2Nlev;
-  typedef ExecViewUnmanaged<Real[2][NP][NP][NUM_LEV*VECTOR_SIZE]> R2Nlev;
+  typedef ExecViewUnmanaged<ScalarValue[2][NP][NP][NUM_LEV*VECTOR_SIZE]> R2Nlev;
   typedef ExecViewUnmanaged<Scalar[2][NP][NP][NUM_LEV_P]> S2Nlevp;
   typedef typename ViewConst<SNlev >::type CSNlev;
   typedef typename ViewConst<RNlev >::type CRNlev;
@@ -293,13 +293,13 @@ struct ComposeTransportImpl {
   }
 
   static KOKKOS_INLINE_FUNCTION
-  Real* pack2real (Scalar* pack) { return &(*pack)[0]; }
+  ScalarValue* pack2real (Scalar* pack) { return &(*pack)[0]; }
   static KOKKOS_INLINE_FUNCTION
-  const Real* pack2real (const Scalar* pack) { return &(*pack)[0]; }
+  const ScalarValue* pack2real (const Scalar* pack) { return &(*pack)[0]; }
   template <typename View> static KOKKOS_INLINE_FUNCTION
-  Real* pack2real (const View& v) { return pack2real(v.data()); }
+  ScalarValue* pack2real (const View& v) { return pack2real(v.data()); }
   template <typename View> static KOKKOS_INLINE_FUNCTION
-  const Real* cpack2real (const View& v) { return pack2real(v.data()); }
+  const ScalarValue* cpack2real (const View& v) { return pack2real(v.data()); }
 
   KOKKOS_FUNCTION
   static void ugradv_sphere (
@@ -376,7 +376,7 @@ struct ComposeTransportImpl {
     const auto tvr = Kokkos::ThreadVectorRange(kv.team, NUM_LEV);
     const auto f1 = [&] (const int idx) {
       const int i = idx / NP, j = idx % NP;
-      const auto r = [&] (const int k, Real& dps, const bool final) {
+      const auto r = [&] (const int k, ScalarValue& dps, const bool final) {
         assert(k != 0 || dps == 0);
         if (final) edds(i,j,k) = dps;
         dps += divdps(i,j,k);
@@ -388,7 +388,7 @@ struct ComposeTransportImpl {
     const auto f2 = [&] (const int idx) {
       const int i = idx / NP, j = idx % NP;
       const int kend = num_phys_lev - 1;
-      const Real dps = edds(i,j,kend) + divdps(i,j,kend);
+      const ScalarValue dps = edds(i,j,kend) + divdps(i,j,kend);
       assert(hybrid_bi(0)[0] == 0);
       const auto s = [&] (const int kp) {
         edd(i,j,kp) = hybrid_bi(kp)*dps - edd(i,j,kp);

@@ -31,14 +31,14 @@ using S2Nlevp = cti::S2Nlevp;
 // Pad by an amount ~ smallest level to keep the computed dp > 0.
 void ComposeTransportImpl::set_dp_tol () {
   const auto dp0h = cmvdc(m_hvcoord.dp0);
-  const Real* dp0 = pack2real(dp0h);
-  Real min_dp0 = dp0[0];
-  for (int i = 1; i < num_phys_lev; ++i) min_dp0 = std::min(min_dp0, dp0[i]);
+  const ScalarValue* dp0 = pack2real(dp0h);
+  Real min_dp0 = ADValue(dp0[0]);
+  for (int i = 1; i < num_phys_lev; ++i) min_dp0 = std::min(min_dp0, ADValue(dp0[i]));
   m_data.dp_tol = 10*std::numeric_limits<Real>::epsilon()*min_dp0;
 }
 
 KOKKOS_FUNCTION static void
-calc_p (const KernelVariables& kv, const Real& ps0, const Real& hybrid_ai0,
+calc_p (const KernelVariables& kv, const Real& ps0, const ScalarValue& hybrid_ai0,
         const CSNlev& dpp, const SNlevp& pp) {
   CRNlev dp(cti::cpack2real(dpp));
   RNlevp p(cti::pack2real(pp));
@@ -62,7 +62,7 @@ reconstruct_and_limit_dp (const KernelVariables& kv, const CSNlev& dprefp, const
   const auto tvr = Kokkos::ThreadVectorRange(kv.team, NUM_PHYSICAL_LEV);
   const auto f = [&] (const int idx) {
     const int i = idx / NP, j = idx % NP;
-    const auto g1 = [&] (const int k, Kokkos::Real2& sums) {
+    const auto g1 = [&] (const int k, Kokkos::ScalarValue2& sums) {
       // Store the full update rather than reconstructing eta_dot_dpdn. See
       // comment in sl_vertically_remap_tracers for more.
       dprecon(i,j,k) = dpref(i,j,k) + dt*(eta_dot_dpdn(i,j,k+1) - eta_dot_dpdn(i,j,k));
@@ -73,14 +73,14 @@ reconstruct_and_limit_dp (const KernelVariables& kv, const CSNlev& dprefp, const
         sums.v[1] += dprecon(i,j,k) - dp_tol;
       }
     };
-    Kokkos::Real2 sums;
+    Kokkos::ScalarValue2 sums;
     Dispatch<>::parallel_reduce(kv.team, tvr, g1, sums);
-    const Real nmass = sums.v[0];
+    const ScalarValue nmass = sums.v[0];
     if (nmass == 0) return;
     // Compensate for clipping.
-    const Real wsum = sums.v[1];
+    const ScalarValue wsum = sums.v[1];
     const auto g2 = [&] (const int k) {
-      const Real w = dprecon(i,j,k) - dp_tol;
+      const ScalarValue w = dprecon(i,j,k) - dp_tol;
       dprecon(i,j,k) += nmass*(w/wsum);
     };
     Kokkos::parallel_for(tvr, g2);
@@ -400,7 +400,7 @@ void ComposeTransportImpl::calc_trajectory (const int np1, const Real dt) {
           if (num_phys_lev % packn != 0 && // compile out this conditional when possible
               oss >= num_phys_lev) break;
           // No vec call for sqrt.
-          const auto r = is_sphere ? std::sqrt(r2[s]) : 1;
+          const auto r = is_sphere ? std::sqrt(r2[s]) : ScalarValue(1);
           for (int d = 0; d < 3; ++d)
             dep_pts(ie,oss,i,j,d) = dp[d][s]/r;
         }
@@ -419,7 +419,7 @@ static int test_approx_derivative () {
   int nerr = 0;
   const auto policy = Homme::get_default_team_policy<ExecSpace>(1);
   ExecView<Scalar[NP][NP][NUM_LEV_P]> xp("xp"), yp("yp");
-  ExecView<Real[NP][NP][NUM_LEV_P*VECTOR_SIZE]>
+  ExecView<ScalarValue[NP][NP][NUM_LEV_P*VECTOR_SIZE]>
     xs(cti::pack2real(xp)), ys(cti::pack2real(yp));
   { // Fill xs and ys with manufactured coordinates and function.
     const auto f = KOKKOS_LAMBDA (const cti::MT& team) {
@@ -445,19 +445,19 @@ static int test_approx_derivative () {
   { // Check answer.
     Kokkos::fence();
     const auto xsh = cti::cmvdc(xs);
-    ExecView<Real[NP][NP][NUM_LEV*VECTOR_SIZE]> yis(cti::pack2real(yip));
+    ExecView<ScalarValue[NP][NP][NUM_LEV*VECTOR_SIZE]> yis(cti::pack2real(yip));
     const auto yish = cti::cmvdc(yis);
     for (int i = 0; i < cti::np; ++i)
       for (int j = 0; j < cti::np; ++j)
         for (int k = 1; // k = 0 is not written
              k < cti::num_phys_lev; ++k) {
-          const Real x = xsh(i,j,k);
+          const Real x = ADValue(xsh(i,j,k));
           const Real ypp = 2*a*x + b;
-          const Real err = std::abs(yish(i,j,k) - ypp);
+          const ScalarValue err = std::abs(yish(i,j,k) - ypp);
           if (err > 1e3*std::numeric_limits<Real>::epsilon()) {
             ++nerr;
             printf("%2d %d %d %1.2f %6.2f %6.2f %9.2e\n",
-                   i, j, k, x, ypp, yish(i,j,k), err);
+                   i, j, k, x, ypp, ADValue(yish(i,j,k)), err);
           }
         }
   }
@@ -468,7 +468,7 @@ static int test_approx_derivative () {
 static int test_calc_p (const HybridVCoord& hvcoord) {
   int nerr = 0;
   ExecView<Scalar[NP][NP][NUM_LEV]> dpp("dpp");
-  ExecView<Real[NP][NP][NUM_LEV*VECTOR_SIZE]> dp(cti::pack2real(dpp));
+  ExecView<ScalarValue[NP][NP][NUM_LEV*VECTOR_SIZE]> dp(cti::pack2real(dpp));
   const auto dph = Kokkos::create_mirror_view(dp);
   for (int i = 0; i < cti::np; ++i)
     for (int j = 0; j < cti::np; ++j)
@@ -476,21 +476,21 @@ static int test_calc_p (const HybridVCoord& hvcoord) {
         dph(i,j,k) = k + 3*i + 7*j;
   Kokkos::deep_copy(dp, dph);
   const auto hybrid_ai = cti::cmvdc(hvcoord.hybrid_ai_packed);
-  const Real hybrid_ai0 = hybrid_ai(0)[0];
+  const ScalarValue hybrid_ai0 = hybrid_ai(0)[0];
   const Real ps0 = hvcoord.ps0;
   ExecView<Scalar[NP][NP][NUM_LEV_P]> pp("pp");
   const auto f = KOKKOS_LAMBDA (const cti::MT& team) {
     KernelVariables kv(team);
-    calc_p(kv, hybrid_ai0, ps0, dpp, pp);
+    calc_p(kv, ps0, hybrid_ai0, dpp, pp);
   };
   const auto policy = Homme::get_default_team_policy<ExecSpace>(1);
   Kokkos::parallel_for(policy, f);
   Kokkos::fence();
-  ExecView<Real[NP][NP][NUM_LEV_P*VECTOR_SIZE]> p(cti::pack2real(pp));
+  ExecView<ScalarValue[NP][NP][NUM_LEV_P*VECTOR_SIZE]> p(cti::pack2real(pp));
   const auto ph = cti::cmvdc(p);
   for (int i = 0; i < cti::np; ++i)
     for (int j = 0; j < cti::np; ++j) {
-      Real accum = hvcoord.hybrid_ai0*hvcoord.ps0;
+      ScalarValue accum = hvcoord.hybrid_ai0*hvcoord.ps0;
       for (int k = 0; k < cti::num_phys_lev; ++k)
         accum += dph(i,j,k);
       if (ph(i,j,cti::num_phys_lev) != accum) ++nerr;
@@ -503,7 +503,7 @@ int test_reconstruct_and_limit_dp () {
   const Real eps = std::numeric_limits<Real>::epsilon(),
     dt = 1800, p0 = 1e5, dp_tol = (p0/72)*eps, tol = 1e3*eps;
   ExecView<Scalar[NP][NP][NUM_LEV]> dprefp("dprefp"), dp1limp("dp1limp");
-  HostView<Real[NP][NP][NUM_PHYSICAL_LEV]> dp1ul("dp1ul");
+  HostView<ScalarValue[NP][NP][NUM_PHYSICAL_LEV]> dp1ul("dp1ul");
   ExecView<Scalar[NP][NP][NUM_LEV_P]> eta_dot_dpdn_p("eta_dot_dpdn_p");
   RNlev dpref(cti::pack2real(dprefp)), dp1lim(cti::pack2real(dp1limp));
   RNlevp eta_dot_dpdn(cti::pack2real(eta_dot_dpdn_p));
@@ -512,7 +512,7 @@ int test_reconstruct_and_limit_dp () {
     const auto edd = Kokkos::create_mirror_view(eta_dot_dpdn);
     for (int i = 0; i < cti::np; ++i)
       for (int j = 0; j < cti::np; ++j) {
-        Real fac = 0;
+        ScalarValue fac = 0;
         for (int k = 0; k < cti::np; ++k) {
           dprefh(i,j,k) = k+1 + 0.1*(i+1) + 0.01*j*j;
           fac += dprefh(i,j,k);
@@ -545,7 +545,7 @@ int test_reconstruct_and_limit_dp () {
     for (int i = 0; i < cti::np; ++i)
       for (int j = 0; j < cti::np; ++j) {
         // mass conservation
-        Real mass_ref = 0, mass_ul = 0, mass_lim = 0;
+        ScalarValue mass_ref = 0, mass_ul = 0, mass_lim = 0;
         for (int k = 0; k < cti::num_phys_lev; ++k) mass_ref += dprefh(i,j,k);
         for (int k = 0; k < cti::num_phys_lev; ++k) mass_ul += dp1ul(i,j,k);
         for (int k = 0; k < cti::num_phys_lev; ++k) mass_lim += dp1l(i,j,k);

@@ -206,7 +206,7 @@ TEST_CASE("caar", "caar_testing") {
             Kokkos::deep_copy(h_dp3d,pt_dp3d);
             for (int ilev=0; ilev<NUM_LEV; ++ilev) {
               for (int iv=0; iv<VECTOR_SIZE; ++iv) {
-                the_min = std::min(the_min,h_dp3d(ilev)[iv]);
+                the_min = std::min(the_min,ADValue(h_dp3d(ilev)[iv]));
               }
             }
           }
