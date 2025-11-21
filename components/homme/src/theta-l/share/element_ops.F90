@@ -111,6 +111,14 @@ subroutine get_sens_field(elem,name,field,hvcoord,nt,ntQ)
           field(:,:,k,ider) = elem%sens%v(:,:,2,k,ider)
         enddo
       enddo
+    case ('qv_sens')
+      dp => elem%state%dp3d(:,:,:,nt)
+      qv = elem%state%Qdp(:,:,:,1,ntQ) / dp
+
+      sens_dp => elem%sens%dp3d(:,:,:,:)
+      do ider=1,num_sensitivities
+        field(:,:,:,ider) = (elem%sens%Qdp(:,:,:,1,ider) - qv*sens_dp(:,:,:,ider)) / dp
+      enddo
     case ('Th_sens')
       vthdp => elem%state%vtheta_dp(:,:,:,nt)
       dp => elem%state%dp3d(:,:,:,nt)

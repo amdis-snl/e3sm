@@ -27,7 +27,7 @@ module common_movie_mod
 #ifndef HOMME_WITHOUT_PIOLIBRARY
 
 #ifdef _PRIM
-  integer, parameter :: varcnt =  41
+  integer, parameter :: varcnt =  42
 
   integer, parameter :: maxdims =  7
 
@@ -71,6 +71,7 @@ module common_movie_mod
                                                  'Th_sens    ', &
                                                  'u_sens     ', &
                                                  'v_sens     ', &
+                                                 'qv_sens    ', &
                                                  'time       '/)
 
 
@@ -114,6 +115,7 @@ module common_movie_mod
                                                                1,2,7,5,0,0,0, &  !Th_sens
                                                                1,2,7,5,0,0,0, &  !u_sens
                                                                1,2,7,5,0,0,0, &  !v_sens
+                                                               1,2,7,5,0,0,0, &  !qv_sens
                                                                5,0,0,0,0,0,0 /),&  ! time
                                                                shape=(/maxdims,varcnt/))
 
@@ -124,7 +126,7 @@ module common_movie_mod
                                           nf_double, nf_double,nf_double,nf_double,nf_double,& !Q:geo
                                           nf_double, nf_double,nf_double,nf_double,nf_double,nf_double,& !omega:ilev
                                           nf_double, nf_double,nf_double,nf_double,& ! hybrid coords
-                                          nf_double,nf_double,nf_double,& !sentitivities
+                                          nf_double,nf_double,nf_double,nf_double,& !sentitivities
                                           nf_double/) !time
   logical, parameter :: varrequired(varcnt)=(/.false.,.false.,.false.,.false.,.false.,.false.,.false.,&
                                               .false.,.false.,.false.,.false.,.false.,&
@@ -135,7 +137,7 @@ module common_movie_mod
                                               .true. ,.true. ,&   ! lev,ilev
                                               .true. ,.true. ,&   ! hy arrays
                                               .true. ,.true. ,&   ! hy arrays
-                                              .false.,.false.,.false.,& ! sensitivities
+                                              .false.,.false.,.false.,.false.,& ! sensitivities
                                               .true./)            ! time
   character*(*),parameter :: dimnames(maxdims)=(/'ncol        ',&
                                                  'lev         ',&

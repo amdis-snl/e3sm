@@ -610,22 +610,6 @@ contains
                 call nf_put_var(ncdf(ios),var3d,start, count, name='T')
              end if
 
-             if(nf_selectedvar('Th_sens', output_varnames)) then
-#ifdef MODEL_THETA_L
-                if (par%masterproc) print *,'writing Th_sensitivity...'
-                st=1
-                do ie=1,nelemd
-                   en=st+elem(ie)%idxp%NumUniquePts-1
-                   call get_sens_field(elem(ie),'Th_sens',vartmp_sens(:,:,:,:),hvcoord,n0,n0_Q)
-                   call UniquePoints(elem(ie)%idxP,nlev,num_sensitivities,vartmp_sens(:,:,:,:),var4d(st:en,:,:))
-                   st=en+1
-                enddo
-                call nf_put_var(ncdf(ios),var4d,start4d, count4d, name='Th_sens',iodescin=iodesc3d_sens)
-#else
-                call abortmp("ERROR! Th_sens only available for theta-l_kokkos target")
-#endif
-             end if
-
              if(nf_selectedvar('Th', output_varnames)) then
                 pr0=1./(p0)
                 st=1
@@ -676,6 +660,38 @@ contains
                    st=en+1
                 enddo
                 call nf_put_var(ncdf(ios),var3d,start, count, name='v')
+             end if
+
+             if(nf_selectedvar('Th_sens', output_varnames)) then
+#ifdef MODEL_THETA_L
+                if (par%masterproc) print *,'writing Th_sens...'
+                st=1
+                do ie=1,nelemd
+                   en=st+elem(ie)%idxp%NumUniquePts-1
+                   call get_sens_field(elem(ie),'Th_sens',vartmp_sens(:,:,:,:),hvcoord,n0,n0_Q)
+                   call UniquePoints(elem(ie)%idxP,nlev,num_sensitivities,vartmp_sens(:,:,:,:),var4d(st:en,:,:))
+                   st=en+1
+                enddo
+                call nf_put_var(ncdf(ios),var4d,start4d, count4d, name='Th_sens',iodescin=iodesc3d_sens)
+#else
+                call abortmp("ERROR! Th_sens only available for theta-l_kokkos target")
+#endif
+             end if
+
+             if(nf_selectedvar('qv_sens', output_varnames)) then
+#ifdef MODEL_THETA_L
+                if (par%masterproc) print *,'writing qv_sens...'
+                st=1
+                do ie=1,nelemd
+                   en=st+elem(ie)%idxp%NumUniquePts-1
+                   call get_sens_field(elem(ie),'qv_sens',vartmp_sens(:,:,:,:),hvcoord,n0,n0_Q)
+                   call UniquePoints(elem(ie)%idxP,nlev,num_sensitivities,vartmp_sens(:,:,:,:),var4d(st:en,:,:))
+                   st=en+1
+                enddo
+                call nf_put_var(ncdf(ios),var4d,start4d, count4d, name='qv_sens',iodescin=iodesc3d_sens)
+#else
+                call abortmp("ERROR! qv_sens only available for theta-l_kokkos target")
+#endif
              end if
 
              if(nf_selectedvar('u_sens', output_varnames)) then
