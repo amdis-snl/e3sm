@@ -53,7 +53,6 @@ module prim_cxx_driver_base
       end subroutine reset_cxx_comm
       subroutine initialize_hommexx_session() bind(c)
       end subroutine initialize_hommexx_session
-
     end interface
     !
     ! Inputs
@@ -212,7 +211,7 @@ module prim_cxx_driver_base
     call allocate_element_arrays(nelemd)
 
     do ie=1,nelemd
-      call setup_element_pointers_ie(ie, elem(ie)%state, elem(ie)%derived, elem(ie)%accum)
+      call setup_element_pointers_ie(ie, elem(ie)%state, elem(ie)%derived, elem(ie)%accum, elem(ie)%sens)
     enddo
 
   end subroutine setup_element_pointers

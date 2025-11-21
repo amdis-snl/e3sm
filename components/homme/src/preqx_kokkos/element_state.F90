@@ -189,7 +189,8 @@ contains
 
   end subroutine allocate_element_arrays
 
-  subroutine setup_element_pointers_ie (ie, state, derived, accum)
+  subroutine setup_element_pointers_ie (ie, state, derived, accum, sens)
+    use control_mod, only: num_sensitivities
     !
     ! Inputs
     !
@@ -197,6 +198,7 @@ contains
     type (elem_state_t),    intent(inout) :: state
     type (derived_state_t), intent(inout) :: derived
     type (elem_accum_t),    intent(inout) :: accum
+    type (elem_accum_t),    intent(inout) :: sens
 
     ! State
     state%v         => elem_state_v(:,:,:,:,:,ie)
@@ -218,6 +220,14 @@ contains
     accum%Qvar      => elem_accum_Qvar     (:,:,:,:,ie)
     accum%Qmass     => elem_accum_Qmass    (:,:,:,:,ie)
     accum%Q1mass    => elem_accum_Q1mass   (:,:,:,ie)
+
+    ! Print a message if num_sensitivities>=0 is true, as preqx does not compute them
+    if (num_sensitivities >= 0) then
+      write(*,'(A)') "WARNING! num_sensitivities>=0, but preqx does not compute sensitivities"
+    endif
+    associate(sens => sens)
+      ! This bit suppresses the unused var warning
+    end associate
   end subroutine setup_element_pointers_ie
 
 end module 

@@ -42,6 +42,16 @@ module element_state
   real (kind=real_kind), allocatable, target, public :: elem_state_Q    (:,:,:,:,:)             ! Tracer concentration               
   real (kind=real_kind), allocatable, target, public :: elem_state_Qdp  (:,:,:,:,:,:)           ! Tracer mass                        
 
+  ! Sensitivity arrays
+  real (kind=real_kind), allocatable, target, public :: elem_sens_v       (:,:,:,:,:,:)
+  real (kind=real_kind), allocatable, target, public :: elem_sens_w_i     (:,:,:,:,:)
+  real (kind=real_kind), allocatable, target, public :: elem_sens_vthdp   (:,:,:,:,:)
+  real (kind=real_kind), allocatable, target, public :: elem_sens_phinh_i (:,:,:,:,:)
+  real (kind=real_kind), allocatable, target, public :: elem_sens_dp3d    (:,:,:,:,:)
+  real (kind=real_kind), allocatable, target, public :: elem_sens_ps      (:,:,:,:)
+  real (kind=real_kind), allocatable, target, public :: elem_sens_Qdp     (:,:,:,:,:,:)
+
+
   real (kind=real_kind), allocatable, target, public :: elem_derived_omega_p (:,:,:,:)          ! vertical tendency (derived)
   real (kind=real_kind), allocatable, target, public :: elem_derived_eta_dot_dpdn (:,:,:,:)     ! used with prescribed_wind
   real (kind=real_kind), allocatable, target, public :: elem_derived_vn0 (:,:,:,:,:)            ! used with prescribed_wind
@@ -177,6 +187,14 @@ module element_state
 contains
 
   subroutine allocate_element_arrays (nelemd)
+    use control_mod, only: num_sensitivities
+    interface
+      function get_hommexx_sfad_size() result(sz) bind(c)
+        use iso_c_binding, only: c_int
+        integer (kind=c_int) :: sz
+      end function get_hommexx_sfad_size
+
+    end interface
     !
     ! Inputs
     !
@@ -220,9 +238,23 @@ contains
     allocate(elem_dp_ref    (np,np,nlev,nelemd) )
     allocate(elem_phi_ref   (np,np,nlevp,nelemd) )
 
+    ! Sensitivities
+    num_sensitivities = get_hommexx_sfad_size()
+    if (num_sensitivities > 0) then
+      allocate(elem_sens_v      (np,np,2,nlev,  num_sensitivities, nelemd) )
+      allocate(elem_sens_w_i    (np,np,  nlevp, num_sensitivities, nelemd) )
+      allocate(elem_sens_vthdp  (np,np,  nlev,  num_sensitivities, nelemd) )
+      allocate(elem_sens_dp3d   (np,np,  nlev,  num_sensitivities, nelemd) )
+      allocate(elem_sens_phinh_i(np,np,  nlevp, num_sensitivities, nelemd) )
+      allocate(elem_sens_ps     (np,np,         num_sensitivities, nelemd) )
+
+      allocate(elem_sens_Qdp(np,np, nlev, qsize_d, num_sensitivities, nelemd) )
+    endif
+
   end subroutine allocate_element_arrays
 
   subroutine deallocate_element_arrays ()
+    use control_mod, only: num_sensitivities
     ! This subroutine is pointless in a normal run, since all
     ! allocatable variables are automatically deallocated upon
     ! program termination. However, it is useful in cxx unit
@@ -272,9 +304,20 @@ contains
     deallocate(elem_theta_ref       )
     deallocate(elem_dp_ref          )
     deallocate(elem_phi_ref         )
+
+    ! Sensitivities
+    if (num_sensitivities > 0) then
+      deallocate(elem_sens_v      )
+      deallocate(elem_sens_w_i    )
+      deallocate(elem_sens_vthdp  )
+      deallocate(elem_sens_dp3d   )
+      deallocate(elem_sens_phinh_i)
+      deallocate(elem_sens_ps     )
+      deallocate(elem_sens_qdp    )
+    endif
   end subroutine deallocate_element_arrays
 
-  subroutine setup_element_pointers_ie (ie, state, derived, accum)
+  subroutine setup_element_pointers_ie (ie, state, derived, accum, sens)
     !
     ! Inputs
     !
@@ -282,6 +325,9 @@ contains
     type (elem_state_t),    intent(inout) :: state
     type (derived_state_t), intent(inout) :: derived
     type (elem_accum_t),    intent(inout) :: accum
+    type (elem_state_t),    intent(inout) :: sens
+
+    integer :: ider
 
     ! State
     state%v         => elem_state_v(:,:,:,:,:,ie)
@@ -320,5 +366,16 @@ contains
     derived%theta_ref => elem_theta_ref(:,:,:,ie)
     derived%dp_ref    => elem_dp_ref(:,:,:,ie)
     derived%phi_ref   => elem_phi_ref(:,:,:,ie)
+
+    ! Note: for sensitivities, we don't need time levels. Instead,
+    ! the slowest striding dim of the state is used for the deriv index
+    ! Also, we don't bother ab out sens of q or phis
+    sens%v         => elem_sens_v(:,:,:,:,:,ie)
+    sens%w_i       => elem_sens_w_i(:,:,:,:,ie)
+    sens%vtheta_dp => elem_sens_vthdp(:,:,:,:,ie)
+    sens%phinh_i   => elem_sens_phinh_i(:,:,:,:,ie)
+    sens%dp3d      => elem_sens_dp3d(:,:,:,:,ie)
+    sens%ps_v      => elem_sens_ps(:,:,:,ie)
+    sens%Qdp       => elem_sens_Qdp(:,:,:,:,:,ie)
   end subroutine setup_element_pointers_ie
 end module 

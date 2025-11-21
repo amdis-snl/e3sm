@@ -51,6 +51,8 @@ module control_mod
   logical, public :: theta_hydrostatic_mode
 
 
+  integer, public :: num_sensitivities = 0
+
   integer, public  :: tstep_type= 5                           ! preqx timestepping options
   integer, public  :: rk_stage_user  = 0                      ! number of RK stages (shallow water model) 
   integer, public  :: ftype = 0                                ! Forcing Type
