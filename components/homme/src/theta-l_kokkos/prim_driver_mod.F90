@@ -395,13 +395,16 @@ contains
   subroutine prim_run_subcycle(elem, hybrid, nets, nete, dt, single_column, tl, hvcoord, nsplit_iteration)
     use iso_c_binding,  only : c_int, c_ptr, c_loc
     use control_mod,    only : qsplit, rsplit, statefreq, disable_diagnostics, &
-                               dt_remap_factor, dt_tracer_factor
+                               dt_remap_factor, dt_tracer_factor, num_sensitivities
     use dimensions_mod, only : nelemd
     use element_state,  only : elem_state_v, elem_state_w_i, elem_state_vtheta_dp,     &
                                elem_state_phinh_i, elem_state_dp3d, elem_state_ps_v,   &
                                elem_state_Qdp, elem_state_Q, elem_derived_omega_p,     &
                                elem_derived_FM, elem_derived_FVTheta, elem_derived_FT, &
                                elem_derived_FPHI, elem_derived_FQ
+    use element_state,  only : elem_sens_v, elem_sens_w_i, elem_sens_vthdp,     &
+                               elem_sens_phinh_i, elem_sens_dp3d, elem_sens_ps,   &
+                               elem_sens_Qdp
     use hybrid_mod,     only : hybrid_t
     use hybvcoord_mod,  only : hvcoord_t
     use kinds,          only : real_kind
@@ -410,7 +413,7 @@ contains
     use parallel_mod,   only : abortmp
     use perf_mod,       only : t_startf, t_stopf
     use prim_state_mod, only : prim_printstate
-    use theta_f2c_mod,  only : prim_run_subcycle_c, cxx_push_results_to_f90
+    use theta_f2c_mod,  only : prim_run_subcycle_c, cxx_push_results_to_f90, cxx_push_sensitivities_to_f90
     use theta_f2c_mod,  only : push_forcing_to_c, sync_diagnostics_to_host_c
     !
     ! Inputs
@@ -432,6 +435,8 @@ contains
     type (c_ptr) :: elem_state_v_ptr, elem_state_w_i_ptr, elem_state_vtheta_dp_ptr, elem_state_phinh_i_ptr
     type (c_ptr) :: elem_state_dp3d_ptr, elem_state_Qdp_ptr, elem_state_Q_ptr, elem_state_ps_v_ptr
     type (c_ptr) :: elem_derived_omega_p_ptr
+    type (c_ptr) :: elem_sens_v_ptr, elem_sens_w_i_ptr, elem_sens_vthdp_ptr, elem_sens_phinh_i_ptr
+    type (c_ptr) :: elem_sens_dp3d_ptr, elem_sens_Qdp_ptr, elem_sens_ps_ptr
     integer :: n0_qdp, np1_qdp
     real(kind=real_kind) :: dt_remap, dt_q
     logical :: compute_forcing_and_push_to_c, push_to_f
@@ -508,6 +513,20 @@ contains
       call cxx_push_results_to_f90(elem_state_v_ptr, elem_state_w_i_ptr, elem_state_vtheta_dp_ptr,   &
                                    elem_state_phinh_i_ptr, elem_state_dp3d_ptr, elem_state_ps_v_ptr, &
                                    elem_state_Qdp_ptr, elem_state_Q_ptr, elem_derived_omega_p_ptr)
+
+      if (num_sensitivities > 0) then
+        ! Set pointers to sensitivities
+        elem_sens_v_ptr       = c_loc(elem_sens_v)
+        elem_sens_w_i_ptr     = c_loc(elem_sens_w_i)
+        elem_sens_vthdp_ptr   = c_loc(elem_sens_vthdp)
+        elem_sens_phinh_i_ptr = c_loc(elem_sens_phinh_i)
+        elem_sens_dp3d_ptr    = c_loc(elem_sens_dp3d)
+        elem_sens_Qdp_ptr     = c_loc(elem_sens_Qdp)
+        elem_sens_ps_ptr      = c_loc(elem_sens_ps)
+        call cxx_push_sensitivities_to_f90(elem_sens_v_ptr, elem_sens_w_i_ptr, elem_sens_vthdp_ptr,   &
+                                           elem_sens_phinh_i_ptr, elem_sens_dp3d_ptr, elem_sens_ps_ptr, &
+                                           elem_sens_Qdp_ptr)
+      endif
       call t_stopf('push_to_f90')
     endif
 
