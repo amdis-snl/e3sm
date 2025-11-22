@@ -26,6 +26,26 @@ void remap_q_ppm_c_callable(Real *Qdp, const int &nx, const int &qsize,
 
 }; // extern C
 
+template<typename CxxView, typename F90View>
+std::enable_if_t<Kokkos::is_view_v<CxxView> and Kokkos::is_view_v<F90View> and
+                 CxxView::rank==2 and F90View::rank==2>
+sync_to_host_2d (const CxxView& cxx_dev, const F90View& f90_host) {
+  auto cxx_host = Kokkos::create_mirror_view(cxx_dev);
+  Kokkos::deep_copy(cxx_host,cxx_dev);
+  for (int i=0; i<cxx_dev.extent_int(0); ++i)
+    for (int j=0; j<cxx_dev.extent_int(1); ++j)
+      f90_host(j,i) = ADValue(cxx_host(i,j));
+}
+template<typename CxxView, typename F90View>
+std::enable_if_t<Kokkos::is_view_v<CxxView> and Kokkos::is_view_v<F90View> and
+                 CxxView::rank==1 and F90View::rank==1>
+sync_to_host_1d (const CxxView& cxx_dev, const F90View& f90_host) {
+  auto cxx_host = Kokkos::create_mirror_view(cxx_dev);
+  Kokkos::deep_copy(cxx_host,cxx_dev);
+  for (int i=0; i<cxx_dev.extent_int(0); ++i)
+    f90_host(i) = ADValue(cxx_host(i));
+}
+
 using namespace Remap;
 using namespace Ppm;
   
@@ -53,7 +73,7 @@ public:
   struct TagRemapTest {};
 
   static bool nan_boundaries(
-      HostViewUnmanaged<Real * [NP][NP][_ppm_consts::DPO_PHYSICAL_LEV]> host) {
+      HostViewUnmanaged<ScalarValue * [NP][NP][_ppm_consts::DPO_PHYSICAL_LEV]> host) {
     for (int ie = 0; ie < host.extent_int(0); ++ie) {
       for (int igp = 0; igp < host.extent_int(1); ++igp) {
         for (int jgp = 0; jgp < host.extent_int(2); ++jgp) {
@@ -95,7 +115,7 @@ public:
     for (int ie = 0; ie < ne; ++ie) {
       for (int igp = 0; igp < NP; ++igp) {
         for (int jgp = 0; jgp < NP; ++jgp) {
-          Kokkos::deep_copy(f90_input, Homme::subview(remap.m_dpo, ie, igp, jgp));
+          sync_to_host_1d(Homme::subview(remap.m_dpo, ie, igp, jgp),f90_input);
           // These arrays must be 0 offset.
           for (int k = 0; k < NUM_PHYSICAL_LEV + 2 * _ppm_consts::gs; ++k) {
             f90_input(k) =
@@ -111,7 +131,7 @@ public:
             for (int stencil_idx = 0; stencil_idx < f90_result.extent_int(1);
                  ++stencil_idx) {
               const Real f90 = f90_result(k, stencil_idx);
-              const Real cxx = kokkos_result(ie, igp, jgp, stencil_idx, k);
+              const Real cxx = ADValue(kokkos_result(ie, igp, jgp, stencil_idx, k));
               REQUIRE(!std::isnan(f90));
               REQUIRE(!std::isnan(cxx));
               REQUIRE(f90 == cxx);
@@ -136,13 +156,13 @@ public:
 
   void test_ppm() {
     // Hack to get the right number of outputs
-    remap.m_ao = ExecViewManaged<Real * [NP][NP][_ppm_consts::AO_PHYSICAL_LEV]>(
+    remap.m_ao = ExecViewManaged<ScalarValue * [NP][NP][_ppm_consts::AO_PHYSICAL_LEV]>(
         "ao", num_remap * ne);
-    remap.m_dma = ExecViewManaged<Real * [NP][NP][_ppm_consts::DMA_PHYSICAL_LEV]>(
+    remap.m_dma = ExecViewManaged<ScalarValue * [NP][NP][_ppm_consts::DMA_PHYSICAL_LEV]>(
         "dma", num_remap * ne);
-    remap.m_ai = ExecViewManaged<Real * [NP][NP][_ppm_consts::AI_PHYSICAL_LEV]>(
+    remap.m_ai = ExecViewManaged<ScalarValue * [NP][NP][_ppm_consts::AI_PHYSICAL_LEV]>(
         "ai", num_remap * ne);
-    remap.m_parabola_coeffs = ExecViewManaged<Real * [NP][NP][3][NUM_PHYSICAL_LEV]>(
+    remap.m_parabola_coeffs = ExecViewManaged<ScalarValue * [NP][NP][3][NUM_PHYSICAL_LEV]>(
         "parabola coeffs", num_remap * ne);
 
     std::random_device rd;
@@ -170,15 +190,15 @@ public:
     HostViewManaged<Real[NUM_PHYSICAL_LEV][3]> f90_result("fortran result");
     auto kokkos_result = Kokkos::create_mirror_view(remap.m_parabola_coeffs);
     Kokkos::deep_copy(kokkos_result, remap.m_parabola_coeffs);
+
     for (int var = 0; var < num_remap; ++var) {
       for (int ie = 0; ie < ne; ++ie) {
         for (int igp = 0; igp < NP; ++igp) {
           for (int jgp = 0; jgp < NP; ++jgp) {
-            Kokkos::deep_copy(
-                f90_cellmeans_input,
-                Homme::subview(remap.m_ao, ie * num_remap + var, igp, jgp));
-            sync_to_host(Homme::subview(remap.m_ppmdx, ie, igp, jgp),
-                         f90_dx_input);
+            sync_to_host_1d(Homme::subview(remap.m_ao, ie * num_remap + var, igp, jgp),
+                            f90_cellmeans_input);
+            sync_to_host_2d(Homme::subview(remap.m_ppmdx, ie, igp, jgp),
+                           f90_dx_input);
             // Fix the Fortran input to be 0 offset
             for (int i = 0; i < NUM_PHYSICAL_LEV + 2 * _ppm_consts::gs; ++i) {
               f90_cellmeans_input(i) = f90_cellmeans_input(
@@ -200,8 +220,8 @@ public:
                    parabola_coeff < f90_result.extent_int(1);
                    ++parabola_coeff) {
                 const auto f90 = f90_result(k, parabola_coeff);
-                const auto cxx = kokkos_result(ie * num_remap + var, igp, jgp,
-                                               parabola_coeff, k);
+                const auto cxx = ADValue(kokkos_result(ie * num_remap + var, igp, jgp,
+                                                       parabola_coeff, k));
                 REQUIRE(!std::isnan(f90));
                 REQUIRE(!std::isnan(cxx));
                 REQUIRE(f90 == cxx);
@@ -352,8 +372,7 @@ public:
               // The fortran returns NaN's, so make certain we only return NaN's
               // when the Fortran does
               const Real f90 = f90_remap_qdp(ie, var, k, igp, jgp);
-              const Real cxx =
-                  kokkos_remapped(ie, var, igp, jgp, vector_level)[vector];
+              const Real cxx = ADValue(kokkos_remapped(ie, var, igp, jgp, vector_level)[vector]);
               REQUIRE(std::isnan(f90) == std::isnan(cxx));
               if (!std::isnan(f90)) {
                 REQUIRE(f90 == cxx);

@@ -73,6 +73,12 @@ genRandArray(ViewType view, rngAlg &engine, PDF &&pdf) {
 }
 
 template <typename FPType>
+std::enable_if_t<not std::is_same_v<Real,ScalarValue>,Real>
+compare_answers(FPType target, ScalarValue computed,
+                FPType relative_coeff = 1) {
+  return compare_answers(target,ADValue(computed),relative_coeff);
+}
+template <typename FPType>
 Real compare_answers(FPType target, FPType computed,
                      FPType relative_coeff = 1.0) {
   Real denom = 1.0;

@@ -294,11 +294,14 @@ TEST_CASE("bfb_pow", "test taylor appx of pow function") {
 
     ExecViewManaged<Scalar> b("b"), ycxx("ycxx");
     Real e;
-    HostViewManaged<Scalar> yf90("yf90");
+    std::vector<Real> yf90(VECTOR_SIZE);
     for (int itest=0; itest<num_tests; ++itest) {
       genRandArray(b,engine,rpdf_base);
       genRandArray(&e,1,engine,rpdf_exp);
       auto bh = cmvdc(b);
+      std::vector<Real> bhr(VECTOR_SIZE);
+      for (int i=0; i<VECTOR_SIZE; ++i)
+        bhr[i] = ADValue(bh()[i]);
 
       // Run cxx version
       const auto f = KOKKOS_LAMBDA (const int /* idx */) {
@@ -311,21 +314,19 @@ TEST_CASE("bfb_pow", "test taylor appx of pow function") {
       // Run f90 version
       auto ycxxh = cmvdc(ycxx);
 
-      Real* bhptr = reinterpret_cast<Real*>(bh.data());
-      Real* yf90ptr = reinterpret_cast<Real*>(yf90.data());
       int vs = VECTOR_SIZE;
-      bfb_pow_f90(bhptr,&e,yf90ptr,vs);
+      bfb_pow_f90(bhr.data(),&e,yf90.data(),vs);
 
       for (int iv=0; iv<VECTOR_SIZE; ++iv) {
-        if(yf90ptr[iv]!=ycxxh()[iv]) {
+        if(yf90[iv]!=ycxxh()[iv]) {
           printf("x: %3.17f\n",bh()[iv]);
           printf("a: %3.17f\n",e);
           printf("[cxx] x^a = %3.17f\n",ycxxh()[iv]);
-          printf("[f90] x^a = %3.17f\n",yf90ptr[iv]);
+          printf("[f90] x^a = %3.17f\n",yf90[iv]);
         }
 
         // Check f90 and cxx impl agree
-        REQUIRE(yf90ptr[iv]==ycxxh()[iv]);
+        REQUIRE(yf90[iv]==ycxxh()[iv]);
       }
     }
   }

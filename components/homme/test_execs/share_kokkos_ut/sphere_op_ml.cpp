@@ -575,8 +575,8 @@ TEST_CASE("gradient_sphere", "gradient_sphere") {
         // enough to pass data() pointer?
         for(int _i = 0; _i < NP; _i++) {
           for(int _j = 0; _j < NP; _j++) {
-            sf[_i][_j] = testing_grad_ml.scalar_input_host(
-                ie, _i, _j, level)[v];
+            sf[_i][_j] = ADValue(testing_grad_ml.scalar_input_host(
+                ie, _i, _j, level)[v]);
           }
         }
 
@@ -589,12 +589,10 @@ TEST_CASE("gradient_sphere", "gradient_sphere") {
         // compare with the part from C run
         for(int igp = 0; igp < NP; ++igp) {
           for(int jgp = 0; jgp < NP; ++jgp) {
-            const Real coutput0 =
-                testing_grad_ml.vector_output_host(
-                    ie, 0, igp, jgp, level)[v];
-            const Real coutput1 =
-                testing_grad_ml.vector_output_host(
-                    ie, 1, igp, jgp, level)[v];
+            const Real coutput0 = ADValue(testing_grad_ml.vector_output_host(
+                    ie, 0, igp, jgp, level)[v]);
+            const Real coutput1 = ADValue(testing_grad_ml.vector_output_host(
+                    ie, 1, igp, jgp, level)[v]);
             REQUIRE(!std::isnan(coutput0));
             REQUIRE(!std::isnan(coutput1));
 
@@ -642,9 +640,8 @@ TEST_CASE("divergence_sphere_wk",
                 ie, _i, _j);
             dvvf[_i][_j] = testing_div_ml.dvv_host(_i, _j);
             for(int _d1 = 0; _d1 < 2; _d1++) {
-              vf[_d1][_i][_j] =
-                  testing_div_ml.vector_input_host(
-                      ie, _d1, _i, _j, level)[v];
+              vf[_d1][_i][_j] = ADValue(testing_div_ml.vector_input_host(
+                      ie, _d1, _i, _j, level)[v]);
               for(int _d2 = 0; _d2 < 2; _d2++)
                 dinvf[_d1][_d2][_i][_j] =
                     testing_div_ml.dinv_host(ie, _d1,
@@ -658,9 +655,8 @@ TEST_CASE("divergence_sphere_wk",
         // compare with the part from C run
         for(int igp = 0; igp < NP; ++igp) {
           for(int jgp = 0; jgp < NP; ++jgp) {
-            Real coutput0 =
-                testing_div_ml.scalar_output_host(
-                    ie, igp, jgp, level)[v];
+            Real coutput0 = ADValue(testing_div_ml.scalar_output_host(
+                    ie, igp, jgp, level)[v]);
             REQUIRE(!std::isnan(
                 local_fortran_output[igp][jgp]));
             REQUIRE(!std::isnan(coutput0));
@@ -701,9 +697,8 @@ TEST_CASE("divergence_sphere",
                 ie, _i, _j);
             dvvf[_i][_j] = testing_div_ml.dvv_host(_i, _j);
             for(int _d1 = 0; _d1 < 2; _d1++) {
-              vf[_d1][_i][_j] =
-                  testing_div_ml.vector_input_host(
-                      ie, _d1, _i, _j, level)[v];
+              vf[_d1][_i][_j] = ADValue(testing_div_ml.vector_input_host(
+                      ie, _d1, _i, _j, level)[v]);
               for(int _d2 = 0; _d2 < 2; _d2++)
                 dinvf[_d1][_d2][_i][_j] =
                     testing_div_ml.dinv_host(ie, _d1,
@@ -719,9 +714,8 @@ TEST_CASE("divergence_sphere",
         // compare with the part from C run
         for(int igp = 0; igp < NP; ++igp) {
           for(int jgp = 0; jgp < NP; ++jgp) {
-            Real coutput0 =
-                testing_div_ml.scalar_output_host(
-                    ie, igp, jgp, level)[v];
+            Real coutput0 = ADValue(testing_div_ml.scalar_output_host(
+                    ie, igp, jgp, level)[v]);
             REQUIRE(!std::isnan(
                 local_fortran_output[igp][jgp]));
             REQUIRE(!std::isnan(coutput0));
@@ -771,10 +765,9 @@ TEST_CASE("divergence_sphere_update",
                 ie, _i, _j);
             dvvf[_i][_j] = testing_div_update_ml.dvv_host(_i, _j);
             for(int _d1 = 0; _d1 < 2; _d1++) {
-              vf[_d1][_i][_j] =
-                  testing_div_update_ml.vector_input_host(
+              vf[_d1][_i][_j] = ADValue(testing_div_update_ml.vector_input_host(
                       ie, _d1, _i, _j, level)[v] *
-                  scalar_input_host(ie,_i,_j,level)[v];
+                  scalar_input_host(ie,_i,_j,level)[v]);
               for(int _d2 = 0; _d2 < 2; _d2++)
                 dinvf[_d1][_d2][_i][_j] =
                     testing_div_update_ml.dinv_host(ie, _d1,
@@ -790,18 +783,17 @@ TEST_CASE("divergence_sphere_update",
         for(int _i = 0; _i < NP; _i++) {
           for(int _j = 0; _j < NP; _j++) {
             local_fortran_output[_i][_j] *= alpha;
-            local_fortran_output[_i][_j] += scalar_input_host(ie,_i,_j,level)[v];
+            local_fortran_output[_i][_j] += ADValue(scalar_input_host(ie,_i,_j,level)[v]);
             if (add_hyperviscosity!=0) {
-              local_fortran_output[_i][_j] += scalar_output_host_copy(ie,_i,_j,level)[v];
+              local_fortran_output[_i][_j] += ADValue(scalar_output_host_copy(ie,_i,_j,level)[v]);
             }
           }
         }
         // compare with the part from C run
         for(int igp = 0; igp < NP; ++igp) {
           for(int jgp = 0; jgp < NP; ++jgp) {
-            Real coutput0 =
-                testing_div_update_ml.scalar_output_host(
-                    ie, igp, jgp, level)[v];
+            Real coutput0 = ADValue(testing_div_update_ml.scalar_output_host(
+                    ie, igp, jgp, level)[v]);
             REQUIRE(!std::isnan(
                 local_fortran_output[igp][jgp]));
             REQUIRE(!std::isnan(coutput0));
@@ -837,9 +829,8 @@ TEST_CASE("simple laplace_wk", "laplace_wk") {
 
         for(int _i = 0; _i < NP; _i++)
           for(int _j = 0; _j < NP; _j++) {
-            sf[_i][_j] =
-                testing_laplace_ml.scalar_input_host(
-                    ie, _i, _j, level)[v];
+            sf[_i][_j] = ADValue(testing_laplace_ml.scalar_input_host(
+                    ie, _i, _j, level)[v]);
             sphf[_i][_j] = testing_laplace_ml.spheremp_host(
                 ie, _i, _j);
             dvvf[_i][_j] =
@@ -858,9 +849,8 @@ TEST_CASE("simple laplace_wk", "laplace_wk") {
 
         for(int igp = 0; igp < NP; ++igp) {
           for(int jgp = 0; jgp < NP; ++jgp) {
-            Real coutput0 =
-                testing_laplace_ml.scalar_output_host(
-                    ie, igp, jgp, level)[v];
+            Real coutput0 = ADValue(testing_laplace_ml.scalar_output_host(
+                    ie, igp, jgp, level)[v]);
             REQUIRE(!std::isnan(
                 local_fortran_output[igp][jgp]));
             REQUIRE(!std::isnan(coutput0));
@@ -899,9 +889,8 @@ TEST_CASE("laplace_tensor",
 
         for(int _i = 0; _i < NP; _i++)
           for(int _j = 0; _j < NP; _j++) {
-            sf[_i][_j] =
-                testing_tensor_laplace.scalar_input_host(
-                    ie, _i, _j, level)[v];
+            sf[_i][_j] = ADValue(testing_tensor_laplace.scalar_input_host(
+                    ie, _i, _j, level)[v]);
             sphf[_i][_j] =
                 testing_tensor_laplace.spheremp_host(
                     ie, _i, _j);
@@ -932,9 +921,8 @@ TEST_CASE("laplace_tensor",
 
         for(int igp = 0; igp < NP; ++igp) {
           for(int jgp = 0; jgp < NP; ++jgp) {
-            Real coutput0 =
-                testing_tensor_laplace.scalar_output_host(
-                    ie, igp, jgp, level)[v];
+            Real coutput0 = ADValue(testing_tensor_laplace.scalar_output_host(
+                    ie, igp, jgp, level)[v]);
 
             REQUIRE(!std::isnan(
                 local_fortran_output[igp][jgp]));
@@ -970,8 +958,8 @@ TEST_CASE("curl_sphere_wk_testcov",
 
         for(int _i = 0; _i < NP; _i++)
           for(int _j = 0; _j < NP; _j++) {
-            sf[_i][_j] = testing_curl.scalar_input_host(
-                ie, _i, _j, level)[v];
+            sf[_i][_j] = ADValue(testing_curl.scalar_input_host(
+                ie, _i, _j, level)[v]);
             mpf[_i][_j] =
                 testing_curl.mp_host(_i, _j);
             dvvf[_i][_j] = testing_curl.dvv_host(_i, _j);
@@ -989,11 +977,11 @@ TEST_CASE("curl_sphere_wk_testcov",
 
         for(int igp = 0; igp < NP; ++igp) {
           for(int jgp = 0; jgp < NP; ++jgp) {
-            Real coutput0 = testing_curl.vector_output_host(
-                ie, 0, igp, jgp, level)[v];
+            Real coutput0 = ADValue(testing_curl.vector_output_host(
+                ie, 0, igp, jgp, level)[v]);
 
-            Real coutput1 = testing_curl.vector_output_host(
-                ie, 1, igp, jgp, level)[v];
+            Real coutput1 = ADValue(testing_curl.vector_output_host(
+                ie, 1, igp, jgp, level)[v]);
 
             REQUIRE(!std::isnan(
                     local_fortran_output(0, igp, jgp)));
@@ -1038,8 +1026,8 @@ TEST_CASE("grad_sphere_wk_testcov",
 
         for(int _i = 0; _i < NP; _i++)
           for(int _j = 0; _j < NP; _j++) {
-            sf[_i][_j] = testing_grad.scalar_input_host(
-                ie, _i, _j, level)[v];
+            sf[_i][_j] = ADValue(testing_grad.scalar_input_host(
+                ie, _i, _j, level)[v]);
             mpf[_i][_j] =
                 testing_grad.mp_host(_i, _j);
             metdetf[_i][_j] =
@@ -1064,11 +1052,11 @@ TEST_CASE("grad_sphere_wk_testcov",
 
         for(int igp = 0; igp < NP; ++igp) {
           for(int jgp = 0; jgp < NP; ++jgp) {
-            Real coutput0 = testing_grad.vector_output_host(
-                ie, 0, igp, jgp, level)[v];
+            Real coutput0 = ADValue(testing_grad.vector_output_host(
+                ie, 0, igp, jgp, level)[v]);
 
-            Real coutput1 = testing_grad.vector_output_host(
-                ie, 1, igp, jgp, level)[v];
+            Real coutput1 = ADValue(testing_grad.vector_output_host(
+                ie, 1, igp, jgp, level)[v]);
 
             REQUIRE(!std::isnan(
                 local_fortran_output[0][igp][jgp]));
@@ -1116,12 +1104,10 @@ TEST_CASE(
 
         for(int _i = 0; _i < NP; _i++)
           for(int _j = 0; _j < NP; _j++) {
-            vf[0][_i][_j] =
-                testing_vlaplace.vector_input_host(
-                    ie, 0, _i, _j, level)[v];
-            vf[1][_i][_j] =
-                testing_vlaplace.vector_input_host(
-                    ie, 1, _i, _j, level)[v];
+            vf[0][_i][_j] = ADValue(testing_vlaplace.vector_input_host(
+                    ie, 0, _i, _j, level)[v]);
+            vf[1][_i][_j] = ADValue(testing_vlaplace.vector_input_host(
+                    ie, 1, _i, _j, level)[v]);
 
             sphf[_i][_j] = testing_vlaplace.spheremp_host(
                 ie, _i, _j);
@@ -1159,12 +1145,10 @@ TEST_CASE(
 
         for(int igp = 0; igp < NP; ++igp) {
           for(int jgp = 0; jgp < NP; ++jgp) {
-            Real coutput0 =
-                testing_vlaplace.vector_output_host(
-                    ie, 0, igp, jgp, level)[v];
-            Real coutput1 =
-                testing_vlaplace.vector_output_host(
-                    ie, 1, igp, jgp, level)[v];
+            Real coutput0 = ADValue(testing_vlaplace.vector_output_host(
+                    ie, 0, igp, jgp, level)[v]);
+            Real coutput1 = ADValue(testing_vlaplace.vector_output_host(
+                    ie, 1, igp, jgp, level)[v]);
 
             REQUIRE(!std::isnan(
                 local_fortran_output[0][igp][jgp]));
@@ -1214,12 +1198,10 @@ TEST_CASE("vlaplace_sphere_wk_contra",
 
         for(int _i = 0; _i < NP; _i++)
           for(int _j = 0; _j < NP; _j++) {
-            vf[0][_i][_j] =
-                testing_vlaplace.vector_input_host(
-                    ie, 0, _i, _j, level)[v];
-            vf[1][_i][_j] =
-                testing_vlaplace.vector_input_host(
-                    ie, 1, _i, _j, level)[v];
+            vf[0][_i][_j] = ADValue(testing_vlaplace.vector_input_host(
+                    ie, 0, _i, _j, level)[v]);
+            vf[1][_i][_j] = ADValue(testing_vlaplace.vector_input_host(
+                    ie, 1, _i, _j, level)[v]);
 
             mpf[_i][_j] =
                 testing_vlaplace.mp_host(_i, _j);
@@ -1256,12 +1238,10 @@ TEST_CASE("vlaplace_sphere_wk_contra",
 
         for(int igp = 0; igp < NP; ++igp) {
           for(int jgp = 0; jgp < NP; ++jgp) {
-            Real coutput0 =
-                testing_vlaplace.vector_output_host(
-                    ie, 0, igp, jgp, level)[v];
-            Real coutput1 =
-                testing_vlaplace.vector_output_host(
-                    ie, 1, igp, jgp, level)[v];
+            Real coutput0 = ADValue(testing_vlaplace.vector_output_host(
+                    ie, 0, igp, jgp, level)[v]);
+            Real coutput1 = ADValue(testing_vlaplace.vector_output_host(
+                    ie, 1, igp, jgp, level)[v]);
             // std::cout << igp << "," << jgp << " F output0
             // = " <<  local_fortran_output[0][igp][jgp] << ",
             // C output0 = " << coutput0 << "\n";
@@ -1308,9 +1288,8 @@ TEST_CASE("vorticity_sphere_vector",
                 ie, _i, _j);
             dvvf[_i][_j] = testing_vort.dvv_host(_i, _j);
             for(int _d1 = 0; _d1 < 2; _d1++) {
-              vf[_d1][_i][_j] =
-                  testing_vort.vector_input_host(
-                      ie, _d1, _i, _j, level)[v];
+              vf[_d1][_i][_j] = ADValue(testing_vort.vector_input_host(
+                      ie, _d1, _i, _j, level)[v]);
               for(int _d2 = 0; _d2 < 2; _d2++)
                 df[_d1][_d2][_i][_j] =
                     testing_vort.d_host(ie, _d1,
@@ -1323,9 +1302,8 @@ TEST_CASE("vorticity_sphere_vector",
             &(local_fortran_output[0][0]));
         for(int igp = 0; igp < NP; ++igp) {
           for(int jgp = 0; jgp < NP; ++jgp) {
-            Real coutput0 =
-                testing_vort.scalar_output_host(
-                    ie, igp, jgp, level)[v];
+            Real coutput0 = ADValue(testing_vort.scalar_output_host(
+                    ie, igp, jgp, level)[v]);
             REQUIRE(!std::isnan(
                 local_fortran_output[igp][jgp]));
             REQUIRE(!std::isnan(coutput0));

@@ -161,9 +161,9 @@ struct LimiterTester {
       Real m = 0, lo = 0, hi = 0;
       for (int i = 0; i < NP; ++i)
         for (int j = 0; j < NP; ++j) {
-          m += sphweights(i,j) * ptens(i,j,vi)[si];
-          lo += sphweights(i,j) * qlim(0,vi)[si] * dpmass(i,j,vi)[si];
-          hi += sphweights(i,j) * qlim(1,vi)[si] * dpmass(i,j,vi)[si];
+          m  += ADValue(sphweights(i,j) * ptens(i,j,vi)[si]);
+          lo += ADValue(sphweights(i,j) * qlim(0,vi)[si] * dpmass(i,j,vi)[si]);
+          hi += ADValue(sphweights(i,j) * qlim(1,vi)[si] * dpmass(i,j,vi)[si]);
         }
       const Real dm = m < lo ? lo - m : m > hi ? hi - m : 0;
       if (dm)
@@ -173,7 +173,7 @@ struct LimiterTester {
       m = 0;
       for (int i = 0; i < NP; ++i)
         for (int j = 0; j < NP; ++j)
-          m += sphweights(i,j) * ptens(i,j,vi)[si];
+          m += ADValue(sphweights(i,j) * ptens(i,j,vi)[si]);
       REQUIRE(m >= (1 - 1e1*eps)*lo);
       REQUIRE(m <= (1 + 1e1*eps)*hi);
 
@@ -195,7 +195,7 @@ struct LimiterTester {
     Real minq = 2, maxq = 0;
     for (int i = 0; i < NP; ++i)
       for (int j = 0; j < NP; ++j) {
-        const Real q = ptens(i,j,vi)[si] / dpmass(i,j,vi)[si];
+        const Real q = ADValue(ptens(i,j,vi)[si] / dpmass(i,j,vi)[si]);
         minq = std::min(minq, q);
         maxq = std::max(maxq, q);
       }
@@ -208,12 +208,12 @@ struct LimiterTester {
   void fill_fortran (FortranData& d) {
     for (int k = 0; k < NUM_PHYSICAL_LEV; ++k) {
       const int vi = k / VECTOR_SIZE, si = k % VECTOR_SIZE;
-      d.minp(k) = qlim(0,vi)[si];
-      d.maxp(k) = qlim(1,vi)[si];
+      d.minp(k) = ADValue(qlim(0,vi)[si]);
+      d.maxp(k) = ADValue(qlim(1,vi)[si]);
       for (int i = 0; i < NP; ++i)
         for (int j = 0; j < NP; ++j) {
-          d.ptens(j,i,k) = ptens(i,j,vi)[si];
-          d.dpmass(j,i,k) = dpmass(i,j,vi)[si];
+          d.ptens(j,i,k)  = ADValue(ptens(i,j,vi)[si]);
+          d.dpmass(j,i,k) = ADValue(dpmass(i,j,vi)[si]);
         }
     }
     for (int i = 0; i < NP; ++i)
@@ -234,7 +234,7 @@ struct LimiterTester {
       const int vi = k / VECTOR_SIZE, si = k % VECTOR_SIZE;
       for (int i = 0; i < NP; ++i)
         for (int j = 0; j < NP; ++j)
-          REQUIRE(equal(d.ptens(j,i,k), ptens(i,j,vi)[si]));
+          REQUIRE(equal(d.ptens(j,i,k), ADValue(ptens(i,j,vi)[si])));
     }
   }
 
@@ -277,7 +277,7 @@ struct LimiterTester {
                   (1 - 1e1*eps)*qlim(0,vi)[si]*dpmass(i,j,vi)[si]);
           REQUIRE(ptens(i,j,vi)[si] <=
                   (1 + 1e1*eps)*qlim(1,vi)[si]*dpmass(i,j,vi)[si]);
-          m += sphweights(i,j) * ptens(i,j,vi)[si];
+          m += ADValue(sphweights(i,j) * ptens(i,j,vi)[si]);
         }
       // Check mass conservation.
       REQUIRE(std::abs(m - Qmass(k)) <= 1e2*eps*Qmass(k));
@@ -290,7 +290,7 @@ struct LimiterTester {
       for (int i = 0; i < NP; ++i)
         for (int j = 0; j < NP; ++j) {
           // Check BFB.
-          REQUIRE(equal(ptens(i,j,vi)[si], ref.ptens(i,j,vi)[si]));
+          REQUIRE(equal(ADValue(ptens(i,j,vi)[si]), ADValue(ref.ptens(i,j,vi)[si])));
         }
     }
   }
@@ -361,7 +361,7 @@ TEST_CASE("1-norm minimal", "limiters") {
       Real n1 = 0;
       for (int i = 0; i < NP; ++i)
         for (int j = 0; j < NP; ++j)
-          n1 += std::abs(lv.ptens(i,j,vi)[si] - lv.ptens_orig(i,j,vi)[si])*lv.sphweights(i,j);
+          n1 += std::abs(ADValue(lv.ptens(i,j,vi)[si] - lv.ptens_orig(i,j,vi)[si]))*lv.sphweights(i,j);
       n1s[k] = n1;
     }
   };

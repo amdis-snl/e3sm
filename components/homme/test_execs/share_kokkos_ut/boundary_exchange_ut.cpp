@@ -229,18 +229,18 @@ TEST_CASE ("Boundary Exchange", "Testing the boundary exchange framework")
         for (int level=0; level<NUM_PHYSICAL_LEV; ++level) {
           const int ilev = level / VECTOR_SIZE;
           const int ivec = level % VECTOR_SIZE;
-          REQUIRE(compare_answers(field_min_1d_f90(ie,ifield,level),field_1d_cxx_host(ie,ifield,MIN_ID,ilev)[ivec]) < test_tolerance);
           if(compare_answers(field_min_1d_f90(ie,ifield,level),field_1d_cxx_host(ie,ifield,MIN_ID,ilev)[ivec]) >= test_tolerance) {
             std::cout << std::setprecision(17) << "rank,ie,ifield,ilev,iv: " << rank << ", " << ie << ", " << ifield << ", " << ilev << ", " << ivec << "\n";
             std::cout << std::setprecision(17) << "f90: " << field_min_1d_f90(ie,ifield,level) << "\n";
             std::cout << std::setprecision(17) << "cxx: " << field_1d_cxx_host(ie,ifield,MIN_ID,ilev)[ivec] << "\n";
           }
-          REQUIRE(compare_answers(field_max_1d_f90(ie,ifield,level),field_1d_cxx_host(ie,ifield,MAX_ID,ilev)[ivec]) < test_tolerance);
+          REQUIRE(compare_answers(field_min_1d_f90(ie,ifield,level),field_1d_cxx_host(ie,ifield,MIN_ID,ilev)[ivec]) < test_tolerance);
           if(compare_answers(field_max_1d_f90(ie,ifield,level),field_1d_cxx_host(ie,ifield,MAX_ID,ilev)[ivec]) >= test_tolerance) {
             std::cout << std::setprecision(17) << "rank,ie,ifield,ilev,iv: " << rank << ", " << ie << ", " << ifield << ", " << ilev << ", " << ivec << "\n";
             std::cout << std::setprecision(17) << "f90: " << field_max_1d_f90(ie,ifield,level) << "\n";
             std::cout << std::setprecision(17) << "cxx: " << field_1d_cxx_host(ie,ifield,MAX_ID,ilev)[ivec] << "\n";
           }
+          REQUIRE(compare_answers(field_max_1d_f90(ie,ifield,level),field_1d_cxx_host(ie,ifield,MAX_ID,ilev)[ivec]) < test_tolerance);
     }}}
 
     for (int ie=0; ie<num_elements; ++ie) {

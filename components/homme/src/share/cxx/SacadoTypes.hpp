@@ -18,7 +18,6 @@ namespace Homme {
 template<typename T,int N>
 using SFadN = Sacado::Fad::SFad<T,N>;
 
-
 template<typename T>
 using SFad = SFadN<T,HOMMEXX_SFAD_SIZE>;
 

@@ -9,6 +9,7 @@
 #include "ErrorDefs.hpp"
 #include "PhysicalConstants.hpp"
 #include "utilities/TestUtils.hpp"
+#include "utilities/ViewUtils.hpp"
 
 #include <random>
 
@@ -29,30 +30,42 @@ void HybridVCoord::init(const Real ps0_in,
 
   ps0 = ps0_in;
 
-  // Create interface views
-  hybrid_ai_packed = ExecViewManaged<Scalar[NUM_LEV_P]>("Hybrid coordinates; coefficient A_interfaces");
-  hybrid_bi_packed = ExecViewManaged<Scalar[NUM_LEV_P]>("Hybrid coordinates; coefficient B_interfaces");
-
-  hybrid_ai = ExecViewUnmanaged<Real[NUM_INTERFACE_LEV]>(reinterpret_cast<Real*>(hybrid_ai_packed.data()));
-  hybrid_bi = ExecViewUnmanaged<Real[NUM_INTERFACE_LEV]>(reinterpret_cast<Real*>(hybrid_bi_packed.data()));
-
-  // Create midpoints views
-  hybrid_am = ExecViewManaged<Scalar[NUM_LEV]>("Hybrid coordinates; coefficient A_midpoints");
-  hybrid_bm = ExecViewManaged<Scalar[NUM_LEV]>("Hybrid coordinates; coefficient B_midpoints");
-  ExecViewUnmanaged<Real[NUM_PHYSICAL_LEV]> am_unpacked(reinterpret_cast<Real*>(hybrid_am.data()));
-  ExecViewUnmanaged<Real[NUM_PHYSICAL_LEV]> bm_unpacked(reinterpret_cast<Real*>(hybrid_bm.data()));
-
-  // Create views of input pointers
+  // Create and init interface views
+  hybrid_ai = ExecViewManaged<Real[NUM_INTERFACE_LEV]>("Hybrid coordinates; coefficient A_interfaces");
+  hybrid_bi = ExecViewManaged<Real[NUM_INTERFACE_LEV]>("Hybrid coordinates; coefficient B_interfaces");
   HostViewUnmanaged<const Real[NUM_INTERFACE_LEV]> host_hybrid_ai(hybrid_ai_ptr);
   HostViewUnmanaged<const Real[NUM_INTERFACE_LEV]> host_hybrid_bi(hybrid_bi_ptr);
+  Kokkos::deep_copy(hybrid_ai, host_hybrid_ai);
+  Kokkos::deep_copy(hybrid_bi, host_hybrid_bi);
+
+  hybrid_ai_packed = ExecViewManaged<Scalar[NUM_LEV_P]>("Hybrid coordinates; coefficient A_interfaces");
+  hybrid_bi_packed = ExecViewManaged<Scalar[NUM_LEV_P]>("Hybrid coordinates; coefficient B_interfaces");
+  auto hyai_p_h = Kokkos::create_mirror_view(hybrid_ai_packed);
+  auto hybi_p_h = Kokkos::create_mirror_view(hybrid_bi_packed);
+  for (int i=0; i<NUM_INTERFACE_LEV; ++i) {
+    int ilev = i / VECTOR_SIZE;
+    int ivec = i % VECTOR_SIZE;
+    hyai_p_h(ilev)[ivec] = host_hybrid_ai(i);
+    hybi_p_h(ilev)[ivec] = host_hybrid_bi(i);
+  }
+
+  // Create and init midpoints views
+  hybrid_am = ExecViewManaged<Scalar[NUM_LEV]>("Hybrid coordinates; coefficient A_midpoints");
+  hybrid_bm = ExecViewManaged<Scalar[NUM_LEV]>("Hybrid coordinates; coefficient B_midpoints");
+
   HostViewUnmanaged<const Real[NUM_PHYSICAL_LEV]> host_hybrid_am(hybrid_am_ptr);
   HostViewUnmanaged<const Real[NUM_PHYSICAL_LEV]> host_hybrid_bm(hybrid_bm_ptr);
 
-  // Copy inputs into class members
-  Kokkos::deep_copy(hybrid_ai, host_hybrid_ai);
-  Kokkos::deep_copy(hybrid_bi, host_hybrid_bi);
-  Kokkos::deep_copy(am_unpacked, host_hybrid_am);
-  Kokkos::deep_copy(bm_unpacked, host_hybrid_bm);
+  auto hyam_unpacked = unpackView(hybrid_am);
+  auto hybm_unpacked = unpackView(hybrid_bm);
+  auto hyam_unpacked_h = Kokkos::create_mirror_view(hyam_unpacked);
+  auto hybm_unpacked_h = Kokkos::create_mirror_view(hybm_unpacked);
+  for (int i=0; i<NUM_PHYSICAL_LEV; ++i) {
+    hyam_unpacked_h(i) = host_hybrid_am(i);
+    hybm_unpacked_h(i) = host_hybrid_bm(i);
+  }
+  Kokkos::deep_copy(hyam_unpacked,hyam_unpacked_h);
+  Kokkos::deep_copy(hybm_unpacked,hybm_unpacked_h);
 
   // i don't think this saves us much now
   {
@@ -72,8 +85,8 @@ void HybridVCoord::random_init(int seed) {
   hybrid_ai_packed = ExecViewManaged<Scalar[NUM_LEV_P]>("Hybrid coordinates; coefficient A_interfaces");
   hybrid_bi_packed = ExecViewManaged<Scalar[NUM_LEV_P]>("Hybrid coordinates; coefficient B_interfaces");
 
-  hybrid_ai = ExecViewUnmanaged<Real[NUM_INTERFACE_LEV]>(reinterpret_cast<Real*>(hybrid_ai_packed.data()));
-  hybrid_bi = ExecViewUnmanaged<Real[NUM_INTERFACE_LEV]>(reinterpret_cast<Real*>(hybrid_bi_packed.data()));
+  hybrid_ai = ExecViewManaged<Real[NUM_INTERFACE_LEV]>("Hybrid coordinates; coefficient A_interfaces");
+  hybrid_bi = ExecViewManaged<Real[NUM_INTERFACE_LEV]>("Hybrid coordinates; coefficient B_interfaces");
 
   hybrid_am = ExecViewManaged<Scalar[NUM_LEV]>("Hybrid a_interface coefs");
   hybrid_bm = ExecViewManaged<Scalar[NUM_LEV]>("Hybrid b_interface coefs");
@@ -153,13 +166,13 @@ void HybridVCoord::random_init(int seed) {
   HostViewUnmanaged<Real[NUM_PHYSICAL_LEV]> host_hybrid_am_real(reinterpret_cast<Real*>(host_hybrid_am.data()));
   HostViewUnmanaged<Real[NUM_PHYSICAL_LEV]> host_hybrid_bm_real(reinterpret_cast<Real*>(host_hybrid_bm.data()));
   for (int i=1; i<NUM_INTERFACE_LEV; ++i) {
-    Real curr = host_hybrid_ai(i) + host_hybrid_bi(i);
-    Real prev = host_hybrid_ai(i-1) + host_hybrid_bi(i-1);   
+    Real curr = ADValue(host_hybrid_ai(i) + host_hybrid_bi(i));
+    Real prev = ADValue(host_hybrid_ai(i-1) + host_hybrid_bi(i-1));   
 
     Errors::runtime_check(curr>prev,"Error! hybrid_a+hybrid_b is not increasing.\n", -1);
 
-    host_hybrid_am_real(i-1) = (host_hybrid_ai(i) + host_hybrid_ai(i-1))/2.0;
-    host_hybrid_bm_real(i-1) = (host_hybrid_bi(i) + host_hybrid_bi(i-1))/2.0;
+    host_hybrid_am_real(i-1) = ADValue(host_hybrid_ai(i) + host_hybrid_ai(i-1))/2.0;
+    host_hybrid_bm_real(i-1) = ADValue(host_hybrid_bi(i) + host_hybrid_bi(i-1))/2.0;
   }
 
   Kokkos::deep_copy(hybrid_ai, host_hybrid_ai);
@@ -167,7 +180,16 @@ void HybridVCoord::random_init(int seed) {
   Kokkos::deep_copy(hybrid_am, host_hybrid_am);
   Kokkos::deep_copy(hybrid_bm, host_hybrid_bm);
 
-  hybrid_ai0 = host_hybrid_ai(0);
+  auto hyai_packed_h = Kokkos::create_mirror_view(hybrid_ai_packed);
+  auto hybi_packed_h = Kokkos::create_mirror_view(hybrid_bi_packed);
+  for (int i=0; i<NUM_INTERFACE_LEV; ++i) {
+    hyai_packed_h(i) = host_hybrid_ai(i);
+    hybi_packed_h(i) = host_hybrid_bi(i);
+  }
+  Kokkos::deep_copy(hybrid_ai_packed,hyai_packed_h);
+  Kokkos::deep_copy(hybrid_bi_packed,hybi_packed_h);
+
+  hybrid_ai0 = ADValue(host_hybrid_ai(0));
 
   compute_deltas();
   compute_eta();
@@ -232,7 +254,7 @@ void HybridVCoord::compute_eta ()
   });
   Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,NUM_INTERFACE_LEV),
                        KOKKOS_LAMBDA(const int& ilev){
-    l_etai(ilev) = l_hybrid_ai(ilev) + l_hybrid_bi(ilev);
+    l_etai(ilev) = ADValue(l_hybrid_ai(ilev) + l_hybrid_bi(ilev));
   });
 }
 

@@ -273,10 +273,7 @@ IF(${BUILD_HOMME_SWIM})
 ENDIF()
 
 # Test some stuff in the shared folder
-# ETP  Turn off unit tests for now when building forward sensitivities
-IF (NOT HOMMEXX_ENABLE_FWD_SENS)      
-  ADD_SUBDIRECTORY (share_kokkos_ut)
-ENDIF()
+ADD_SUBDIRECTORY (share_kokkos_ut)
 
 IF (${BUILD_HOMME_PREQX_KOKKOS})
   ADD_SUBDIRECTORY(preqx-nlev26-kokkos)
