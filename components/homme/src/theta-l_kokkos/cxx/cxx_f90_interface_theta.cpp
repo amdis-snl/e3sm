@@ -177,6 +177,9 @@ void init_simulation_params_c (const int& remap_alg, const int& limiter_option, 
   // Now this structure can be used safely
   params.params_set = true;
 
+#ifndef SCREAM
+  params.print();
+#endif
 }
 
 void init_hvcoord_c (const Real& ps0, CRCPtr& hybrid_am_ptr, CRCPtr& hybrid_ai_ptr,
