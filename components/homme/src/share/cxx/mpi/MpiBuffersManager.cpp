@@ -22,8 +22,8 @@ MpiBuffersManager::MpiBuffersManager ()
   // The "fake" buffers used for MISSING connections. These do not depend on the requirements
   // from the custormers, so we can create them right away.
   constexpr size_t blackhole_buffer_size = 2 * NUM_LEV * VECTOR_SIZE;
-  m_blackhole_send_buffer = ExecViewManaged<Real*>("blackhole array",blackhole_buffer_size);
-  m_blackhole_recv_buffer = ExecViewManaged<Real*>("blackhole array",blackhole_buffer_size);
+  m_blackhole_send_buffer = ExecViewManaged<ScalarValue*>("blackhole array",blackhole_buffer_size);
+  m_blackhole_recv_buffer = ExecViewManaged<ScalarValue*>("blackhole array",blackhole_buffer_size);
   Kokkos::deep_copy(m_blackhole_send_buffer,0.0);
   Kokkos::deep_copy(m_blackhole_recv_buffer,0.0);
 }
@@ -76,9 +76,9 @@ void MpiBuffersManager::allocate_buffers ()
   }
 
   // The buffers used for packing/unpacking
-  m_send_buffer  = ExecViewManaged<Real*>("send buffer",  m_mpi_buffer_size);
-  m_recv_buffer  = ExecViewManaged<Real*>("recv buffer",  m_mpi_buffer_size);
-  m_local_buffer = ExecViewManaged<Real*>("local buffer", m_local_buffer_size);
+  m_send_buffer  = ExecViewManaged<ScalarValue*>("send buffer",  m_mpi_buffer_size);
+  m_recv_buffer  = ExecViewManaged<ScalarValue*>("recv buffer",  m_mpi_buffer_size);
+  m_local_buffer = ExecViewManaged<ScalarValue*>("local buffer", m_local_buffer_size);
 
   // The buffers used in MPI calls
   m_mpi_send_buffer = Kokkos::create_mirror_view(decltype(m_mpi_send_buffer)::execution_space(),m_send_buffer);

@@ -106,13 +106,13 @@ public:
   bool are_buffers_busy () const { return m_buffers_busy; }
   bool are_views_valid () const { return m_views_are_valid; }
 
-  ExecViewUnmanaged<Real*> get_send_buffer           () const;
-  ExecViewUnmanaged<Real*> get_recv_buffer           () const;
-  ExecViewUnmanaged<Real*> get_local_buffer          () const;
-  MPIViewUnmanaged<Real*>  get_mpi_send_buffer       () const;
-  MPIViewUnmanaged<Real*>  get_mpi_recv_buffer       () const;
-  ExecViewUnmanaged<Real*> get_blackhole_send_buffer () const;
-  ExecViewUnmanaged<Real*> get_blackhole_recv_buffer () const;
+  ExecViewUnmanaged<ScalarValue*> get_send_buffer           () const;
+  ExecViewUnmanaged<ScalarValue*> get_recv_buffer           () const;
+  ExecViewUnmanaged<ScalarValue*> get_local_buffer          () const;
+  MPIViewUnmanaged<ScalarValue*>  get_mpi_send_buffer       () const;
+  MPIViewUnmanaged<ScalarValue*>  get_mpi_recv_buffer       () const;
+  ExecViewUnmanaged<ScalarValue*> get_blackhole_send_buffer () const;
+  ExecViewUnmanaged<ScalarValue*> get_blackhole_recv_buffer () const;
 
   std::shared_ptr<Connectivity> get_connectivity () const { return m_connectivity; }
 
@@ -170,17 +170,17 @@ private:
   std::shared_ptr<Connectivity> m_connectivity;
 
   // The buffers
-  ExecViewManaged<Real*>  m_send_buffer;
-  ExecViewManaged<Real*>  m_recv_buffer;
-  ExecViewManaged<Real*>  m_local_buffer;
+  ExecViewManaged<ScalarValue*>  m_send_buffer;
+  ExecViewManaged<ScalarValue*>  m_recv_buffer;
+  ExecViewManaged<ScalarValue*>  m_local_buffer;
 
   // The mpi buffers (same as the previous send/recv buffers if MPIMemSpace=ExecMemSpace)
-  MPIViewManaged<Real*>   m_mpi_send_buffer;
-  MPIViewManaged<Real*>   m_mpi_recv_buffer;
+  MPIViewManaged<ScalarValue*>   m_mpi_send_buffer;
+  MPIViewManaged<ScalarValue*>   m_mpi_recv_buffer;
 
   // The blackhole send/recv buffers (used for missing connections)
-  ExecViewManaged<Real*>  m_blackhole_send_buffer;
-  ExecViewManaged<Real*>  m_blackhole_recv_buffer;
+  ExecViewManaged<ScalarValue*>  m_blackhole_send_buffer;
+  ExecViewManaged<ScalarValue*>  m_blackhole_recv_buffer;
 };
 
 inline void MpiBuffersManager::sync_send_buffer (BoundaryExchange* customer)
@@ -191,8 +191,8 @@ inline void MpiBuffersManager::sync_send_buffer (BoundaryExchange* customer)
   const size_t customer_mpi_buffer_size = m_customers.find(customer)->second.mpi_buffer_size;
   if (customer_mpi_buffer_size<m_mpi_buffer_size) {
     // Avoid copying more than we need
-    MPIViewUnmanaged<Real*>  mpi_send_view(m_mpi_send_buffer.data(),customer_mpi_buffer_size);
-    ExecViewUnmanaged<const Real*> send_view(m_send_buffer.data(),customer_mpi_buffer_size);
+    MPIViewUnmanaged<ScalarValue*>  mpi_send_view(m_mpi_send_buffer.data(),customer_mpi_buffer_size);
+    ExecViewUnmanaged<const ScalarValue*> send_view(m_send_buffer.data(),customer_mpi_buffer_size);
     Kokkos::deep_copy(mpi_send_view, send_view);
   } else {
     Kokkos::deep_copy(m_mpi_send_buffer, m_send_buffer);
@@ -207,15 +207,15 @@ inline void MpiBuffersManager::sync_recv_buffer (BoundaryExchange* customer)
   const size_t customer_mpi_buffer_size = m_customers.find(customer)->second.mpi_buffer_size;
   if (customer_mpi_buffer_size<m_mpi_buffer_size) {
     // Avoid copying more than we need
-    MPIViewUnmanaged<const Real*>  mpi_recv_view(m_mpi_recv_buffer.data(),customer_mpi_buffer_size);
-    ExecViewUnmanaged<Real*> recv_view(m_recv_buffer.data(),customer_mpi_buffer_size);
+    MPIViewUnmanaged<const ScalarValue*>  mpi_recv_view(m_mpi_recv_buffer.data(),customer_mpi_buffer_size);
+    ExecViewUnmanaged<ScalarValue*> recv_view(m_recv_buffer.data(),customer_mpi_buffer_size);
     Kokkos::deep_copy(recv_view, mpi_recv_view);
   } else {
     Kokkos::deep_copy(m_recv_buffer, m_mpi_recv_buffer);
   }
 }
 
-inline ExecViewUnmanaged<Real*>
+inline ExecViewUnmanaged<ScalarValue*>
 MpiBuffersManager::get_send_buffer () const
 {
   // We ensure that the buffers are valid
@@ -223,7 +223,7 @@ MpiBuffersManager::get_send_buffer () const
   return m_send_buffer;
 }
 
-inline ExecViewUnmanaged<Real*>
+inline ExecViewUnmanaged<ScalarValue*>
 MpiBuffersManager::get_recv_buffer () const
 {
   // We ensure that the buffers are valid
@@ -231,7 +231,7 @@ MpiBuffersManager::get_recv_buffer () const
   return m_recv_buffer;
 }
 
-inline ExecViewUnmanaged<Real*>
+inline ExecViewUnmanaged<ScalarValue*>
 MpiBuffersManager::get_local_buffer () const
 {
   // We ensure that the buffers are valid
@@ -239,7 +239,7 @@ MpiBuffersManager::get_local_buffer () const
   return m_local_buffer;
 }
 
-inline MPIViewUnmanaged<Real*>
+inline MPIViewUnmanaged<ScalarValue*>
 MpiBuffersManager::get_mpi_send_buffer() const
 {
   // We ensure that the buffers are valid
@@ -247,7 +247,7 @@ MpiBuffersManager::get_mpi_send_buffer() const
   return m_mpi_send_buffer;
 }
 
-inline MPIViewUnmanaged<Real*>
+inline MPIViewUnmanaged<ScalarValue*>
 MpiBuffersManager::get_mpi_recv_buffer() const
 {
   // We ensure that the buffers are valid
@@ -255,7 +255,7 @@ MpiBuffersManager::get_mpi_recv_buffer() const
   return m_mpi_recv_buffer;
 }
 
-inline ExecViewUnmanaged<Real*>
+inline ExecViewUnmanaged<ScalarValue*>
 MpiBuffersManager::get_blackhole_send_buffer () const
 {
   // We ensure that the buffers are valid
@@ -263,7 +263,7 @@ MpiBuffersManager::get_blackhole_send_buffer () const
   return m_blackhole_send_buffer;
 }
 
-inline ExecViewUnmanaged<Real*>
+inline ExecViewUnmanaged<ScalarValue*>
 MpiBuffersManager::get_blackhole_recv_buffer () const
 {
   // We ensure that the buffers are valid

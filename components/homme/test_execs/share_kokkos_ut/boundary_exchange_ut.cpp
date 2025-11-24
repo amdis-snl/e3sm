@@ -88,8 +88,8 @@ TEST_CASE ("Boundary Exchange", "Testing the boundary exchange framework")
   auto field_1d_cxx_host = Kokkos::create_mirror_view(field_1d_cxx);
 
   HostViewManaged<Real*[NUM_TIME_LEVELS][NP][NP]> field_2d_f90("", num_elements);
-  ExecViewManaged<Real*[NUM_TIME_LEVELS][NP][NP]> field_2d_cxx("", num_elements);
-  ExecViewManaged<Real*[NUM_TIME_LEVELS][NP][NP]>::HostMirror field_2d_cxx_host;
+  ExecViewManaged<ScalarValue*[NUM_TIME_LEVELS][NP][NP]> field_2d_cxx("", num_elements);
+  ExecViewManaged<ScalarValue*[NUM_TIME_LEVELS][NP][NP]>::HostMirror field_2d_cxx_host;
   field_2d_cxx_host = Kokkos::create_mirror_view(field_2d_cxx);
 
   HostViewManaged<Real*[NUM_TIME_LEVELS][NUM_PHYSICAL_LEV][NP][NP]> field_3d_f90("", num_elements);
