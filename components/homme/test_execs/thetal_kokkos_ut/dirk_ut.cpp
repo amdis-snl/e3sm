@@ -83,7 +83,16 @@ struct Session {
     const auto hyam = cmvdc(h.hybrid_am);
     const auto hybm = cmvdc(h.hybrid_bm);
 
-    init_dirk_f90(ne, hyai.data(), hybi.data(), &hyam(0)[0], &hybm(0)[0], h.ps0);
+    HostViewManaged<Real[NUM_PHYSICAL_LEV]> hyam_r("");
+    HostViewManaged<Real[NUM_PHYSICAL_LEV]> hybm_r("");
+    for (int k=0; k<NUM_PHYSICAL_LEV; ++k) {
+      int ilev = k / VECTOR_SIZE;
+      int ivec = k % VECTOR_SIZE;
+      hyam_r[k] = ADValue(hyam(ilev)[ivec]);
+      hybm_r[k] = ADValue(hybm(ilev)[ivec]);
+    }
+
+    init_dirk_f90(ne, hyai.data(), hybi.data(), hyam_r.data(), hybm_r.data(), h.ps0);
 
     nelemd = c.get<Connectivity>().get_num_local_elements();
     e = c.create<Elements>();
@@ -139,6 +148,19 @@ static bool equal (const Real& a, const Real& b,
   return almost_equal(a, b, tol);
 #endif
 }
+#ifdef HOMMEXX_ENABLE_FWD_SENS
+static bool almost_equal (const ScalarValue& a, const ScalarValue& b,
+                   // Used only if not defined HOMMEXX_BFB_TESTING.
+                   const Real tol = 0) {
+  return almost_equal(ADValue(a),ADValue(b),tol);
+}
+
+static bool equal (const ScalarValue& a, const ScalarValue& b,
+                   // Used only if not defined HOMMEXX_BFB_TESTING.
+                   const Real tol = 0) {
+  return equal(ADValue(a),ADValue(b),tol);
+}
+#endif
 
 template <typename V>
 void fill (Random& r, const V& a, const Real scale = 1,
@@ -171,13 +193,13 @@ void fill_inc (Random& r, const int nlev, const Real top, const Real bottom,
   const auto am = cmvdc(a);
   for (int i = 0; i < a.extent_int(0); ++i)
     for (int j = 0; j < a.extent_int(1); ++j) {
-      Real* const p = &am(i,j,0)[0];
-      Real sum = 0;
+      auto* const p = &am(i,j,0)[0];
+      ScalarValue sum = 0;
       for (int k = 0; k < nlev; ++k) {
         p[k] = r.urrng(); 
         sum += p[k];
       }
-      const Real f = (bottom - top)/sum;
+      const ScalarValue f = (bottom - top)/sum;
       for (int k = 0; k < nlev; ++k)
         p[k] *= f;
     }
@@ -191,7 +213,7 @@ void fill_mid (Random& r, const int nlev, const Real top, const Real bottom,
   fill_inc(r, nlev, top, bottom, am);
   for (int i = 0; i < a.extent_int(0); ++i)
     for (int j = 0; j < a.extent_int(1); ++j) {
-      Real* const p = &am(i,j,0)[0];
+      auto* const p = &am(i,j,0)[0];
       auto delta = p[0];
       p[0] = top + 0.5*delta;
       for (int k = 1; k < nlev; ++k) {
@@ -221,9 +243,9 @@ void c2f (const V& c, const FA3& f) {
   const auto cm = cmvdc(c);
   for (int i = 0; i < c.extent_int(0); ++i)
     for (int j = 0; j < c.extent_int(1); ++j) {
-      Real* const p = &cm(i,j,0)[0];
+      auto* const p = &cm(i,j,0)[0];
       for (int k = 0; k < f.extent_int(0); ++k)
-        f(k,i,j) = p[k];
+        f(k,i,j) = ADValue(p[k]);
     }
 }
 
@@ -232,7 +254,7 @@ void f2c (const FA3& f, const V& c) {
   const auto cm = Kokkos::create_mirror_view(c);
   for (int i = 0; i < c.extent_int(0); ++i)
     for (int j = 0; j < c.extent_int(1); ++j) {
-      Real* const p = &cm(i,j,0)[0];
+      auto* const p = &cm(i,j,0)[0];
       for (int k = 0; k < f.extent_int(0); ++k)
         p[k] = f(k,i,j);
     }
@@ -245,9 +267,9 @@ void c2f (const V& c, const FA4& f) {
   for (int d = 0; d < c.extent_int(0); ++d)
     for (int i = 0; i < c.extent_int(1); ++i)
       for (int j = 0; j < c.extent_int(2); ++j) {
-        Real* const p = &cm(d,i,j,0)[0];
+        auto* const p = &cm(d,i,j,0)[0];
         for (int k = 0; k < f.extent_int(0); ++k)
-          f(k,d,i,j) = p[k];
+          f(k,d,i,j) = ADValue(p[k]);
       }
 }
 
@@ -533,8 +555,8 @@ TEST_CASE ("dirk_pieces_testing") {
     const auto am = create_mirror_view(a);
     const auto bm = create_mirror_view(b);
     for (int k = 0; k < nlev; ++k) {
-      Real* const ap = &am(k,0)[0];
-      Real* const bp = &bm(k,0)[0];
+      auto* const ap = &am(k,0)[0];
+      auto* const bp = &bm(k,0)[0];
       for (int i = 0; i < ilim; ++i)
         ap[i] = bp[i] = r.urrng(-2,0);
       if (k == 1) ap[2] = bp[2] = threshold;
@@ -559,8 +581,8 @@ TEST_CASE ("dirk_pieces_testing") {
     deep_copy(bm, b);
     const auto wam = cmvdc(wa);
     const auto wbm = cmvdc(wb);
-    Real* wp = &wam(0,0)[0];
-    REQUIRE(wp[3] == 1);
+    auto* wp = &wam(0,0)[0];
+    REQUIRE(ADValue(wp[3]) == 1);
     for (int i = 0; i < ilim; ++i) REQUIRE((i == 3 || wp[i] == 0));
     wp = &wbm(0,0)[0];
     REQUIRE(wp[2] == 1);
@@ -568,8 +590,8 @@ TEST_CASE ("dirk_pieces_testing") {
     for (int i = 0; i < ilim; ++i) REQUIRE((i == 2 || i == 3 || wp[i] == 0));
     int thr_cnt = 0;
     for (int k = 0; k < nlev; ++k) {
-      Real* const ap = &am(k,0)[0];
-      Real* const bp = &bm(k,0)[0];
+      auto* const ap = &am(k,0)[0];
+      auto* const bp = &bm(k,0)[0];
       if (k == 2) REQUIRE(ap[3] == threshold);
       for (int i = 0; i < ilim; ++i) {
         if (ap[i] >= threshold) ++thr_cnt;
@@ -661,10 +683,10 @@ static void init_elems (int, int nelemd, Random& r, const HybridVCoord& hvcoord,
     for (int t = 0; t < NUM_TIME_LEVELS; ++t)
       for (int i = 0; i < np; ++i)
         for (int j = 0; j < np; ++j) {
-          Real* const phi = &phinh_i(ie,t,i,j,0)[0];
+          auto* const phi = &phinh_i(ie,t,i,j,0)[0];
           phi[nlev] = phis(ie,i,j);
           for (int k = nlev-1; k >= 0; --k)
-            if (phi[k] - phi[k+1] < PhysicalConstants::g)
+            if (ADValue(phi[k] - phi[k+1]) < PhysicalConstants::g)
               for (int k1 = k; k1 >= 0; --k1)
                 phi[k1] += PhysicalConstants::g;
         }
@@ -750,9 +772,9 @@ TEST_CASE ("dirk_toplevel_testing") {
     for (int ie = 0; ie < nelemd; ++ie)
       for (int i = 0; i < np; ++i)
         for (int j = 0; j < np; ++j) {
-          Real* pf = &phif(ie,np1,i,j,0)[0];
-          Real* pc1 = &phic1(ie,np1,i,j,0)[0];
-          Real* pc2 = &phic2(ie,i,j,0)[0];
+          auto* pf = &phif(ie,np1,i,j,0)[0];
+          auto* pc1 = &phic1(ie,np1,i,j,0)[0];
+          auto* pc2 = &phic2(ie,i,j,0)[0];
           for (int k = 0; k < nlev; ++k) REQUIRE(equal(pf[k], pc1[k], 1e6*eps));
           for (int k = 0; k < nlev; ++k) REQUIRE(equal(pf[k], pc2[k], 1e6*eps));
         }
@@ -797,9 +819,9 @@ TEST_CASE ("dirk_toplevel_testing") {
           for (int i = 0; i < np; ++i)
             for (int j = 0; j < np; ++j) {
               for (int f = 0; f < 2; ++f) {
-                Real* p = f == 0 ? &phinh2m(ie,np1,i,j,0)[0] : &w2m(ie,np1,i,j,0)[0];
+                auto* p = f == 0 ? &phinh2m(ie,np1,i,j,0)[0] : &w2m(ie,np1,i,j,0)[0];
                 for (int k = 0; k < nlev+1; ++k)
-                  if (std::isnan(p[k]) || std::isinf(p[k]))
+                  if (std::isnan(ADValue(p[k])) || std::isinf(ADValue(p[k])))
                     ok = false;
                 if (f == 0)
                   for (int k = 0; k < nlev; ++k)
@@ -842,8 +864,8 @@ TEST_CASE ("dirk_toplevel_testing") {
         for (int i = 0; i < np; ++i)
           for (int j = 0; j < np; ++j)
             for (int f = 0; f < 2; ++f) {
-              Real* p1 = f == 0 ? &w1m(ie,np1,i,j,0)[0] : &phinh1m(ie,np1,i,j,0)[0];
-              Real* p2 = f == 0 ? &w2m(ie,np1,i,j,0)[0] : &phinh2m(ie,np1,i,j,0)[0];
+              auto* p1 = f == 0 ? &w1m(ie,np1,i,j,0)[0] : &phinh1m(ie,np1,i,j,0)[0];
+              auto* p2 = f == 0 ? &w2m(ie,np1,i,j,0)[0] : &phinh2m(ie,np1,i,j,0)[0];
               for (int k = 0; k < nlev+1; ++k)
                 REQUIRE(almost_equal(p1[k], p2[k], 1e6*eps));
             }
@@ -863,8 +885,8 @@ TEST_CASE ("dirk_toplevel_testing") {
         for (int i = 0; i < np; ++i)
           for (int j = 0; j < np; ++j) {
             for (int f = 0; f < 2; ++f) {
-              Real* pf = f == 0 ? &phif   (ie,np1,i,j,0)[0] : &wif(ie,np1,i,j,0)[0];
-              Real* pc = f == 0 ? &phinh2m(ie,np1,i,j,0)[0] : &w2m(ie,np1,i,j,0)[0];
+              auto* pf = f == 0 ? &phif   (ie,np1,i,j,0)[0] : &wif(ie,np1,i,j,0)[0];
+              auto* pc = f == 0 ? &phinh2m(ie,np1,i,j,0)[0] : &w2m(ie,np1,i,j,0)[0];
               for (int k = 0; k < nlev; ++k)
                 REQUIRE(equal(pf[k], pc[k], 1e8*eps));
             }
