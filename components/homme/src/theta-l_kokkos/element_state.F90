@@ -325,7 +325,7 @@ contains
     type (elem_state_t),    intent(inout) :: state
     type (derived_state_t), intent(inout) :: derived
     type (elem_accum_t),    intent(inout) :: accum
-    type (elem_state_t),    intent(inout) :: sens
+    type (elem_state_t), optional,    intent(inout) :: sens
 
     integer :: ider
 
@@ -367,15 +367,17 @@ contains
     derived%dp_ref    => elem_dp_ref(:,:,:,ie)
     derived%phi_ref   => elem_phi_ref(:,:,:,ie)
 
-    ! Note: for sensitivities, we don't need time levels. Instead,
-    ! the slowest striding dim of the state is used for the deriv index
-    ! Also, we don't bother ab out sens of q or phis
-    sens%v         => elem_sens_v(:,:,:,:,:,ie)
-    sens%w_i       => elem_sens_w_i(:,:,:,:,ie)
-    sens%vtheta_dp => elem_sens_vthdp(:,:,:,:,ie)
-    sens%phinh_i   => elem_sens_phinh_i(:,:,:,:,ie)
-    sens%dp3d      => elem_sens_dp3d(:,:,:,:,ie)
-    sens%ps_v      => elem_sens_ps(:,:,:,ie)
-    sens%Qdp       => elem_sens_Qdp(:,:,:,:,:,ie)
+    if (present(sens)) then
+      ! Note: for sensitivities, we don't need time levels. Instead,
+      ! the slowest striding dim of the state is used for the deriv index
+      ! Also, we don't bother ab out sens of q or phis
+      sens%v         => elem_sens_v(:,:,:,:,:,ie)
+      sens%w_i       => elem_sens_w_i(:,:,:,:,ie)
+      sens%vtheta_dp => elem_sens_vthdp(:,:,:,:,ie)
+      sens%phinh_i   => elem_sens_phinh_i(:,:,:,:,ie)
+      sens%dp3d      => elem_sens_dp3d(:,:,:,:,ie)
+      sens%ps_v      => elem_sens_ps(:,:,:,ie)
+      sens%Qdp       => elem_sens_Qdp(:,:,:,:,:,ie)
+    endif
   end subroutine setup_element_pointers_ie
 end module 
