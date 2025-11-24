@@ -103,9 +103,9 @@ TEST_CASE("eos", "eos") {
       // Note: to avoid errors in pnh_and_exner_from_eos, we need phi to be increasing.
       //       Rather than using a constraint (which may call the function many times,
       //       we simply ask that there are no duplicates, then we sort it later.
-      auto sort_and_chek = [](const ExecViewManaged<Scalar[NUM_LEV_P]>::HostMirror v)->bool {
-        Real* start = reinterpret_cast<Real*>(v.data());
-        Real* end   = reinterpret_cast<Real*>(v.data()) + NUM_LEV_P*VECTOR_SIZE;
+      auto sort_and_chek = [](const auto& vh) -> bool {
+        auto* start = vh.data();
+        auto* end   = vh.data() + vh.size();
         std::sort(start,end);
         std::reverse(start,end);
         auto it = std::unique(start,end);
@@ -114,7 +114,8 @@ TEST_CASE("eos", "eos") {
       for (int ie=0; ie<num_elems; ++ie) {
         for (int igp=0; igp<NP; ++igp) {
           for (int jgp=0; jgp<NP; ++ jgp) {
-            genRandArray(Homme::subview(phi_i_cxx,ie,igp,jgp),engine,pdf,sort_and_chek);
+            auto col = unpackView(Homme::subview(phi_i_cxx,ie,igp,jgp));
+            genRandArray(col,engine,pdf,sort_and_chek);
           }
         }
       }
@@ -186,17 +187,17 @@ TEST_CASE("eos", "eos") {
       Kokkos::deep_copy(h_dpnh_dp_i,dpnh_dp_i_cxx);
 
       for (int ie=0; ie<num_elems; ++ie) {
-        auto pnh_cxx_ie = viewAsReal(Homme::subview(h_pnh,ie));
-        auto exner_cxx_ie = viewAsReal(Homme::subview(h_exner,ie));
-        auto dpnhdp_cxx_ie = viewAsReal(Homme::subview(h_dpnh_dp_i,ie));
+        auto pnh_cxx_ie = unpackView(Homme::subview(h_pnh,ie));
+        auto exner_cxx_ie = unpackView(Homme::subview(h_exner,ie));
+        auto dpnhdp_cxx_ie = unpackView(Homme::subview(h_dpnh_dp_i,ie));
         for (int igp=0; igp<NP; ++igp) {
           for (int jgp=0; jgp<NP; ++jgp) {
             for (int k=0; k<NUM_PHYSICAL_LEV; ++k) {
-              REQUIRE (exner_cxx_ie(igp,jgp,k) == exner_f90(ie,k,igp,jgp));
-              REQUIRE (pnh_cxx_ie(igp,jgp,k) == pnh_f90(ie,k,igp,jgp));
-              REQUIRE (dpnhdp_cxx_ie(igp,jgp,k) == dpnh_dp_i_f90(ie,k,igp,jgp));
+              REQUIRE (ADValue(exner_cxx_ie(igp,jgp,k)) == exner_f90(ie,k,igp,jgp));
+              REQUIRE (ADValue(pnh_cxx_ie(igp,jgp,k)) == pnh_f90(ie,k,igp,jgp));
+              REQUIRE (ADValue(dpnhdp_cxx_ie(igp,jgp,k)) == dpnh_dp_i_f90(ie,k,igp,jgp));
             }
-            REQUIRE (dpnhdp_cxx_ie(igp,jgp,NUM_INTERFACE_LEV-1) == dpnh_dp_i_f90(ie,NUM_INTERFACE_LEV-1,igp,jgp));
+            REQUIRE (ADValue(dpnhdp_cxx_ie(igp,jgp,NUM_INTERFACE_LEV-1)) == dpnh_dp_i_f90(ie,NUM_INTERFACE_LEV-1,igp,jgp));
           }
         }
       }
@@ -254,11 +255,11 @@ TEST_CASE("eos", "eos") {
     // Now, compare results
     Kokkos::deep_copy(h_phi_i,phi_i_cxx);
     for (int ie=0; ie<num_elems; ++ie) {
-      auto phi_i_cxx_ie = viewAsReal(Homme::subview(h_phi_i,ie));
+      auto phi_i_cxx_ie = unpackView(Homme::subview(h_phi_i,ie));
       for (int igp=0; igp<NP; ++igp) {
         for (int jgp=0; jgp<NP; ++jgp) {
           for (int k=0; k<NUM_INTERFACE_LEV; ++k) {
-            REQUIRE (phi_i_cxx_ie(igp,jgp,k) == phi_i_f90(ie,k,igp,jgp));
+            REQUIRE (ADValue(phi_i_cxx_ie(igp,jgp,k)) == phi_i_f90(ie,k,igp,jgp));
           }
         }
       }
