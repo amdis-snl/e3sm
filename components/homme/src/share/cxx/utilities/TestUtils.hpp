@@ -72,15 +72,8 @@ genRandArray(ViewType view, rngAlg &engine, PDF &&pdf) {
                [](typename ViewType::HostMirror) { return true; });
 }
 
-template <typename FPType>
-std::enable_if_t<not std::is_same_v<Real,ScalarValue>,Real>
-compare_answers(FPType target, ScalarValue computed,
-                FPType relative_coeff = 1) {
-  return compare_answers(target,ADValue(computed),relative_coeff);
-}
-template <typename FPType>
-Real compare_answers(FPType target, FPType computed,
-                     FPType relative_coeff = 1.0) {
+inline Real compare_answers(Real target, Real computed,
+                            Real relative_coeff = 1) {
   Real denom = 1.0;
   if (relative_coeff > 0.0 && target != 0.0) {
     denom = relative_coeff * std::fabs(target);
@@ -88,6 +81,12 @@ Real compare_answers(FPType target, FPType computed,
 
   return std::fabs(target - computed) / denom;
 }
+#ifdef HOMMEXX_ENABLE_FWD_SENS
+inline Real compare_answers(Real target, ScalarValue computed,
+                Real relative_coeff = 1) {
+  return compare_answers(target,ADValue(computed),relative_coeff);
+}
+#endif
 
 } // namespace Homme
 
