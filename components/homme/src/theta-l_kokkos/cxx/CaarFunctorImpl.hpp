@@ -206,10 +206,12 @@ struct CaarFunctorImpl {
       }
     }
 
-    return num_scalar_mid_buf  *NP*NP*NUM_LEV  *VECTOR_SIZE*nslots
-         + num_scalar_int_buf  *NP*NP*NUM_LEV_P*VECTOR_SIZE*nslots
-         + num_vector_mid_buf*2*NP*NP*NUM_LEV  *VECTOR_SIZE*nslots
-         + num_vector_int_buf*2*NP*NP*NUM_LEV_P*VECTOR_SIZE*nslots;
+    int scl_sz = 1+HOMMEXX_SFAD_SIZE;
+
+    return (num_scalar_mid_buf  *NP*NP*NUM_LEV  *VECTOR_SIZE*nslots +
+            num_scalar_int_buf  *NP*NP*NUM_LEV_P*VECTOR_SIZE*nslots +
+            num_vector_mid_buf*2*NP*NP*NUM_LEV  *VECTOR_SIZE*nslots +
+            num_vector_int_buf*2*NP*NP*NUM_LEV_P*VECTOR_SIZE*nslots) * scl_sz;
   }
 
   void init_buffers (const FunctorsBuffersManager& fbm) {
