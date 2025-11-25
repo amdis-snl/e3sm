@@ -582,7 +582,7 @@ TEST_CASE ("dirk_pieces_testing") {
     const auto wam = cmvdc(wa);
     const auto wbm = cmvdc(wb);
     auto* wp = &wam(0,0)[0];
-    REQUIRE(ADValue(wp[3]) == 1);
+    REQUIRE(wp[3] == 1);
     for (int i = 0; i < ilim; ++i) REQUIRE((i == 3 || wp[i] == 0));
     wp = &wbm(0,0)[0];
     REQUIRE(wp[2] == 1);
@@ -686,7 +686,7 @@ static void init_elems (int, int nelemd, Random& r, const HybridVCoord& hvcoord,
           auto* const phi = &phinh_i(ie,t,i,j,0)[0];
           phi[nlev] = phis(ie,i,j);
           for (int k = nlev-1; k >= 0; --k)
-            if (ADValue(phi[k] - phi[k+1]) < PhysicalConstants::g)
+            if ((phi[k] - phi[k+1]) < PhysicalConstants::g)
               for (int k1 = k; k1 >= 0; --k1)
                 phi[k1] += PhysicalConstants::g;
         }

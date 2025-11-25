@@ -193,11 +193,11 @@ TEST_CASE("eos", "eos") {
         for (int igp=0; igp<NP; ++igp) {
           for (int jgp=0; jgp<NP; ++jgp) {
             for (int k=0; k<NUM_PHYSICAL_LEV; ++k) {
-              REQUIRE (ADValue(exner_cxx_ie(igp,jgp,k)) == exner_f90(ie,k,igp,jgp));
-              REQUIRE (ADValue(pnh_cxx_ie(igp,jgp,k)) == pnh_f90(ie,k,igp,jgp));
-              REQUIRE (ADValue(dpnhdp_cxx_ie(igp,jgp,k)) == dpnh_dp_i_f90(ie,k,igp,jgp));
+              REQUIRE (exner_cxx_ie(igp,jgp,k) == exner_f90(ie,k,igp,jgp));
+              REQUIRE (pnh_cxx_ie(igp,jgp,k) == pnh_f90(ie,k,igp,jgp));
+              REQUIRE (dpnhdp_cxx_ie(igp,jgp,k) == dpnh_dp_i_f90(ie,k,igp,jgp));
             }
-            REQUIRE (ADValue(dpnhdp_cxx_ie(igp,jgp,NUM_INTERFACE_LEV-1)) == dpnh_dp_i_f90(ie,NUM_INTERFACE_LEV-1,igp,jgp));
+            REQUIRE (dpnhdp_cxx_ie(igp,jgp,NUM_INTERFACE_LEV-1) == dpnh_dp_i_f90(ie,NUM_INTERFACE_LEV-1,igp,jgp));
           }
         }
       }
@@ -259,7 +259,7 @@ TEST_CASE("eos", "eos") {
       for (int igp=0; igp<NP; ++igp) {
         for (int jgp=0; jgp<NP; ++jgp) {
           for (int k=0; k<NUM_INTERFACE_LEV; ++k) {
-            REQUIRE (ADValue(phi_i_cxx_ie(igp,jgp,k)) == phi_i_f90(ie,k,igp,jgp));
+            REQUIRE (phi_i_cxx_ie(igp,jgp,k) == phi_i_f90(ie,k,igp,jgp));
           }
         }
       }

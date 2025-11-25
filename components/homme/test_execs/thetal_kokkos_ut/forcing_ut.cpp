@@ -225,60 +225,60 @@ TEST_CASE("forcing", "forcing") {
                   const int ilev = k / VECTOR_SIZE;
                   const int ivec = k % VECTOR_SIZE;
 
-                  if(ADValue(h_dp(ie,np1,igp,jgp,ilev)[ivec])!=dp_f90(ie,np1,k,igp,jgp)) {
+                  if(h_dp(ie,np1,igp,jgp,ilev)[ivec]!=dp_f90(ie,np1,k,igp,jgp)) {
                     printf ("ie,k,igp,jgp: %d, %d, %d, %d\n",ie,k,igp,jgp);
                     printf ("dp_cxx: %3.16f\n",ADValue(h_dp(ie,np1,igp,jgp,ilev)[ivec]));
                     printf ("dp_f90: %3.16f\n",dp_f90(ie,np1,k,igp,jgp));
                   }
-                  REQUIRE(ADValue(h_dp(ie,np1,igp,jgp,ilev)[ivec])==dp_f90(ie,np1,k,igp,jgp));
+                  REQUIRE(h_dp(ie,np1,igp,jgp,ilev)[ivec]==dp_f90(ie,np1,k,igp,jgp));
 
-                  if(ADValue(h_fphi(ie,igp,jgp,ilev)[ivec])!=fphi_f90(ie,k,igp,jgp)) {
+                  if(h_fphi(ie,igp,jgp,ilev)[ivec]!=fphi_f90(ie,k,igp,jgp)) {
                     printf ("ie,k,igp,jgp: %d, %d, %d, %d\n",ie,k,igp,jgp);
                     printf ("fphi_cxx: %3.16f\n",ADValue(h_fphi(ie,igp,jgp,ilev)[ivec]));
                     printf ("fphi_f90: %3.16f\n",fphi_f90(ie,k,igp,jgp));
                   }
-                  REQUIRE(ADValue(h_fphi(ie,igp,jgp,ilev)[ivec])==fphi_f90(ie,k,igp,jgp));
+                  REQUIRE(h_fphi(ie,igp,jgp,ilev)[ivec]==fphi_f90(ie,k,igp,jgp));
 
-                  if(ADValue(h_fvtheta(ie,igp,jgp,ilev)[ivec])!=fvtheta_f90(ie,k,igp,jgp)) {
+                  if(h_fvtheta(ie,igp,jgp,ilev)[ivec]!=fvtheta_f90(ie,k,igp,jgp)) {
                     printf ("ie,k,igp,jgp: %d, %d, %d, %d\n",ie,k,igp,jgp);
                     printf ("fvtheta_cxx: %3.16f\n",ADValue(h_fvtheta(ie,igp,jgp,ilev)[ivec]));
                     printf ("fvtheta_f90: %3.16f\n",fvtheta_f90(ie,k,igp,jgp));
                   }
-                  REQUIRE(ADValue(h_fvtheta(ie,igp,jgp,ilev)[ivec])==fvtheta_f90(ie,k,igp,jgp));
+                  REQUIRE(h_fvtheta(ie,igp,jgp,ilev)[ivec]==fvtheta_f90(ie,k,igp,jgp));
 
                   for (int iq=0; iq<p.qsize; ++iq) {
-                    if(ADValue(h_fq(ie,iq,igp,jgp,ilev)[ivec])!=fq_f90(ie,iq,k,igp,jgp)) {
+                    if(h_fq(ie,iq,igp,jgp,ilev)[ivec]!=fq_f90(ie,iq,k,igp,jgp)) {
                       printf ("ie,iq,k,igp,jgp: %d, %d, %d, %d, %d\n",ie,iq,k,igp,jgp);
                       printf ("fq_cxx: %3.16f\n",ADValue(h_fq(ie,iq,igp,jgp,ilev)[ivec]));
                       printf ("fq_f90: %3.16f\n",fq_f90(ie,iq,k,igp,jgp));
                     }
-                    REQUIRE(ADValue(h_fq(ie,iq,igp,jgp,ilev)[ivec])==fq_f90(ie,iq,k,igp,jgp));
+                    REQUIRE(h_fq(ie,iq,igp,jgp,ilev)[ivec]==fq_f90(ie,iq,k,igp,jgp));
 
-                    if(ADValue(h_qdp(ie,np1_qdp,iq,igp,jgp,ilev)[ivec])!=qdp_f90(ie,np1_qdp,iq,k,igp,jgp)) {
+                    if(h_qdp(ie,np1_qdp,iq,igp,jgp,ilev)[ivec]!=qdp_f90(ie,np1_qdp,iq,k,igp,jgp)) {
                       printf ("ie,iq,k,igp,jgp: %d, %d, %d, %d, %d\n",ie,iq,k,igp,jgp);
                       printf ("qdp_cxx: %3.16f\n",ADValue(h_qdp(ie,np1_qdp,iq,igp,jgp,ilev)[ivec]));
                       printf ("qdp_f90: %3.16f\n",qdp_f90(ie,np1_qdp,iq,k,igp,jgp));
                     }
-                    REQUIRE(ADValue(h_qdp(ie,np1_qdp,iq,igp,jgp,ilev)[ivec])==qdp_f90(ie,np1_qdp,iq,k,igp,jgp));
+                    REQUIRE(h_qdp(ie,np1_qdp,iq,igp,jgp,ilev)[ivec]==qdp_f90(ie,np1_qdp,iq,k,igp,jgp));
 
-                    if(ADValue(h_q(ie,iq,igp,jgp,ilev)[ivec])!=q_f90(ie,iq,k,igp,jgp)) {
+                    if(h_q(ie,iq,igp,jgp,ilev)[ivec]!=q_f90(ie,iq,k,igp,jgp)) {
                       printf ("ie,iq,k,igp,jgp: %d, %d, %d, %d, %d\n",ie,iq,k,igp,jgp);
                       printf ("q_cxx: %3.16f\n",ADValue(h_q(ie,iq,igp,jgp,ilev)[ivec]));
                       printf ("q_f90: %3.16f\n",q_f90(ie,iq,k,igp,jgp));
                     }
-                    REQUIRE(ADValue(h_q(ie,iq,igp,jgp,ilev)[ivec])==q_f90(ie,iq,k,igp,jgp));
+                    REQUIRE(h_q(ie,iq,igp,jgp,ilev)[ivec]==q_f90(ie,iq,k,igp,jgp));
                   }
                 }
                 int k = NUM_INTERFACE_LEV-1;
                 const int ilev = k / VECTOR_SIZE;
                 const int ivec = k % VECTOR_SIZE;
 
-                if(ADValue(h_fphi(ie,igp,jgp,ilev)[ivec])!=fphi_f90(ie,k,igp,jgp)) {
+                if(h_fphi(ie,igp,jgp,ilev)[ivec]!=fphi_f90(ie,k,igp,jgp)) {
                   printf ("ie,k,igp,jgp: %d, %d, %d, %d\n",ie,k,igp,jgp);
                   printf ("fphi_cxx: %3.16f\n",ADValue(h_fphi(ie,igp,jgp,ilev)[ivec]));
                   printf ("fphi_f90: %3.16f\n",fphi_f90(ie,k,igp,jgp));
                 }
-                REQUIRE(ADValue(h_fphi(ie,igp,jgp,ilev)[ivec])==fphi_f90(ie,k,igp,jgp));
+                REQUIRE(h_fphi(ie,igp,jgp,ilev)[ivec]==fphi_f90(ie,k,igp,jgp));
               }
             }
           }
