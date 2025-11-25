@@ -85,6 +85,15 @@ unpackView(const ViewType<ST[N0][N1][N2], Properties...>& v_in)
   return RetView(reinterpret_cast<ScalarValue*>(v_in.data()));
 }
 
+template <typename ST, int N0, int N1, int N2, int N3, typename... Properties>
+KOKKOS_INLINE_FUNCTION
+Unmanaged<ViewType<UnpackedType<ST>[N0][N1][N2][N3*VECTOR_SIZE],Properties...>>
+unpackView(const ViewType<ST[N0][N1][N2][N3], Properties...>& v_in)
+{
+  using RetView = Unmanaged<ViewType<UnpackedType<ST>[N0][N1][N2][N3*VECTOR_SIZE],Properties...>>;
+  return RetView(reinterpret_cast<ScalarValue*>(v_in.data()));
+}
+
 template <typename ScalarType, int DIM1, int DIM2, int DIM3, typename... Properties>
 KOKKOS_INLINE_FUNCTION
 typename

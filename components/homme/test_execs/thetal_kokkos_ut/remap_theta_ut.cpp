@@ -91,16 +91,18 @@ TEST_CASE("remap", "remap_testing") {
   Kokkos::deep_copy(hybi,hvcoord.hybrid_bi);
   Kokkos::deep_copy(hyam,hvcoord.hybrid_am);
   Kokkos::deep_copy(hybm,hvcoord.hybrid_bm);
-  const Real* hyai_ptr  = hyai.data();
-  const Real* hybi_ptr  = hybi.data();
-  const Real* hyam_ptr  = reinterpret_cast<Real*>(hyam.data());
-  const Real* hybm_ptr  = reinterpret_cast<Real*>(hybm.data());
-
+  HostViewManaged<Real[NUM_PHYSICAL_LEV]> hyam_r(""),hybm_r("");
+  for (int i=0;i<NUM_PHYSICAL_LEV;++i) {
+    int ilev = i / VECTOR_SIZE;
+    int ivec = i % VECTOR_SIZE;
+    hyam_r(i) = ADValue(hyam(ilev)[ivec]);
+    hybm_r(i) = ADValue(hybm(ilev)[ivec]);
+  }
   std::vector<Real> dvv(NP*NP);
   std::vector<Real> mp(NP*NP);
 
   // This will also init the c connectivity.
-  init_remap_f90(ne,hyai_ptr,hybi_ptr,hyam_ptr,hybm_ptr,dvv.data(),mp.data(),hvcoord.ps0);
+  init_remap_f90(ne,hyai.data(),hybi.data(),hyam_r.data(),hybm_r.data(),dvv.data(),mp.data(),hvcoord.ps0);
   const int num_elems = c.get<Connectivity>().get_num_local_elements();
   params.qsize = std::max(int(QSIZE_D-1),0);
 
@@ -262,87 +264,87 @@ TEST_CASE("remap", "remap_testing") {
           Kokkos::deep_copy(h_qdp      , tracers.qdp);
 
           for (int ie=0; ie<num_elems; ++ie) {
-            auto dp3d_cxx      = viewAsReal(Homme::subview(h_dp3d,ie,np1));
-            auto vtheta_dp_cxx = viewAsReal(Homme::subview(h_vtheta_dp,ie,np1));
-            auto w_i_cxx       = viewAsReal(Homme::subview(h_w_i,ie,np1));
-            auto phinh_i_cxx   = viewAsReal(Homme::subview(h_phinh_i,ie,np1));
-            auto v_cxx         = viewAsReal(Homme::subview(h_v,ie,np1));
-            auto qdp_cxx       = viewAsReal(Homme::subview(h_qdp,ie,np1_qdp));
+            auto dp3d_cxx      = unpackView(Homme::subview(h_dp3d,ie,np1));
+            auto vtheta_dp_cxx = unpackView(Homme::subview(h_vtheta_dp,ie,np1));
+            auto w_i_cxx       = unpackView(Homme::subview(h_w_i,ie,np1));
+            auto phinh_i_cxx   = unpackView(Homme::subview(h_phinh_i,ie,np1));
+            auto v_cxx         = unpackView(Homme::subview(h_v,ie,np1));
+            auto qdp_cxx       = unpackView(Homme::subview(h_qdp,ie,np1_qdp));
 
             for (int igp=0; igp<NP; ++igp) {
               for (int jgp=0; jgp<NP; ++jgp) {
                 for (int k=0; k<NUM_PHYSICAL_LEV; ++k) {
                   // dp3d
-                  if(dp3d_cxx(igp,jgp,k)!=dp3d_f90(ie,np1,k,igp,jgp)) {
+                  if(ADValue(dp3d_cxx(igp,jgp,k))!=dp3d_f90(ie,np1,k,igp,jgp)) {
                     printf("ie,k,igp,jgp: %d, %d, %d, %d\n",ie,k,igp,jgp);
-                    printf("dp3d cxx: %3.40f\n",dp3d_cxx(igp,jgp,k));
+                    printf("dp3d cxx: %3.40f\n",ADValue(dp3d_cxx(igp,jgp,k)));
                     printf("dp3d f90: %3.40f\n",dp3d_f90(ie,np1,k,igp,jgp));
                   }
-                  REQUIRE(dp3d_cxx(igp,jgp,k)==dp3d_f90(ie,np1,k,igp,jgp));
+                  REQUIRE(ADValue(dp3d_cxx(igp,jgp,k))==dp3d_f90(ie,np1,k,igp,jgp));
 
                   // vtheta_dp
-                  if(vtheta_dp_cxx(igp,jgp,k)!=vtheta_dp_f90(ie,np1,k,igp,jgp)) {
+                  if(ADValue(vtheta_dp_cxx(igp,jgp,k))!=vtheta_dp_f90(ie,np1,k,igp,jgp)) {
                     printf("ie,k,igp,jgp: %d, %d, %d, %d\n",ie,k,igp,jgp);
-                    printf("vtheta_dp cxx: %3.40f\n",vtheta_dp_cxx(igp,jgp,k));
+                    printf("vtheta_dp cxx: %3.40f\n",ADValue(vtheta_dp_cxx(igp,jgp,k)));
                     printf("vtheta_dp f90: %3.40f\n",vtheta_dp_f90(ie,np1,k,igp,jgp));
                   }
-                  REQUIRE(vtheta_dp_cxx(igp,jgp,k)==vtheta_dp_f90(ie,np1,k,igp,jgp));
+                  REQUIRE(ADValue(vtheta_dp_cxx(igp,jgp,k))==vtheta_dp_f90(ie,np1,k,igp,jgp));
 
                   // w_i
-                  if(w_i_cxx(igp,jgp,k)!=w_i_f90(ie,np1,k,igp,jgp)) {
+                  if(ADValue(w_i_cxx(igp,jgp,k))!=w_i_f90(ie,np1,k,igp,jgp)) {
                     printf("ie,k,igp,jgp: %d, %d, %d, %d\n",ie,k,igp,jgp);
-                    printf("w_i cxx: %3.40f\n",w_i_cxx(igp,jgp,k));
+                    printf("w_i cxx: %3.40f\n",ADValue(w_i_cxx(igp,jgp,k)));
                     printf("w_i f90: %3.40f\n",w_i_f90(ie,np1,k,igp,jgp));
                   }
-                  REQUIRE(w_i_cxx(igp,jgp,k)==w_i_f90(ie,np1,k,igp,jgp));
+                  REQUIRE(ADValue(w_i_cxx(igp,jgp,k))==w_i_f90(ie,np1,k,igp,jgp));
 
                   // phinh_i
-                  if(phinh_i_cxx(igp,jgp,k)!=phinh_i_f90(ie,np1,k,igp,jgp)) {
+                  if(ADValue(phinh_i_cxx(igp,jgp,k))!=phinh_i_f90(ie,np1,k,igp,jgp)) {
                     printf("ie,k,igp,jgp: %d, %d, %d, %d\n",ie,k,igp,jgp);
-                    printf("phinh_i cxx: %3.40f\n",phinh_i_cxx(igp,jgp,k));
+                    printf("phinh_i cxx: %3.40f\n",ADValue(phinh_i_cxx(igp,jgp,k)));
                     printf("phinh_i f90: %3.40f\n",phinh_i_f90(ie,np1,k,igp,jgp));
                   }
-                  REQUIRE(phinh_i_cxx(igp,jgp,k)==phinh_i_f90(ie,np1,k,igp,jgp));
+                  REQUIRE(ADValue(phinh_i_cxx(igp,jgp,k))==phinh_i_f90(ie,np1,k,igp,jgp));
 
                   // u
-                  if(v_cxx(0,igp,jgp,k)!=v_f90(ie,np1,k,0,igp,jgp)) {
+                  if(ADValue(v_cxx(0,igp,jgp,k))!=v_f90(ie,np1,k,0,igp,jgp)) {
                     printf("ie,k,igp,jgp: %d, %d, %d, %d\n",ie,k,igp,jgp);
-                    printf("u cxx: %3.40f\n",v_cxx(0,igp,jgp,k));
+                    printf("u cxx: %3.40f\n",ADValue(v_cxx(0,igp,jgp,k)));
                     printf("u f90: %3.40f\n",v_f90(ie,np1,k,0,igp,jgp));
                   }
-                  REQUIRE(v_cxx(0,igp,jgp,k)==v_f90(ie,np1,k,0,igp,jgp));
+                  REQUIRE(ADValue(v_cxx(0,igp,jgp,k))==v_f90(ie,np1,k,0,igp,jgp));
 
                   // v
-                  if(v_cxx(1,igp,jgp,k)!=v_f90(ie,np1,k,1,igp,jgp)) {
+                  if(ADValue(v_cxx(1,igp,jgp,k))!=v_f90(ie,np1,k,1,igp,jgp)) {
                     printf("ie,k,igp,jgp: %d, %d, %d, %d\n",ie,k,igp,jgp);
-                    printf("v cxx: %3.40f\n",v_cxx(1,igp,jgp,k));
+                    printf("v cxx: %3.40f\n",ADValue(v_cxx(1,igp,jgp,k)));
                     printf("v f90: %3.40f\n",v_f90(ie,np1,k,1,igp,jgp));
                   }
-                  REQUIRE(v_cxx(1,igp,jgp,k)==v_f90(ie,np1,k,1,igp,jgp));
+                  REQUIRE(ADValue(v_cxx(1,igp,jgp,k))==v_f90(ie,np1,k,1,igp,jgp));
                   for (int iq=0; iq<params.qsize; ++iq) {
-                    if(qdp_cxx(iq,igp,jgp,k)!=qdp_f90(ie,np1_qdp,iq,k,igp,jgp)) {
+                    if(ADValue(qdp_cxx(iq,igp,jgp,k))!=qdp_f90(ie,np1_qdp,iq,k,igp,jgp)) {
                       printf("ie,q,k,igp,jgp: %d, %d, %d, %d, %d\n",ie,iq,k,igp,jgp);
-                      printf("qdp cxx: %3.40f\n",qdp_cxx(iq,igp,jgp,k));
+                      printf("qdp cxx: %3.40f\n",ADValue(qdp_cxx(iq,igp,jgp,k)));
                       printf("qdp f90: %3.40f\n",qdp_f90(ie,np1_qdp,iq,k,igp,jgp));
                     }
-                    REQUIRE(qdp_cxx(iq,igp,jgp,k)==qdp_f90(ie,np1_qdp,iq,k,igp,jgp));
+                    REQUIRE(ADValue(qdp_cxx(iq,igp,jgp,k))==qdp_f90(ie,np1_qdp,iq,k,igp,jgp));
                   }
                 }
 
                 // Check last interface for w_i and phinh_i
                 int k = NUM_PHYSICAL_LEV;
-                if(w_i_cxx(igp,jgp,k)!=w_i_f90(ie,np1,k,igp,jgp)) {
+                if(ADValue(w_i_cxx(igp,jgp,k))!=w_i_f90(ie,np1,k,igp,jgp)) {
                   printf("ie,k,igp,jgp: %d, %d, %d, %d\n",ie,k,igp,jgp);
-                  printf("w_i cxx: %3.40f\n",w_i_cxx(igp,jgp,k));
+                  printf("w_i cxx: %3.40f\n",ADValue(w_i_cxx(igp,jgp,k)));
                   printf("w_i f90: %3.40f\n",w_i_f90(ie,np1,k,igp,jgp));
                 }
-                REQUIRE(w_i_cxx(igp,jgp,k)==w_i_f90(ie,np1,k,igp,jgp));
-                if(phinh_i_cxx(igp,jgp,k)!=phinh_i_f90(ie,np1,k,igp,jgp)) {
+                REQUIRE(ADValue(w_i_cxx(igp,jgp,k))==w_i_f90(ie,np1,k,igp,jgp));
+                if(ADValue(phinh_i_cxx(igp,jgp,k))!=phinh_i_f90(ie,np1,k,igp,jgp)) {
                   printf("ie,k,igp,jgp: %d, %d, %d, %d\n",ie,k,igp,jgp);
-                  printf("phinh_i cxx: %3.40f\n",phinh_i_cxx(igp,jgp,k));
+                  printf("phinh_i cxx: %3.40f\n",ADValue(phinh_i_cxx(igp,jgp,k)));
                   printf("phinh_i f90: %3.40f\n",phinh_i_f90(ie,np1,k,igp,jgp));
                 }
-                REQUIRE(phinh_i_cxx(igp,jgp,k)==phinh_i_f90(ie,np1,k,igp,jgp));
+                REQUIRE(ADValue(phinh_i_cxx(igp,jgp,k))==phinh_i_f90(ie,np1,k,igp,jgp));
               }
             }
           }
