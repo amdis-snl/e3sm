@@ -178,10 +178,13 @@ TEST_CASE("hvf", "biharmonic") {
   Kokkos::deep_copy(hybi,hvcoord.hybrid_bi);
   Kokkos::deep_copy(hyam,hvcoord.hybrid_am);
   Kokkos::deep_copy(hybm,hvcoord.hybrid_bm);
-  const Real* hyai_ptr  = hyai.data();
-  const Real* hybi_ptr  = hybi.data();
-  const Real* hyam_ptr  = reinterpret_cast<Real*>(hyam.data());
-  const Real* hybm_ptr  = reinterpret_cast<Real*>(hybm.data());
+  HostViewManaged<Real[NUM_PHYSICAL_LEV]> hyam_r(""),hybm_r("");
+  for (int i=0;i<NUM_PHYSICAL_LEV;++i) {
+    int ilev = i / VECTOR_SIZE;
+    int ivec = i % VECTOR_SIZE;
+    hyam_r(i) = ADValue(hyam(ilev)[ivec]);
+    hybm_r(i) = ADValue(hybm(ilev)[ivec]);
+  }
 
   std::vector<Real> dvv(NP*NP);
   std::vector<Real> mp(NP*NP);
@@ -189,7 +192,7 @@ TEST_CASE("hvf", "biharmonic") {
   // This will also init the c connectivity.
 // nu is set differently for tensor than for const hv, move this call down
 // or reset nu only
-  init_hv_f90(ne,hyai_ptr,hybi_ptr,hyam_ptr,hybm_ptr,dvv.data(),mp.data(),
+  init_hv_f90(ne,hyai.data(),hybi.data(),hyam_r.data(),hybm_r.data(),dvv.data(),mp.data(),
               hvcoord.ps0,params.hypervis_subcycle,
               params.nu, params.nu_div, params.nu_top,
               params.nu_p, params.nu_s);
@@ -369,35 +372,35 @@ TEST_CASE("hvf", "biharmonic") {
         Kokkos::deep_copy(h_phitens,hvf.get_phitens());
         Kokkos::deep_copy(h_vtens,hvf.get_vtens());
         for (int ie=0; ie<num_elems; ++ie) {
-          auto dptens_cxx = viewAsReal(Homme::subview(h_dptens,ie));
-          auto ttens_cxx = viewAsReal(Homme::subview(h_ttens,ie));
-          auto wtens_cxx = viewAsReal(Homme::subview(h_wtens,ie));
-          auto phitens_cxx = viewAsReal(Homme::subview(h_phitens,ie));
-          auto vtens_cxx = viewAsReal(Homme::subview(h_vtens,ie));
+          auto dptens_cxx = unpackView(Homme::subview(h_dptens,ie));
+          auto ttens_cxx = unpackView(Homme::subview(h_ttens,ie));
+          auto wtens_cxx = unpackView(Homme::subview(h_wtens,ie));
+          auto phitens_cxx = unpackView(Homme::subview(h_phitens,ie));
+          auto vtens_cxx = unpackView(Homme::subview(h_vtens,ie));
           for (int igp=0; igp<NP; ++igp) {
             for (int jgp=0; jgp<NP; ++jgp) {
               for (int k=0; k<NUM_PHYSICAL_LEV; ++k) {
                 if(dptens_cxx(igp,jgp,k)!=dptens_f90(ie,k,igp,jgp)) {
                   printf("ie,k,igp,jgp: %d, %d, %d, %d\n",ie,k,igp,jgp);
-                  printf("dptens cxx: %3.40f\n",dptens_cxx(igp,jgp,k));
+                  printf("dptens cxx: %3.40f\n",ADValue(dptens_cxx(igp,jgp,k)));
                   printf("dptens f90: %3.40f\n",dptens_f90(ie,k,igp,jgp));
                 }
                 REQUIRE(dptens_cxx(igp,jgp,k)==dptens_f90(ie,k,igp,jgp));
                 if(ttens_cxx(igp,jgp,k)!=ttens_f90(ie,k,igp,jgp)) {
                   printf("ie,k,igp,jgp: %d, %d, %d, %d\n",ie,k,igp,jgp);
-                  printf("ttens cxx: %3.17f\n",ttens_cxx(igp,jgp,k));
+                  printf("ttens cxx: %3.17f\n",ADValue(ttens_cxx(igp,jgp,k)));
                   printf("ttens f90: %3.17f\n",ttens_f90(ie,k,igp,jgp));
                 }
                 REQUIRE(ttens_cxx(igp,jgp,k)==ttens_f90(ie,k,igp,jgp));
                 if(vtens_cxx(0,igp,jgp,k)!=vtens_f90(ie,k,0,igp,jgp)) {
                   printf("ie,k,igp,jgp: %d, %d, %d, %d\n",ie,k,igp,jgp);
-                  printf("vtens cxx: %3.40f\n",vtens_cxx(0,igp,jgp,k));
+                  printf("vtens cxx: %3.40f\n",ADValue(vtens_cxx(0,igp,jgp,k)));
                   printf("vtens f90: %3.40f\n",vtens_f90(ie,k,0,igp,jgp));
                 }
                 REQUIRE(vtens_cxx(0,igp,jgp,k)==vtens_f90(ie,k,0,igp,jgp));
                 if(vtens_cxx(1,igp,jgp,k)!=vtens_f90(ie,k,1,igp,jgp)) {
                   printf("ie,k,igp,jgp: %d, %d, %d, %d\n",ie,k,igp,jgp);
-                  printf("vtens cxx: %3.40f\n",vtens_cxx(1,igp,jgp,k));
+                  printf("vtens cxx: %3.40f\n",ADValue(vtens_cxx(1,igp,jgp,k)));
                   printf("vtens f90: %3.40f\n",vtens_f90(ie,k,1,igp,jgp));
                 }
                 REQUIRE(vtens_cxx(1,igp,jgp,k)==vtens_f90(ie,k,1,igp,jgp));
@@ -405,13 +408,13 @@ TEST_CASE("hvf", "biharmonic") {
                 if (hvf.process_nh_vars()) {
                   if(wtens_cxx(igp,jgp,k)!=wtens_f90(ie,k,igp,jgp)) {
                     printf("ie,k,igp,jgp: %d, %d, %d, %d\n",ie,k,igp,jgp);
-                    printf("wtens cxx: %3.17f\n",wtens_cxx(igp,jgp,k));
+                    printf("wtens cxx: %3.17f\n",ADValue(wtens_cxx(igp,jgp,k)));
                     printf("wtens f90: %3.17f\n",wtens_f90(ie,k,igp,jgp));
                   }
                   REQUIRE(wtens_cxx(igp,jgp,k)==wtens_f90(ie,k,igp,jgp));
                   if(phitens_cxx(igp,jgp,k)!=phitens_f90(ie,k,igp,jgp)) {
                     printf("ie,k,igp,jgp: %d, %d, %d, %d\n",ie,k,igp,jgp);
-                    printf("phitens cxx: %3.17f\n",phitens_cxx(igp,jgp,k));
+                    printf("phitens cxx: %3.17f\n",ADValue(phitens_cxx(igp,jgp,k)));
                     printf("phitens f90: %3.17f\n",phitens_f90(ie,k,igp,jgp));
                   }
                   REQUIRE(phitens_cxx(igp,jgp,k)==phitens_f90(ie,k,igp,jgp));
@@ -610,28 +613,28 @@ TEST_CASE("hvf", "biharmonic") {
 
                 if (v_cxx(ie,np1,0,igp,jgp,ilev)[ivec]!=v_f90(ie,np1,k,0,igp,jgp)) {
                   printf ("ie,k,igp,jgp: %d, %d, %d, %d\n",ie,k,igp,jgp);
-                  printf ("v_cxx: %3.40f\n",v_cxx(ie,np1,0,igp,jgp,ilev)[ivec]);
+                  printf ("v_cxx: %3.40f\n",ADValue(v_cxx(ie,np1,0,igp,jgp,ilev)[ivec]));
                   printf ("v_f90: %3.40f\n",v_f90(ie,np1,k,0,igp,jgp));
                 }
                 REQUIRE (v_cxx(ie,np1,0,igp,jgp,ilev)[ivec]==v_f90(ie,np1,k,0,igp,jgp));
 
                 if (v_cxx(ie,np1,1,igp,jgp,ilev)[ivec]!=v_f90(ie,np1,k,1,igp,jgp)) {
                   printf ("ie,k,igp,jgp: %d, %d, %d, %d\n",ie,k,igp,jgp);
-                  printf ("v_cxx: %3.40f\n",v_cxx(ie,np1,1,igp,jgp,ilev)[ivec]);
+                  printf ("v_cxx: %3.40f\n",ADValue(v_cxx(ie,np1,1,igp,jgp,ilev)[ivec]));
                   printf ("v_f90: %3.40f\n",v_f90(ie,np1,k,1,igp,jgp));
                 }
                 REQUIRE (v_cxx(ie,np1,1,igp,jgp,ilev)[ivec]==v_f90(ie,np1,k,1,igp,jgp));
 
                 if (dp_cxx(ie,np1,igp,jgp,ilev)[ivec]!=dp_f90(ie,np1,k,igp,jgp)) {
                   printf ("ie,k,igp,jgp: %d, %d, %d, %d\n",ie,k,igp,jgp);
-                  printf ("dp_cxx: %3.16f\n",dp_cxx(ie,np1,igp,jgp,ilev)[ivec]);
+                  printf ("dp_cxx: %3.16f\n",ADValue(dp_cxx(ie,np1,igp,jgp,ilev)[ivec]));
                   printf ("dp_f90: %3.16f\n",dp_f90(ie,np1,k,igp,jgp));
                 }
                 REQUIRE (dp_cxx(ie,np1,igp,jgp,ilev)[ivec]==dp_f90(ie,np1,k,igp,jgp));
 
                 if (vtheta_cxx(ie,np1,igp,jgp,ilev)[ivec]!=vtheta_f90(ie,np1,k,igp,jgp)) {
                   printf ("ie,k,igp,jgp: %d, %d, %d, %d\n",ie,k,igp,jgp);
-                  printf ("vtheta_cxx: %3.16f\n",vtheta_cxx(ie,np1,igp,jgp,ilev)[ivec]);
+                  printf ("vtheta_cxx: %3.16f\n",ADValue(vtheta_cxx(ie,np1,igp,jgp,ilev)[ivec]));
                   printf ("vtheta_f90: %3.16f\n",vtheta_f90(ie,np1,k,igp,jgp));
                 }
                 REQUIRE (vtheta_cxx(ie,np1,igp,jgp,ilev)[ivec]==vtheta_f90(ie,np1,k,igp,jgp));
@@ -639,14 +642,14 @@ TEST_CASE("hvf", "biharmonic") {
                 if (hvf.process_nh_vars()) {
                   if (w_cxx(ie,np1,igp,jgp,ilev)[ivec]!=w_f90(ie,np1,k,igp,jgp)) {
                     printf ("ie,k,igp,jgp: %d, %d, %d, %d\n",ie,k,igp,jgp);
-                    printf ("w_cxx: %3.16f\n",w_cxx(ie,np1,igp,jgp,ilev)[ivec]);
+                    printf ("w_cxx: %3.16f\n",ADValue(w_cxx(ie,np1,igp,jgp,ilev)[ivec]));
                     printf ("w_f90: %3.16f\n",w_f90(ie,np1,k,igp,jgp));
                   }
                   REQUIRE (w_cxx(ie,np1,igp,jgp,ilev)[ivec]==w_f90(ie,np1,k,igp,jgp));
 
                   if (phinh_cxx(ie,np1,igp,jgp,ilev)[ivec]!=phinh_f90(ie,np1,k,igp,jgp)) {
                     printf ("ie,k,igp,jgp: %d, %d, %d, %d\n",ie,k,igp,jgp);
-                    printf ("phinh_cxx: %3.16f\n",phinh_cxx(ie,np1,igp,jgp,ilev)[ivec]);
+                    printf ("phinh_cxx: %3.16f\n",ADValue(phinh_cxx(ie,np1,igp,jgp,ilev)[ivec]));
                     printf ("phinh_f90: %3.16f\n",phinh_f90(ie,np1,k,igp,jgp));
                   }
                   REQUIRE (phinh_cxx(ie,np1,igp,jgp,ilev)[ivec]==phinh_f90(ie,np1,k,igp,jgp));
@@ -661,14 +664,14 @@ TEST_CASE("hvf", "biharmonic") {
 
                 if (phinh_cxx(ie,np1,igp,jgp,ilev)[ivec]!=phinh_f90(ie,np1,k,igp,jgp)) {
                   printf ("ie,k,igp,jgp: %d, %d, %d, %d\n",ie,k,igp,jgp);
-                  printf ("phinh_cxx: %3.16f\n",phinh_cxx(ie,np1,igp,jgp,ilev)[ivec]);
+                  printf ("phinh_cxx: %3.16f\n",ADValue(phinh_cxx(ie,np1,igp,jgp,ilev)[ivec]));
                   printf ("phinh_f90: %3.16f\n",phinh_f90(ie,np1,k,igp,jgp));
                 }
                 REQUIRE (phinh_cxx(ie,np1,igp,jgp,ilev)[ivec]==phinh_f90(ie,np1,k,igp,jgp));
 
                 if (w_cxx(ie,np1,igp,jgp,ilev)[ivec]!=w_f90(ie,np1,k,igp,jgp)) {
                   printf ("ie,k,igp,jgp: %d, %d, %d, %d\n",ie,k,igp,jgp);
-                  printf ("w_cxx: %3.16f\n",w_cxx(ie,np1,igp,jgp,ilev)[ivec]);
+                  printf ("w_cxx: %3.16f\n",ADValue(w_cxx(ie,np1,igp,jgp,ilev)[ivec]));
                   printf ("w_f90: %3.16f\n",w_f90(ie,np1,k,igp,jgp));
                 }
                 REQUIRE (w_cxx(ie,np1,igp,jgp,ilev)[ivec]==w_f90(ie,np1,k,igp,jgp));
