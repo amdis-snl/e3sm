@@ -146,13 +146,16 @@ public:
   }
 
   int requested_buffer_size () const {
-    const int nslots = m_tu_tracers.get_num_ws_slots();
+    const int nslots = std::max(m_tu_tracers_pre.get_num_ws_slots(),
+                                m_tu_tracers.get_num_ws_slots());
+    // const int nslots = m_tu_tracers.get_num_ws_slots();
     const int nelems = m_num_state_elems;
     constexpr int mid_size = NP*NP*NUM_LEV*VECTOR_SIZE;
     constexpr int int_size = NP*NP*NUM_LEV_P*VECTOR_SIZE;
 
     // 3 persistent midlayers, 2 non-persistent midlayer, and 1 non-persistent interface
-    return mid_size*(nelems*4+nslots) + int_size*nslots;
+    // Multiply by (1+HOMMEXX_SFAD_SIZE)
+    return (1+HOMMEXX_SFAD_SIZE)*(mid_size*(nelems*4+nslots) + int_size*nslots);
   }
 
   void init_buffers (const FunctorsBuffersManager& fbm) {
@@ -160,6 +163,7 @@ public:
                                    m_tu_tracers.get_num_ws_slots());
 
     constexpr int mid_size = NP*NP*NUM_LEV;
+    constexpr int int_size = NP*NP*NUM_LEV_P;
 
     Scalar* mem = reinterpret_cast<Scalar*>(fbm.get_memory());
 
@@ -179,6 +183,18 @@ public:
     mem += mid_size*num_slots;
 
     m_pi_i = decltype(m_pi_i)(mem,num_slots);
+    mem += int_size*num_slots;
+
+    int used = reinterpret_cast<Real*>(mem) - fbm.get_memory();
+    if (used!=requested_buffer_size()) {
+      printf("used: %d\n",used);
+      printf("requested: %d\n",requested_buffer_size());
+      printf("nelems: %d\n",m_num_state_elems);
+      printf("nslots: %d\n",num_slots);
+      printf("mid_size: %d\n",mid_size);
+      printf("int_size: %d\n",int_size);
+      throw std::runtime_error("wrong used size");
+    }
   }
 
   void states_forcing (const Real dt, const int np1) {
