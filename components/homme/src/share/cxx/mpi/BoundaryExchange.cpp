@@ -235,7 +235,7 @@ void BoundaryExchange::registration_completed()
   assert (m_buffers_manager);
 
   // Create the MPI data types, for corners and edges
-  // Note: this is the size per element, per connection. It is the number of Real's to send/receive to/from the neighbor
+  // Note: this is the size per element, per connection. It is the number of ScalarValue's to send/receive to/from the neighbor
   // Note: for 2d/3d fields, we have 1 Real per GP (per level, in 3d). For 1d fields,
   //       we have 2 Real per level (max and min over element).
 

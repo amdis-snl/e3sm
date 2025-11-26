@@ -253,7 +253,7 @@ private:
   std::vector<MPI_Request>  m_recv_requests;
 
   ExecViewManaged<ExecViewManaged<Scalar[2][NUM_LEV]>**>            m_1d_fields;
-  ExecViewManaged<ExecViewManaged<ScalarValue[NP][NP]>**>                  m_2d_fields;
+  ExecViewManaged<ExecViewManaged<ScalarValue[NP][NP]>**>           m_2d_fields;
   ExecViewManaged<ExecViewManaged<Scalar[NP][NP][NUM_LEV]>**>       m_3d_fields;
   ExecViewManaged<ExecViewManaged<Scalar[NP][NP][NUM_LEV_P]>**>     m_3d_int_fields;
 
@@ -273,8 +273,8 @@ private:
   ExecViewManaged<ExecViewUnmanaged<Scalar[2][NUM_LEV]>**>  m_send_1d_buffers;
   ExecViewManaged<ExecViewUnmanaged<Scalar[2][NUM_LEV]>**>  m_recv_1d_buffers;
 
-  ExecViewManaged<ExecViewUnmanaged<ScalarValue*>**>               m_send_2d_buffers;
-  ExecViewManaged<ExecViewUnmanaged<ScalarValue*>**>               m_recv_2d_buffers;
+  ExecViewManaged<ExecViewUnmanaged<ScalarValue*>**>        m_send_2d_buffers;
+  ExecViewManaged<ExecViewUnmanaged<ScalarValue*>**>        m_recv_2d_buffers;
 
   ExecViewManaged<ExecViewUnmanaged<Scalar**>**>            m_send_3d_buffers;
   ExecViewManaged<ExecViewUnmanaged<Scalar**>**>            m_recv_3d_buffers;
