@@ -393,8 +393,8 @@ TEST_CASE ("dirk_pieces_testing") {
           pi = idx / dfi::packn,
           si = idx % dfi::packn;
         for (int k = 0; k < nlev; ++k) {
-          const auto v = -((k > 0      ? dlm(k,pi)[si] : 0) +
-                           (k < nlev-1 ? dum(k,pi)[si] : 0));
+          const ScalarValue v = -((k > 0      ? dlm(k,pi)[si] : 0) +
+                                 (k < nlev-1 ? dum(k,pi)[si] : 0));
           REQUIRE(v >= 0);
           REQUIRE(dm(k,pi)[si] > v);
         }
