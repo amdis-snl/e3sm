@@ -454,8 +454,8 @@ struct CaarFunctorImpl {
     const auto& phis_y = m_geometry.m_gradphis(ie,1,igp,jgp);
 
     // Compute dpnh_dp_i on surface
-    auto dpnh_dp_i = 1 + ( ( (u*phis_x + v*phis_y)/g - w) /
-                             (g + (phis_x*phis_x+phis_y*phis_y)/(2*g) ) ) / m_data.dt;
+    ScalarValue dpnh_dp_i = 1 + ( ( (u*phis_x + v*phis_y)/g - w) /
+                                (g + (phis_x*phis_x+phis_y*phis_y)/(2*g) ) ) / m_data.dt;
 
     // Update w_i on bottom interface
     // Update v on bottom level
@@ -481,7 +481,7 @@ struct CaarFunctorImpl {
              ie,igp,jgp,w,(u*phis_x+v*phis_y)/g,fabs( (u*phis_x+v*phis_y)/g - w ));
     }
 
-    auto phi = Homme::viewAsReal(Homme::subview(m_state.m_phinh_i,ie,m_data.np1,igp,jgp));
+    auto phi = unpackView(Homme::subview(m_state.m_phinh_i,ie,m_data.np1,igp,jgp));
     for (int k=0; k<NUM_PHYSICAL_LEV; ++k) {
       if ( (phi(k)-phi(k+1)) < g ) {
         printf("[CAAR] WARNING! delta z < 1m, at (ie,igp,jgp,k) = (%d,%d,%d,%d):\n"
@@ -710,12 +710,12 @@ struct CaarFunctorImpl {
 
   KOKKOS_INLINE_FUNCTION
   void compute_eta_dot_dpn (KernelVariables& kv, const int& igp, const int& jgp) const {
-    auto div_vdp = viewAsReal(Homme::subview(m_buffers.div_vdp,kv.team_idx,igp,jgp));
-    auto eta_dot_dpdn = viewAsReal(Homme::subview(m_buffers.eta_dot_dpdn,kv.team_idx,igp,jgp));
+    auto div_vdp = unpackView(Homme::subview(m_buffers.div_vdp,kv.team_idx,igp,jgp));
+    auto eta_dot_dpdn = unpackView(Homme::subview(m_buffers.eta_dot_dpdn,kv.team_idx,igp,jgp));
 
     // Integrate -vdp
     Dispatch<ExecSpace>::parallel_scan(kv.team,NUM_PHYSICAL_LEV,
-                          [&](const int ilev, Real& accumulator, const bool last) {
+                          [&](const int ilev, ScalarValue& accumulator, const bool last) {
       accumulator += div_vdp(ilev);
       if (last) {
         eta_dot_dpdn(ilev+1) = -accumulator;
@@ -723,7 +723,7 @@ struct CaarFunctorImpl {
     });
 
     // Get the last entry, which is the sum over the whole column
-    const Real eta_dot_dpdn_last = -eta_dot_dpdn(NUM_INTERFACE_LEV-1);
+    const ScalarValue eta_dot_dpdn_last = -eta_dot_dpdn(NUM_INTERFACE_LEV-1);
 
     Kokkos::parallel_for(Kokkos::ThreadVectorRange(kv.team,1,NUM_PHYSICAL_LEV),
                          [&](const int ilev) {
@@ -740,28 +740,28 @@ struct CaarFunctorImpl {
   void compute_v_vadv (KernelVariables& kv, const int& igp, const int& jgp) const {
     // Note: save v_vadv temp by stuffing directly in vtens
 
-    auto u  = viewAsReal(Homme::subview(m_state.m_v,kv.ie,m_data.n0,0,igp,jgp));
-    auto v  = viewAsReal(Homme::subview(m_state.m_v,kv.ie,m_data.n0,1,igp,jgp));
-    auto dp = viewAsReal(Homme::subview(m_state.m_dp3d,kv.ie,m_data.n0,igp,jgp));
-    auto eta_dot_dpdn = viewAsReal(Homme::subview(m_buffers.eta_dot_dpdn,kv.team_idx,igp,jgp));
-    auto u_vadv = viewAsReal(Homme::subview(m_buffers.v_tens,kv.team_idx,0,igp,jgp));
-    auto v_vadv = viewAsReal(Homme::subview(m_buffers.v_tens,kv.team_idx,1,igp,jgp));
+    auto u  = unpackView(Homme::subview(m_state.m_v,kv.ie,m_data.n0,0,igp,jgp));
+    auto v  = unpackView(Homme::subview(m_state.m_v,kv.ie,m_data.n0,1,igp,jgp));
+    auto dp = unpackView(Homme::subview(m_state.m_dp3d,kv.ie,m_data.n0,igp,jgp));
+    auto eta_dot_dpdn = unpackView(Homme::subview(m_buffers.eta_dot_dpdn,kv.team_idx,igp,jgp));
+    auto u_vadv = unpackView(Homme::subview(m_buffers.v_tens,kv.team_idx,0,igp,jgp));
+    auto v_vadv = unpackView(Homme::subview(m_buffers.v_tens,kv.team_idx,1,igp,jgp));
 
     // TODO: vectorize this code.
-    const auto facp_1 = 0.5*eta_dot_dpdn(1)/dp(0);
+    const ScalarValue facp_1 = 0.5*eta_dot_dpdn(1)/dp(0);
     u_vadv(0) = facp_1*(u(1)-u(0));
     v_vadv(0) = facp_1*(v(1)-v(0));
 
     Kokkos::parallel_for(Kokkos::ThreadVectorRange(kv.team,1,NUM_PHYSICAL_LEV-1),
                          [&](const int k) {
-      const auto facp = 0.5*eta_dot_dpdn(k+1)/dp(k);
-      const auto facm = 0.5*eta_dot_dpdn(k)/dp(k);
+      const ScalarValue facp = 0.5*eta_dot_dpdn(k+1)/dp(k);
+      const ScalarValue facm = 0.5*eta_dot_dpdn(k)/dp(k);
       u_vadv(k) = facp*(u(k+1)-u(k)) + facm*(u(k)-u(k-1));
       v_vadv(k) = facp*(v(k+1)-v(k)) + facm*(v(k)-v(k-1));
     });
 
     constexpr int last = NUM_PHYSICAL_LEV-1;
-    const auto facm_N = 0.5*eta_dot_dpdn(last)/dp(last);
+    const ScalarValue facm_N = 0.5*eta_dot_dpdn(last)/dp(last);
     u_vadv(last) = facm_N*(u(last)-u(last-1));
     v_vadv(last) = facm_N*(v(last)-v(last-1));
   }

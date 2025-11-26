@@ -491,8 +491,8 @@ TEST_CASE("caar", "caar_testing") {
     Kokkos::deep_copy(h_dp3d     , elems.m_state.m_dp3d);
     Kokkos::deep_copy(h_vtheta_dp, elems.m_state.m_vtheta_dp);
     for (int ie=0; ie<num_elems; ++ie) {
-      auto dp3d_cxx      = viewAsReal(Homme::subview(h_dp3d,ie,np1));
-      auto vtheta_dp_cxx = viewAsReal(Homme::subview(h_vtheta_dp,ie,np1));
+      auto dp3d_cxx      = unpackView(Homme::subview(h_dp3d,ie,np1));
+      auto vtheta_dp_cxx = unpackView(Homme::subview(h_vtheta_dp,ie,np1));
 
       for (int igp=0; igp<NP; ++igp) {
         for (int jgp=0; jgp<NP; ++jgp) {
@@ -500,7 +500,7 @@ TEST_CASE("caar", "caar_testing") {
             // dp3d
             if(dp3d_cxx(igp,jgp,k)!=dp3d_f90(ie,np1,k,igp,jgp)) {
               printf("rank,ie,k,igp,jgp: %d, %d, %d, %d, %d\n",rank,ie,k,igp,jgp);
-              printf("dp3d cxx: %3.40f\n",dp3d_cxx(igp,jgp,k));
+              printf("dp3d cxx: %3.40f\n",ADValue(dp3d_cxx(igp,jgp,k)));
               printf("dp3d f90: %3.40f\n",dp3d_f90(ie,np1,k,igp,jgp));
             }
             REQUIRE(dp3d_cxx(igp,jgp,k)==dp3d_f90(ie,np1,k,igp,jgp));
@@ -508,7 +508,7 @@ TEST_CASE("caar", "caar_testing") {
             // vtheta_dp
             if(vtheta_dp_cxx(igp,jgp,k)!=vtheta_dp_f90(ie,np1,k,igp,jgp)) {
               printf("rank,ie,k,igp,jgp: %d, %d, %d, %d, %d\n",rank,ie,k,igp,jgp);
-              printf("vtheta_dp cxx: %3.40f\n",vtheta_dp_cxx(igp,jgp,k));
+              printf("vtheta_dp cxx: %3.40f\n",ADValue(vtheta_dp_cxx(igp,jgp,k)));
               printf("vtheta_dp f90: %3.40f\n",vtheta_dp_f90(ie,np1,k,igp,jgp));
             }
             REQUIRE(vtheta_dp_cxx(igp,jgp,k)==vtheta_dp_f90(ie,np1,k,igp,jgp));
