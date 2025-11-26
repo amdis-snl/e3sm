@@ -10,6 +10,7 @@ namespace Homme {
 
 void Context::clear() {
   m_members.clear();
+  m_is_ref_wrapper.clear();
 }
 
 Context& Context::singleton() {
