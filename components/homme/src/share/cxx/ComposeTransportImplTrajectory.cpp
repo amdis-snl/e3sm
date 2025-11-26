@@ -457,7 +457,7 @@ static int test_approx_derivative () {
           if (err > 1e3*std::numeric_limits<Real>::epsilon()) {
             ++nerr;
             printf("%2d %d %d %1.2f %6.2f %6.2f %9.2e\n",
-                   i, j, k, x, ypp, ADValue(yish(i,j,k)), err);
+                   i, j, k, x, ypp, ADValue(yish(i,j,k)), ADValue(err));
           }
         }
   }
