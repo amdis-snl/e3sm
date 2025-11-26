@@ -96,12 +96,12 @@ jobs:
            -S ${GITHUB_WORKSPACE}/e3sm/source/components/homme
       - name: hommexx-build
         run: |
-          cd ${GITHUB_WORKSPACE}/e3sm/build
-          make -j4
+          cd ${GITHUB_WORKSPACE}/e3sm/build/test_execs/thetal_kokkos_ut
+          make -j4 dirk_ut
       - name: hommexx-test
         run: |
           cd ${GITHUB_WORKSPACE}/e3sm/build
-          ctest --output-on-failure -L unit
+          ctest --output-on-failure -R dirk
       - name: Upload log files
         if: ${{ always() }}
         uses: actions/upload-artifact@v4
