@@ -78,37 +78,35 @@ contains
     call get_dirk_jacobian(JacL,JacD,JacU,dt2,dp3d,dphi,pnh,1)
   end subroutine get_dirk_jacobian_f90
 
-  subroutine c2f_f90(n, cnlev, cnlevp, dp3d, w_i, v, vtheta_dp, phinh_i, gradphis, phis) bind(c)
+  subroutine c2f_f90(n, dp3d, w_i, v, vtheta_dp, phinh_i, gradphis, phis) bind(c)
     use iso_c_binding,         only: c_int
     use dimensions_mod,        only: nlev, nlevp, np
     use geometry_interface_mod,only: elem
 
     integer, parameter :: ntl = 3
 
-    integer (kind=c_int), value, intent(in) :: n, cnlev, cnlevp
+    integer (kind=c_int), value, intent(in) :: n
     real (kind=real_kind), intent(in) :: &
-         dp3d(cnlev,np,np,ntl,n), w_i(cnlevp,np,np,ntl,n), v(cnlev,np,np,2,ntl,n), &
-         vtheta_dp(cnlev,np,np,ntl,n), phinh_i(cnlevp,np,np,ntl,n), gradphis(np,np,2,n), &
+         dp3d(np,np,nlev,ntl,n), w_i(np,np,nlevp,ntl,n), v(np,np,2,nlev,ntl,n), &
+         vtheta_dp(np,np,nlev,ntl,n), phinh_i(np,np,nlevp,ntl,n), gradphis(np,np,2,n), &
          phis(np,np,n)
 
     integer :: ie, t, k, j, i
 
     if (n /= size(elem)) print *, 'n /= size(nelem)'
-    if (cnlev < nlev) print *, 'nlev < cnlev'
-    if (cnlevp < nlevp) print *, 'nlevp < cnlevp'
 
     do ie = 1,n
        do t = 1,ntl
           do k = 1,nlevp
              do j = 1,np
                 do i = 1,np
-                   elem(ie)%state%w_i(i,j,k,t) = w_i(k,j,i,t,ie)
-                   elem(ie)%state%phinh_i(i,j,k,t) = phinh_i(k,j,i,t,ie)
+                   elem(ie)%state%w_i(i,j,k,t) = w_i(j,i,k,t,ie)
+                   elem(ie)%state%phinh_i(i,j,k,t) = phinh_i(j,i,k,t,ie)
                    if (k /= nlevp) then
-                      elem(ie)%state%dp3d(i,j,k,t) = dp3d(k,j,i,t,ie)
-                      elem(ie)%state%v(i,j,1,k,t) = v(k,j,i,1,t,ie)
-                      elem(ie)%state%v(i,j,2,k,t) = v(k,j,i,2,t,ie)
-                      elem(ie)%state%vtheta_dp(i,j,k,t) = vtheta_dp(k,j,i,t,ie)
+                      elem(ie)%state%dp3d(i,j,k,t) = dp3d(j,i,k,t,ie)
+                      elem(ie)%state%v(i,j,1,k,t) = v(j,i,1,k,t,ie)
+                      elem(ie)%state%v(i,j,2,k,t) = v(j,i,2,k,t,ie)
+                      elem(ie)%state%vtheta_dp(i,j,k,t) = vtheta_dp(j,i,k,t,ie)
                    end if
                 end do
              end do
@@ -124,36 +122,34 @@ contains
     end do
   end subroutine c2f_f90
 
-  subroutine f2c_f90(n, cnlev, cnlevp, dp3d, w_i, v, vtheta_dp, phinh_i, gradphis) bind(c)
+  subroutine f2c_f90(n, dp3d, w_i, v, vtheta_dp, phinh_i, gradphis) bind(c)
     use iso_c_binding,         only: c_int
     use dimensions_mod,        only: nlev, nlevp, np
     use geometry_interface_mod,only: elem
 
     integer, parameter :: ntl = 3
 
-    integer (kind=c_int), value, intent(in) :: n, cnlev, cnlevp
+    integer (kind=c_int), value, intent(in) :: n
     real (kind=real_kind), intent(out) :: &
-         dp3d(cnlev,np,np,ntl,n), w_i(cnlevp,np,np,ntl,n), v(cnlev,np,np,2,ntl,n), &
-         vtheta_dp(cnlev,np,np,ntl,n), phinh_i(cnlevp,np,np,ntl,n), gradphis(np,np,2,n)
+         dp3d(np,np,nlev,ntl,n), w_i(np,np,nlevp,ntl,n), v(np,np,2,nlev,ntl,n), &
+         vtheta_dp(np,np,nlev,ntl,n), phinh_i(np,np,nlevp,ntl,n), gradphis(np,np,2,n)
 
     integer :: ie, t, k, j, i
 
     if (n /= size(elem)) print *, 'n /= size(nelem)'
-    if (cnlev < nlev) print *, 'nlev < cnlev'
-    if (cnlevp < nlevp) print *, 'nlevp < cnlevp'
 
     do ie = 1,n
        do t = 1,ntl
           do k = 1,nlevp
              do j = 1,np
                 do i = 1,np
-                   w_i(k,j,i,t,ie) = elem(ie)%state%w_i(i,j,k,t)
-                   phinh_i(k,j,i,t,ie) = elem(ie)%state%phinh_i(i,j,k,t)
+                   w_i(j,i,k,t,ie) = elem(ie)%state%w_i(i,j,k,t)
+                   phinh_i(j,i,k,t,ie) = elem(ie)%state%phinh_i(i,j,k,t)
                    if (k /= nlevp) then
-                      dp3d(k,j,i,t,ie) = elem(ie)%state%dp3d(i,j,k,t)
-                      v(k,j,i,1,t,ie) = elem(ie)%state%v(i,j,1,k,t)
-                      v(k,j,i,2,t,ie) = elem(ie)%state%v(i,j,2,k,t)
-                      vtheta_dp(k,j,i,t,ie) = elem(ie)%state%vtheta_dp(i,j,k,t)
+                      dp3d(j,i,k,t,ie) = elem(ie)%state%dp3d(i,j,k,t)
+                      v(j,i,1,k,t,ie) = elem(ie)%state%v(i,j,1,k,t)
+                      v(j,i,2,k,t,ie) = elem(ie)%state%v(i,j,2,k,t)
+                      vtheta_dp(j,i,k,t,ie) = elem(ie)%state%vtheta_dp(i,j,k,t)
                    end if
                 end do
              end do

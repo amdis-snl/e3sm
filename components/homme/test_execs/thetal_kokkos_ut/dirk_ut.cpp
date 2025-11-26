@@ -26,9 +26,9 @@ extern "C" {
                                   Real* pnh, Real* exner, Real* dpnh_dp_i);
   void compute_gwphis_f90(Real* gwh_i, const Real* dp3d, const Real* v, const Real* gradphis);
   void tridiag_diagdom_bfb_a1x1(int n, void* dl, void* d, void* du, void* x, int real_size);
-  void c2f_f90(int nelem, int nlev, int nlevp, const Real* dp3d, const Real* w_i, const Real* v,
+  void c2f_f90(int nelem, const Real* dp3d, const Real* w_i, const Real* v,
                const Real* vtheta_dp, const Real* phinh_i, const Real* gradphis, const Real* phis);
-  void f2c_f90(int nelem, int nlev, int nlevp, Real* dp3d, Real* w_i, Real* v,
+  void f2c_f90(int nelem, Real* dp3d, Real* w_i, Real* v,
                Real* vtheta_dp, Real* phinh_i, Real* gradphis);
   void get_dirk_jacobian_f90(Real* dl, Real* d, Real* du, Real dt, const Real* dp3d,
                              const Real* dphi, const Real* pnh);
@@ -241,6 +241,7 @@ void require_all_equal (const int nlev, const V& a, const V& b,
 template <typename V>
 void c2f (const V& c, const FA3& f) {
   const auto cm = cmvdc(c);
+
   for (int i = 0; i < c.extent_int(0); ++i)
     for (int j = 0; j < c.extent_int(1); ++j) {
       auto* const p = &cm(i,j,0)[0];
@@ -603,45 +604,42 @@ TEST_CASE ("dirk_pieces_testing") {
 }
 
 static void c2f (const Elements& e) {
-  const auto dp3d = cmvdc(e.m_state.m_dp3d);
-  const auto w_i = cmvdc(e.m_state.m_w_i);
-  const auto v = cmvdc(e.m_state.m_v);
-  const auto vtheta_dp = cmvdc(e.m_state.m_vtheta_dp);
-  const auto phinh_i = cmvdc(e.m_state.m_phinh_i);
   const auto gradphis = cmvdc(e.m_geometry.m_gradphis);
   const auto phis = cmvdc(e.m_geometry.m_phis);
-  c2f_f90(e.num_elems(), VECTOR_SIZE*NUM_LEV, VECTOR_SIZE*NUM_LEV_P,
-    reinterpret_cast<Real*>(dp3d.data()),
-    reinterpret_cast<Real*>(w_i.data()),
-    reinterpret_cast<Real*>(v.data()),
-    reinterpret_cast<Real*>(vtheta_dp.data()),
-    reinterpret_cast<Real*>(phinh_i.data()),
-    reinterpret_cast<Real*>(gradphis.data()),
-    reinterpret_cast<Real*>(phis.data()));
+
+  int nelems = e.num_elems();
+  HostViewManaged<Real*[NUM_TIME_LEVELS][NUM_PHYSICAL_LEV][NP][NP]> dp3d("",nelems);
+  HostViewManaged<Real*[NUM_TIME_LEVELS][NUM_INTERFACE_LEV][NP][NP]> w_i("",nelems);
+  HostViewManaged<Real*[NUM_TIME_LEVELS][NUM_PHYSICAL_LEV][2][NP][NP]> v("",nelems);
+  HostViewManaged<Real*[NUM_TIME_LEVELS][NUM_PHYSICAL_LEV][NP][NP]> vtheta_dp("",nelems);
+  HostViewManaged<Real*[NUM_TIME_LEVELS][NUM_INTERFACE_LEV][NP][NP]> phinh_i("",nelems);
+  sync_to_host(e.m_state.m_dp3d,dp3d);
+  sync_to_host(e.m_state.m_w_i,w_i);
+  sync_to_host(e.m_state.m_v,v);
+  sync_to_host(e.m_state.m_vtheta_dp,vtheta_dp);
+  sync_to_host(e.m_state.m_phinh_i,phinh_i);
+
+  c2f_f90(e.num_elems(), dp3d.data(),w_i.data(),v.data(),vtheta_dp.data(),phinh_i.data(),
+      gradphis.data(),phis.data());
 }
 
 static void f2c (Elements& e) {
   using Kokkos::create_mirror_view;
   using Kokkos::deep_copy;
-  const auto dp3d = create_mirror_view(e.m_state.m_dp3d);
-  const auto w_i = create_mirror_view(e.m_state.m_w_i);
-  const auto v = create_mirror_view(e.m_state.m_v);
-  const auto vtheta_dp = create_mirror_view(e.m_state.m_vtheta_dp);
-  const auto phinh_i = create_mirror_view(e.m_state.m_phinh_i);
   const auto gradphis = create_mirror_view(e.m_geometry.m_gradphis);
-  f2c_f90(e.num_elems(), VECTOR_SIZE*NUM_LEV, VECTOR_SIZE*NUM_LEV_P,
-    reinterpret_cast<Real*>(dp3d.data()),
-    reinterpret_cast<Real*>(w_i.data()),
-    reinterpret_cast<Real*>(v.data()),
-    reinterpret_cast<Real*>(vtheta_dp.data()),
-    reinterpret_cast<Real*>(phinh_i.data()),
-    reinterpret_cast<Real*>(gradphis.data()));
-  deep_copy(e.m_state.m_dp3d, dp3d);
-  deep_copy(e.m_state.m_w_i, w_i);
-  deep_copy(e.m_state.m_v, v); 
-  deep_copy(e.m_state.m_vtheta_dp, vtheta_dp );
-  deep_copy(e.m_state.m_phinh_i, phinh_i);
-  deep_copy(e.m_geometry.m_gradphis, gradphis);
+  int nelems = e.num_elems();
+  HostViewManaged<Real*[NUM_TIME_LEVELS][NUM_PHYSICAL_LEV][NP][NP]> dp3d("",nelems);
+  HostViewManaged<Real*[NUM_TIME_LEVELS][NUM_INTERFACE_LEV][NP][NP]> w_i("",nelems);
+  HostViewManaged<Real*[NUM_TIME_LEVELS][NUM_PHYSICAL_LEV][2][NP][NP]> v("",nelems);
+  HostViewManaged<Real*[NUM_TIME_LEVELS][NUM_PHYSICAL_LEV][NP][NP]> vtheta_dp("",nelems);
+  HostViewManaged<Real*[NUM_TIME_LEVELS][NUM_INTERFACE_LEV][NP][NP]> phinh_i("",nelems);
+  f2c_f90(e.num_elems(),dp3d.data(),w_i.data(),v.data(),vtheta_dp.data(),phinh_i.data(),gradphis.data());
+  sync_to_device(dp3d,e.m_state.m_dp3d);
+  sync_to_device(w_i,e.m_state.m_w_i);
+  sync_to_device(v,e.m_state.m_v); 
+  sync_to_device(vtheta_dp,e.m_state.m_vtheta_dp);
+  sync_to_device(phinh_i,e.m_state.m_phinh_i);
+  Kokkos::deep_copy(e.m_geometry.m_gradphis, gradphis);
 }
 
 static void init_elems (int, int nelemd, Random& r, const HybridVCoord& hvcoord,

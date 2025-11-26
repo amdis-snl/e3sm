@@ -340,7 +340,7 @@ struct DirkFunctorImpl {
       loop_ki(kv, nlev, nvec, [&] (int k, int i) { dphi_n0(k,i) = phi_n0(k+1,i) - phi_n0(k,i); });
 
       int it = 0;
-      Real deltaerr;
+      ScalarValue deltaerr = 0;
       for (; it < maxiter; ++it) { // Newton iteration
         const bool ok = pnh_and_exner_from_eos(kv, hvcoord, vtheta_dp, dp3d,
                                                dphi, pnh, wrk, dpnh_dp_i);
@@ -652,55 +652,55 @@ struct DirkFunctorImpl {
   }
 
   KOKKOS_INLINE_FUNCTION
-  static Real calc_wmax (const KernelVariables& kv, const int nlev, const int nvec,
+  static ScalarValue calc_wmax (const KernelVariables& kv, const int nlev, const int nvec,
                          const WorkSlot& w) {
     using Kokkos::parallel_reduce;
     using Kokkos::TeamThreadRange;
     using Kokkos::ThreadVectorRange;
 
-    const auto f = [&] (int k, Real& maxval) {
-      const auto g = [&] (int i, Real& lmaxval) {
+    const auto f = [&] (int k, ScalarValue& maxval) {
+      const auto g = [&] (int i, ScalarValue& lmaxval) {
         const auto v = w(k,i);
         for (int s = 0; s < packn; ++s) {
           if (scaln % packn != 0 && i*packn + s >= scaln) break;
-          lmaxval = max(lmaxval, ADValue(std::abs(v[s])));
+          lmaxval = max(lmaxval, abs(v[s]));
         }
       };
-      Real lmaxval;
+      ScalarValue lmaxval = 0;
       const auto vr = ThreadVectorRange(kv.team, nvec);
-      parallel_reduce(vr, g, Kokkos::Max<Real>(lmaxval));
+      parallel_reduce(vr, g, Kokkos::Max<ScalarValue>(lmaxval));
       maxval = max(maxval, lmaxval); // benign write race
     };
-    Real wmax;
+    ScalarValue wmax = 0;
     const auto tr = TeamThreadRange(kv.team, nlev);
-    parallel_reduce(tr, f, Kokkos::Max<Real>(wmax));
-    return max(1.0, wmax);
+    parallel_reduce(tr, f, Kokkos::Max<ScalarValue>(wmax));
+    return max(ScalarValue(1), wmax);
   }
 
   KOKKOS_INLINE_FUNCTION
   static bool exit_on_step (const KernelVariables& kv, const int nlev, const int nvec,
-                            const Real& wmax, const Real& deltatol,
-                            const LinearSystemSlot& x, Real& deltaerr) {
+                            const ScalarValue& wmax, const Real& deltatol,
+                            const LinearSystemSlot& x, ScalarValue& deltaerr) {
     using Kokkos::parallel_reduce;
     using Kokkos::TeamThreadRange;
     using Kokkos::ThreadVectorRange;
 
     // deltaerr = maxval(abs(x) / wmax
-    const auto f = [&] (int k, Real& maxval) {
-      const auto g = [&] (int i, Real& lmaxval) {
+    const auto f = [&] (int k, ScalarValue& maxval) {
+      const auto g = [&] (int i, ScalarValue& lmaxval) {
         const auto v = x(k,i);
         for (int s = 0; s < packn; ++s) {
           if (scaln % packn != 0 && i*packn + s >= scaln) break;
-          lmaxval = max(lmaxval, ADValue(std::abs(v[s])));
+          lmaxval = max(lmaxval, abs(v[s]));
         }
       };
-      Real lmaxval;
+      ScalarValue lmaxval;
       const auto vr = ThreadVectorRange(kv.team, nvec);
-      parallel_reduce(vr, g, Kokkos::Max<Real>(lmaxval));
+      parallel_reduce(vr, g, Kokkos::Max<ScalarValue>(lmaxval));
       maxval = max(maxval, lmaxval); // benign write race
     };
     const auto tr = TeamThreadRange(kv.team, nlev);
-    parallel_reduce(tr, f, Kokkos::Max<Real>(deltaerr));
+    parallel_reduce(tr, f, Kokkos::Max<ScalarValue>(deltaerr));
     return deltaerr/wmax < deltatol;
   }
 
@@ -835,12 +835,12 @@ struct DirkFunctorImpl {
     const auto f = [&] (int idx) {
       const int i = idx / packn, s = idx % packn;
       if (wrk(nlev,i)[s] == 0) return;
-      const auto g = [&] (int k, Real& lalpha) { lalpha = min(lalpha, ADValue(wrk(k,i)[s])); };
-      Real alpha;
+      const auto g = [&] (int k, ScalarValue& lalpha) { lalpha = min(lalpha, wrk(k,i)[s]); };
+      ScalarValue alpha = 0;
       const auto vr = ThreadVectorRange(kv.team, nlev);
-      parallel_reduce(vr, g, Kokkos::Min<Real>(alpha));
+      parallel_reduce(vr, g, Kokkos::Min<ScalarValue>(alpha));
       // Step halfway to the distance at which at least one dphi is 0.
-      wrk(2,i)[s] = min(1.0, alpha)/2;
+      wrk(2,i)[s] = min(ScalarValue(1), alpha)/2;
     };
     const auto tr = TeamThreadRange(kv.team, static_cast<int>(scaln));
     parallel_for(tr, f);
