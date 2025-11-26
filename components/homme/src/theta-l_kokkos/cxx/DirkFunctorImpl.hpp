@@ -383,7 +383,7 @@ struct DirkFunctorImpl {
 
       if (it >= maxiter) {
         Kokkos::printf("[DIRK] WARNING! Newton reached max iteration count,"
-                       " with deltaerr = %3.17f\n", deltaerr);
+                       " with deltaerr = %3.17f\n", ADValue(deltaerr));
         nerr = 1;
       }
 
