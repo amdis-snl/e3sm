@@ -60,8 +60,8 @@ void HybridVCoord::init(const Real ps0_in,
   Kokkos::deep_copy(hybrid_bi_packed,hybi_p_h);
 
   // Init midpoints views
-  auto hybrid_am_h = Kokkos::create_mirror_view(hybrid_am);
-  auto hybrid_bm_h = Kokkos::create_mirror_view(hybrid_bm);
+  auto hybrid_am_h = Kokkos::create_mirror_view(unpackView(hybrid_am));
+  auto hybrid_bm_h = Kokkos::create_mirror_view(unpackView(hybrid_bm));
 
   for (int i=0; i<NUM_PHYSICAL_LEV; ++i) {
     hybrid_am_h(i) = hyam_h(i);
