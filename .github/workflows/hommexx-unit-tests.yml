@@ -82,6 +82,7 @@ jobs:
            -D HOMME_AMDIS_PROJECT:BOOL=ON             \
            -D HOMMEXX_ENABLE_FWD_SENS:BOOL=ON         \
            -D HOMMEXX_ENABLE_FAD_TYPES:BOOL=ON        \
+           -D HOMMEXX_BFB_TESTING:BOOL=ON             \
            -D BUILD_HOMME_WITHOUT_PIOLIBRARY:BOOL=ON  \
            \
            -S ${GITHUB_WORKSPACE}/e3sm/source/components/homme
