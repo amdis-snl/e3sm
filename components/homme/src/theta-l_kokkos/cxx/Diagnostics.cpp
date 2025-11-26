@@ -72,9 +72,9 @@ void Diagnostics::init (const ElementsState& state, const ElementsGeometry& geom
     d_KEner_r = decltype(d_KEner_r)("KEner",  m_num_elems);
     d_PEner_r = decltype(d_PEner_r)("PEner", m_num_elems);
 #else
-    d_iener_r = d_iener;
-    d_kener_r = d_kener;
-    d_pener_r = d_pener;
+    d_IEner_r = d_IEner;
+    d_KEner_r = d_KEner;
+    d_PEner_r = d_PEner;
 #endif
 }
 
