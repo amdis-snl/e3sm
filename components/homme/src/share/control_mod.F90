@@ -229,6 +229,8 @@ module control_mod
   real (kind=real_kind), public :: pertlim = 0          !pertibation to temperature [like CESM]
 #endif
 
+  real (kind=real_kind), public :: rel_perturb = 0  ! Generic relative perturbation to be used in tests (x *= 1+rel_perturb)
+
   ! shallow water advection test paramters
   ! kmass = level index with density.  other levels contain test tracers
   integer, public  :: kmass  = -1

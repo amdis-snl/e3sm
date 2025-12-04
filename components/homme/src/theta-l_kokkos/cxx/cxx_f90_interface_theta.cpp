@@ -43,7 +43,7 @@ void init_simulation_params_c (const int& remap_alg, const int& limiter_option, 
                                const int& time_step_type, const int& qsize, const int& state_frequency,
                                const Real& nu, const Real& nu_p, const Real& nu_q, const Real& nu_s, const Real& nu_div, const Real& nu_top,
                                const int& hypervis_order, const int& hypervis_subcycle, const int& hypervis_subcycle_tom,
-                               const double& hypervis_scaling, const double& dcmip16_mu,
+                               const double& hypervis_scaling, const double& rel_perturb, const double& dcmip16_mu,
                                const int& ftype, const int& theta_adv_form, const int& prescribed_wind, const int& use_moisture, const int& disable_diagnostics,
                                const int& use_cpstar, const int& transport_alg, const int& theta_hydrostatic_mode, const char** test_case,
                                const int& dt_remap_factor, const int& dt_tracer_factor,
@@ -126,6 +126,7 @@ void init_simulation_params_c (const int& remap_alg, const int& limiter_option, 
   params.dp3d_thresh                   = dp3d_thresh;
   params.vtheta_thresh                 = vtheta_thresh;
   params.internal_diagnostics_level    = internal_diagnostics_level;
+  params.rel_perturb                   = rel_perturb;
 
   if (time_step_type==5) {
     //5 stage, 3rd order, explicit

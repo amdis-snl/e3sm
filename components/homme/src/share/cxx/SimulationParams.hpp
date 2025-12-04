@@ -65,6 +65,8 @@ struct SimulationParams
   double    dp3d_thresh;
   double    vtheta_thresh;
 
+  double    rel_perturb = 0; // To be used for sensitivity tests
+
   // Optionally run diagnostics and output information. Default is 0, none. Set
   // to >0 for diagnostics.
   int       internal_diagnostics_level = 0;
@@ -113,6 +115,7 @@ inline void SimulationParams::print (std::ostream& out) {
   out << "   dp3d_thresh: " << dp3d_thresh << "\n";
   out << "   vtheta_thresh: " << vtheta_thresh << "\n";
   out << "   internal_diagnostics_level: " << internal_diagnostics_level << "\n";
+  out << "   relative perturbation (for sensitivity testing): " << rel_perturb << "\n";
   out << "\n**********************************************************\n";
 }
 
