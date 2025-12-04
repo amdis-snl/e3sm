@@ -44,7 +44,7 @@ class HyperviscosityFunctorImpl
                       , hypervis_subcycle_tom(hypervis_subcycle_tom_in)
                       , nu_ratio1(nu_ratio1_in), nu_ratio2(nu_ratio2_in)
                       , nu_top(nu_top_in), nu(nu_in), nu_p(nu_p_in), nu_s(nu_s_in)
-                      , consthv(hypervis_scaling_in == 0){}
+                      , consthv(hypervis_scaling_in == 0) {}
 
     const int   hypervis_subcycle;
     const int   hypervis_subcycle_tom;
@@ -52,8 +52,13 @@ class HyperviscosityFunctorImpl
     Real  nu_ratio1;
     Real  nu_ratio2;
 
-    const Real  nu_top;
+#ifdef HOMMEXX_TEST_HYPERVIS_FAD
+    FadType rel_perturb;
+    FadType nu;
+#else
     const Real  nu;
+#endif
+    const Real  nu_top;
     const Real  nu_p;
     const Real  nu_s;
 
