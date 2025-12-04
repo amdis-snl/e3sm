@@ -125,13 +125,13 @@ public:
 
   // 2d fields (no vertical level dimension)
   template<typename... Properties>
-  void register_field (ExecView<Real*[NP][NP], Properties...> field);
+  void register_field (ExecView<ScalarValue*[NP][NP], Properties...> field);
   template<typename... Properties>
-  void register_field (ExecView<Real**[NP][NP], Properties...> field, int num_dims, int start_dim);
+  void register_field (ExecView<ScalarValue**[NP][NP], Properties...> field, int num_dims, int start_dim);
   template<typename... Properties>
-  void register_field (ExecView<Real***[NP][NP], Properties...> field, int idim_out, int num_dims, int start_dim);
+  void register_field (ExecView<ScalarValue***[NP][NP], Properties...> field, int idim_out, int num_dims, int start_dim);
   template<int DIM, typename... Properties>
-  void register_field (ExecView<Real*[DIM][NP][NP], Properties...> field, int num_dims, int start_dim);
+  void register_field (ExecView<ScalarValue*[DIM][NP][NP], Properties...> field, int num_dims, int start_dim);
 
   // 3d fields (with vertical level dimension at the end)
   template<int OUTER_DIM, int DIM, typename... Properties>
@@ -246,13 +246,14 @@ private:
 
   std::shared_ptr<Connectivity>   m_connectivity;
 
+  MPI_Datatype              m_scalar_dtype;
   int                       m_elem_buf_size[2];
 
   std::vector<MPI_Request>  m_send_requests;
   std::vector<MPI_Request>  m_recv_requests;
 
   ExecViewManaged<ExecViewManaged<Scalar[2][NUM_LEV]>**>            m_1d_fields;
-  ExecViewManaged<ExecViewManaged<Real[NP][NP]>**>                  m_2d_fields;
+  ExecViewManaged<ExecViewManaged<ScalarValue[NP][NP]>**>           m_2d_fields;
   ExecViewManaged<ExecViewManaged<Scalar[NP][NP][NUM_LEV]>**>       m_3d_fields;
   ExecViewManaged<ExecViewManaged<Scalar[NP][NP][NUM_LEV_P]>**>     m_3d_int_fields;
 
@@ -272,8 +273,8 @@ private:
   ExecViewManaged<ExecViewUnmanaged<Scalar[2][NUM_LEV]>**>  m_send_1d_buffers;
   ExecViewManaged<ExecViewUnmanaged<Scalar[2][NUM_LEV]>**>  m_recv_1d_buffers;
 
-  ExecViewManaged<ExecViewUnmanaged<Real*>**>               m_send_2d_buffers;
-  ExecViewManaged<ExecViewUnmanaged<Real*>**>               m_recv_2d_buffers;
+  ExecViewManaged<ExecViewUnmanaged<ScalarValue*>**>        m_send_2d_buffers;
+  ExecViewManaged<ExecViewUnmanaged<ScalarValue*>**>        m_recv_2d_buffers;
 
   ExecViewManaged<ExecViewUnmanaged<Scalar**>**>            m_send_3d_buffers;
   ExecViewManaged<ExecViewUnmanaged<Scalar**>**>            m_recv_3d_buffers;
@@ -322,7 +323,7 @@ public: // This is semantically private but must be public for nvcc.
 // --- 2d fields --- //
 
 template<typename... Properties>
-void BoundaryExchange::register_field (ExecView<Real*[NP][NP], Properties...> field)
+void BoundaryExchange::register_field (ExecView<ScalarValue*[NP][NP], Properties...> field)
 {
   using Kokkos::ALL;
 
@@ -344,7 +345,7 @@ void BoundaryExchange::register_field (ExecView<Real*[NP][NP], Properties...> fi
 }
 
 template<int DIM, typename... Properties>
-void BoundaryExchange::register_field (ExecView<Real*[DIM][NP][NP], Properties...> field, int num_dims, int start_dim)
+void BoundaryExchange::register_field (ExecView<ScalarValue*[DIM][NP][NP], Properties...> field, int num_dims, int start_dim)
 {
   using Kokkos::ALL;
 
@@ -368,7 +369,7 @@ void BoundaryExchange::register_field (ExecView<Real*[DIM][NP][NP], Properties..
 }
 
 template<typename... Properties>
-void BoundaryExchange::register_field (ExecView<Real**[NP][NP], Properties...> field, int num_dims, int start_dim)
+void BoundaryExchange::register_field (ExecView<ScalarValue**[NP][NP], Properties...> field, int num_dims, int start_dim)
 {
   using Kokkos::ALL;
 
@@ -392,7 +393,7 @@ void BoundaryExchange::register_field (ExecView<Real**[NP][NP], Properties...> f
 }
 
 template<typename... Properties>
-void BoundaryExchange::register_field (ExecView<Real***[NP][NP], Properties...> field, int idim_out, int num_dims, int start_dim)
+void BoundaryExchange::register_field (ExecView<ScalarValue***[NP][NP], Properties...> field, int idim_out, int num_dims, int start_dim)
 {
   using Kokkos::ALL;
 

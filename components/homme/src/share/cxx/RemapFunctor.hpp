@@ -636,7 +636,7 @@ private:
           const int level = loop_idx % NUM_PHYSICAL_LEV;
           const int ilev = level / VECTOR_SIZE;
           const int vlev = level % VECTOR_SIZE;
-          is_invalid |= Homme::isnan(src_layer_thickness(igp, jgp, ilev)[vlev]);
+          is_invalid |= Homme::isnan(ADValue(src_layer_thickness(igp, jgp, ilev)[vlev]));
           is_invalid |= (src_layer_thickness(igp, jgp, ilev)[vlev] < 0.0);
         },
         invalid);

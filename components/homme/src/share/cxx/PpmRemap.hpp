@@ -77,8 +77,8 @@ struct PpmMirrored : public PpmBoundaryConditions {
 
   KOKKOS_INLINE_FUNCTION
   static void apply_ppm_boundary(
-      ExecViewUnmanaged<const Real[_ppm_consts::AO_PHYSICAL_LEV]> /* cell_means */,
-      ExecViewUnmanaged<Real[3][NUM_PHYSICAL_LEV]> /* parabola_coeffs */)
+      ExecViewUnmanaged<const ScalarValue[_ppm_consts::AO_PHYSICAL_LEV]> /* cell_means */,
+      ExecViewUnmanaged<ScalarValue[3][NUM_PHYSICAL_LEV]> /* parabola_coeffs */)
   {
     // Nothing to do here
   }
@@ -86,8 +86,8 @@ struct PpmMirrored : public PpmBoundaryConditions {
   KOKKOS_INLINE_FUNCTION
   static void fill_cell_means_gs(
       KernelVariables &kv,
-      const ExecViewUnmanaged<Real[_ppm_consts::DPO_PHYSICAL_LEV]>&,
-      ExecViewUnmanaged<Real[_ppm_consts::AO_PHYSICAL_LEV]> cell_means) {
+      const ExecViewUnmanaged<ScalarValue[_ppm_consts::DPO_PHYSICAL_LEV]>&,
+      ExecViewUnmanaged<ScalarValue[_ppm_consts::AO_PHYSICAL_LEV]> cell_means) {
     const int gs = _ppm_consts::gs;
     Kokkos::parallel_for(Kokkos::ThreadVectorRange(kv.team, gs),
                          [&](const int &k_0) {
@@ -109,20 +109,20 @@ struct PpmLimitedExtrap : public PpmBoundaryConditions {
   static constexpr int fortran_remap_alg = 10;
 
   KOKKOS_INLINE_FUNCTION static void apply_ppm_boundary (
-    const ExecViewUnmanaged<const Real[_ppm_consts::AO_PHYSICAL_LEV]>&,
-    const ExecViewUnmanaged<Real[3][NUM_PHYSICAL_LEV]>&)
+    const ExecViewUnmanaged<const ScalarValue[_ppm_consts::AO_PHYSICAL_LEV]>&,
+    const ExecViewUnmanaged<ScalarValue[3][NUM_PHYSICAL_LEV]>&)
   {
     // Nothing to do here
   }
 
   KOKKOS_INLINE_FUNCTION static void linextrap (
-    const Real& dx1, const Real& dx2, const Real& dx3, const Real& dx4,
-    const Real& y1, const Real& y2, Real& y3, Real& y4,
-    const Real& lo, const Real& hi)
+    const ScalarValue& dx1, const ScalarValue& dx2, const ScalarValue& dx3, const ScalarValue& dx4,
+    const ScalarValue& y1, const ScalarValue& y2, ScalarValue& y3, ScalarValue& y4,
+    const ScalarValue& lo, const ScalarValue& hi)
   {
-    const auto den = (dx1 + dx2)/2;
-    auto num = den + (dx2 + dx3)/2;
-    auto a = num/den;
+    const ScalarValue den = (dx1 + dx2)/2;
+    ScalarValue num = den + (dx2 + dx3)/2;
+    ScalarValue a = num/den;
     y3 = (1-a)*y1 + a*y2;
 
     num = num + (dx3 + dx4)/2;
@@ -134,8 +134,8 @@ struct PpmLimitedExtrap : public PpmBoundaryConditions {
   }
 
   KOKKOS_INLINE_FUNCTION static void fill_cell_means_gs (
-    KernelVariables& kv, const ExecViewUnmanaged<Real[_ppm_consts::DPO_PHYSICAL_LEV]>& dpo,
-    const ExecViewUnmanaged<Real[_ppm_consts::AO_PHYSICAL_LEV]>& ao)
+    KernelVariables& kv, const ExecViewUnmanaged<ScalarValue[_ppm_consts::DPO_PHYSICAL_LEV]>& dpo,
+    const ExecViewUnmanaged<ScalarValue[_ppm_consts::AO_PHYSICAL_LEV]>& ao)
   {
     using Kokkos::parallel_reduce;
     using Kokkos::Min;
@@ -143,12 +143,12 @@ struct PpmLimitedExtrap : public PpmBoundaryConditions {
 
     const int ip = _ppm_consts::INITIAL_PADDING, plev = NUM_PHYSICAL_LEV;
 
-    Real lo, hi; {
+    ScalarValue lo, hi; {
       const auto tvr = Kokkos::ThreadVectorRange(kv.team, plev);
-      parallel_reduce(tvr, [&] (const int k, Real& lo) { lo = min(lo, ao(ip+k)); },
-                      Min<Real>(lo));
-      parallel_reduce(tvr, [&] (const int k, Real& hi) { hi = max(hi, ao(ip+k)); },
-                      Max<Real>(hi));
+      parallel_reduce(tvr, [&] (const int k, ScalarValue& lo) { lo = min(lo, ao(ip+k)); },
+                      Min<ScalarValue>(lo));
+      parallel_reduce(tvr, [&] (const int k, ScalarValue& hi) { hi = max(hi, ao(ip+k)); },
+                      Max<ScalarValue>(hi));
     }
 
     linextrap(dpo(ip+1), dpo(ip), dpo(ip-1), dpo(ip-2),
@@ -223,7 +223,7 @@ struct PpmVertRemap : public VertRemapAlg {
 
       Dispatch<ExecSpace>::parallel_scan(
           kv.team, NUM_PHYSICAL_LEV,
-          [=](const int &k, Real &accumulator, const bool last) {
+          [=](const int &k, ScalarValue &accumulator, const bool last) {
             // Accumulate the old mass up to old grid cell interface locations
             // to simplify integration during remapping. Also, divide out the
             // grid spacing so we're working with actual tracer values and can
@@ -256,17 +256,17 @@ struct PpmVertRemap : public VertRemapAlg {
   }
 
   KOKKOS_FORCEINLINE_FUNCTION
-  Real compute_mass(const Real sq_coeff, const Real lin_coeff,
-                    const Real const_coeff, const Real prev_mass,
-                    const Real prev_dp, const Real x2) const {
+  ScalarValue compute_mass(const ScalarValue sq_coeff, const ScalarValue lin_coeff,
+                    const ScalarValue const_coeff, const ScalarValue prev_mass,
+                    const ScalarValue prev_dp, const ScalarValue x2) const {
     // This remapping assumes we're starting from the left interface of an
     // old grid cell
     // In fact, we're usually integrating very little or almost all of the
     // cell in question
-    const Real x1 = -0.5;
-    const Real integral =
+    const ScalarValue x1 = -0.5;
+    const ScalarValue integral =
         integrate_parabola(sq_coeff, lin_coeff, const_coeff, x1, x2);
-    const Real mass = prev_mass + integral * prev_dp;
+    const ScalarValue mass = prev_mass + integral * prev_dp;
     return mass;
   }
 
@@ -275,10 +275,10 @@ struct PpmVertRemap : public VertRemapAlg {
   typename std::enable_if<!Homme::OnGpu<ExecSpaceType>::value, void>::type
   compute_remap(KernelVariables &/* kv */,
       ExecViewUnmanaged<const int[NUM_PHYSICAL_LEV]> k_id,
-      ExecViewUnmanaged<const Real[NUM_PHYSICAL_LEV]> integral_bounds,
-      ExecViewUnmanaged<const Real[3][NUM_PHYSICAL_LEV]> parabola_coeffs,
-      ExecViewUnmanaged<Real[_ppm_consts::MASS_O_PHYSICAL_LEV]> mass,
-      ExecViewUnmanaged<const Real[_ppm_consts::DPO_PHYSICAL_LEV]> prev_dp,
+      ExecViewUnmanaged<const ScalarValue[NUM_PHYSICAL_LEV]> integral_bounds,
+      ExecViewUnmanaged<const ScalarValue[3][NUM_PHYSICAL_LEV]> parabola_coeffs,
+      ExecViewUnmanaged<ScalarValue[_ppm_consts::MASS_O_PHYSICAL_LEV]> mass,
+      ExecViewUnmanaged<ScalarValue[_ppm_consts::DPO_PHYSICAL_LEV]> prev_dp,
       ExecViewUnmanaged<Scalar[NUM_LEV]> remap_var) const {
     // Compute tracer values on the new grid by integrating from the old cell
     // bottom to the new cell interface to form a new grid mass accumulation.
@@ -286,14 +286,14 @@ struct PpmVertRemap : public VertRemapAlg {
     // Then take the difference between accumulation at successive interfaces
     // gives the mass inside each cell. Since Qdp is supposed to hold the full
     // mass this needs no normalization.
-    Real mass1 = 0;
-    Real mass2;
-    ExecViewUnmanaged<Real[NUM_PHYSICAL_LEV]> rvar(reinterpret_cast<Real*>(remap_var.data()));
+    ScalarValue mass1 = 0;
+    ScalarValue mass2;
+    ExecViewUnmanaged<ScalarValue[NUM_PHYSICAL_LEV]> rvar(reinterpret_cast<ScalarValue*>(remap_var.data()));
     for (int k=0; k<NUM_PHYSICAL_LEV; ++k) {
       const int kk_cur_lev = k_id(k);
       assert(kk_cur_lev < parabola_coeffs.extent_int(1));
 
-      const Real x2_cur_lev = integral_bounds(k);
+      const ScalarValue x2_cur_lev = integral_bounds(k);
       // Repurpose the mass buffer to store the new mass.
       // WARNING: This may not be thread safe in future architectures which
       //          use this level of parallelism!!!
@@ -311,16 +311,16 @@ struct PpmVertRemap : public VertRemapAlg {
   typename std::enable_if<Homme::OnGpu<ExecSpaceType>::value, void>::type
   compute_remap(KernelVariables &kv,
       ExecViewUnmanaged<const int[NUM_PHYSICAL_LEV]> k_id,
-      ExecViewUnmanaged<const Real[NUM_PHYSICAL_LEV]> integral_bounds,
-      ExecViewUnmanaged<const Real[3][NUM_PHYSICAL_LEV]> parabola_coeffs,
-      ExecViewUnmanaged<Real[_ppm_consts::MASS_O_PHYSICAL_LEV]> prev_mass,
-      ExecViewUnmanaged<const Real[_ppm_consts::DPO_PHYSICAL_LEV]> prev_dp,
+      ExecViewUnmanaged<const ScalarValue[NUM_PHYSICAL_LEV]> integral_bounds,
+      ExecViewUnmanaged<const ScalarValue[3][NUM_PHYSICAL_LEV]> parabola_coeffs,
+      ExecViewUnmanaged<ScalarValue[_ppm_consts::MASS_O_PHYSICAL_LEV]> prev_mass,
+      ExecViewUnmanaged<const ScalarValue[_ppm_consts::DPO_PHYSICAL_LEV]> prev_dp,
       ExecViewUnmanaged<Scalar[NUM_LEV]> remap_var) const {
     // This duplicates work, but the parallel gain on CUDA is >> 2
     assert(VECTOR_SIZE==1);
     Kokkos::parallel_for(Kokkos::ThreadVectorRange(kv.team, NUM_PHYSICAL_LEV),
                          [&](const int k) {
-      const Real mass_1 =
+      const ScalarValue mass_1 =
           (k > 0)
               ? compute_mass(
                     parabola_coeffs(2, k_id(k - 1)),
@@ -330,12 +330,12 @@ struct PpmVertRemap : public VertRemapAlg {
                     integral_bounds(k - 1))
               : 0.0;
 
-      const Real x2_cur_lev = integral_bounds(k);
+      const ScalarValue x2_cur_lev = integral_bounds(k);
 
       const int kk_cur_lev = k_id(k);
       assert(kk_cur_lev < parabola_coeffs.extent_int(1));
 
-      const Real mass_2 = compute_mass(
+      const ScalarValue mass_2 = compute_mass(
           parabola_coeffs(2, kk_cur_lev), parabola_coeffs(1, kk_cur_lev),
           parabola_coeffs(0, kk_cur_lev), prev_mass(kk_cur_lev),
           prev_dp(kk_cur_lev + _ppm_consts::INITIAL_PADDING), x2_cur_lev);
@@ -346,8 +346,8 @@ struct PpmVertRemap : public VertRemapAlg {
 
   KOKKOS_INLINE_FUNCTION
   void compute_grids(KernelVariables &kv,
-      const ExecViewUnmanaged<const Real[_ppm_consts::DPO_PHYSICAL_LEV]> dx,
-      const ExecViewUnmanaged<Real[10][_ppm_consts::PPMDX_PHYSICAL_LEV]> grids) const
+      const ExecViewUnmanaged<ScalarValue[_ppm_consts::DPO_PHYSICAL_LEV]> dx,
+      const ExecViewUnmanaged<ScalarValue[10][_ppm_consts::PPMDX_PHYSICAL_LEV]> grids) const
   {
     constexpr int dpo_offset = _ppm_consts::INITIAL_PADDING - _ppm_consts::gs;
     Kokkos::parallel_for(Kokkos::ThreadVectorRange(kv.team,
@@ -395,13 +395,13 @@ struct PpmVertRemap : public VertRemapAlg {
   KOKKOS_INLINE_FUNCTION
   void compute_ppm(KernelVariables &kv,
       // input  views
-      ExecViewUnmanaged<const Real[_ppm_consts::AO_PHYSICAL_LEV]> cell_means,
-      ExecViewUnmanaged<const Real[10][_ppm_consts::PPMDX_PHYSICAL_LEV]> dx,
+      ExecViewUnmanaged<const ScalarValue[_ppm_consts::AO_PHYSICAL_LEV]> cell_means,
+      ExecViewUnmanaged<const ScalarValue[10][_ppm_consts::PPMDX_PHYSICAL_LEV]> dx,
       // buffer views
-      ExecViewUnmanaged<Real[_ppm_consts::DMA_PHYSICAL_LEV]> dma,
-      ExecViewUnmanaged<Real[_ppm_consts::AI_PHYSICAL_LEV]> ai,
+      ExecViewUnmanaged<ScalarValue[_ppm_consts::DMA_PHYSICAL_LEV]> dma,
+      ExecViewUnmanaged<ScalarValue[_ppm_consts::AI_PHYSICAL_LEV]> ai,
       // result view
-      ExecViewUnmanaged<Real[3][NUM_PHYSICAL_LEV]> parabola_coeffs) const
+      ExecViewUnmanaged<ScalarValue[3][NUM_PHYSICAL_LEV]> parabola_coeffs) const
   {
     const auto INITIAL_PADDING = _ppm_consts::INITIAL_PADDING;
 
@@ -413,17 +413,17 @@ struct PpmVertRemap : public VertRemapAlg {
               (cell_means(j + INITIAL_PADDING - 1) -
                cell_means(j + INITIAL_PADDING - gs)) >
           0.0) {
-        Real da =
+        ScalarValue da =
             dx(0, j) * (dx(1, j) * (cell_means(j + INITIAL_PADDING) -
                                     cell_means(j + INITIAL_PADDING - 1)) +
                         dx(2, j) * (cell_means(j + INITIAL_PADDING - 1) -
                                     cell_means(j + INITIAL_PADDING - gs)));
 
-        dma(j) = min(fabs(da), 2.0 * fabs(cell_means(j + INITIAL_PADDING - 1) -
-                                          cell_means(j + INITIAL_PADDING - gs)),
-                     2.0 * fabs(cell_means(j + INITIAL_PADDING) -
-                                cell_means(j + INITIAL_PADDING - 1))) *
-                 copysign(1.0, da);
+        dma(j) = min(ScalarValue(fabs(da)), ScalarValue(2.0 * fabs(cell_means(j + INITIAL_PADDING - 1) -
+                                          cell_means(j + INITIAL_PADDING - gs))),
+                     ScalarValue(2.0 * fabs(cell_means(j + INITIAL_PADDING) -
+                                cell_means(j + INITIAL_PADDING - 1)))) *
+                 copysign(1.0, ADValue(da));
       } else {
         dma(j) = 0.0;
       }
@@ -444,8 +444,8 @@ struct PpmVertRemap : public VertRemapAlg {
     Kokkos::parallel_for(Kokkos::ThreadVectorRange(kv.team, NUM_PHYSICAL_LEV),
                          [&](const int j_prev) {
       const int j = j_prev + 1;
-      Real al = ai(j - 1);
-      Real ar = ai(j);
+      ScalarValue al = ai(j - 1);
+      ScalarValue ar = ai(j);
       if ((ar - cell_means(j + INITIAL_PADDING - 1)) *
               (cell_means(j + INITIAL_PADDING - 1) - al) <=
           0.) {
@@ -491,9 +491,9 @@ struct PpmVertRemap : public VertRemapAlg {
                          [&](const int &loop_idx) {
       const int igp = loop_idx / NP;
       const int jgp = loop_idx % NP;
-      ExecViewUnmanaged<Real[_ppm_consts::PIO_PHYSICAL_LEV]> pt_pio =
+      ExecViewUnmanaged<ScalarValue[_ppm_consts::PIO_PHYSICAL_LEV]> pt_pio =
           Homme::subview(m_pio, kv.ie, igp, jgp);
-      ExecViewUnmanaged<Real[_ppm_consts::PIN_PHYSICAL_LEV]> pt_pin =
+      ExecViewUnmanaged<ScalarValue[_ppm_consts::PIN_PHYSICAL_LEV]> pt_pin =
           Homme::subview(m_pin, kv.ie, igp, jgp);
       ExecViewUnmanaged<const Scalar[NUM_LEV]> pt_src_thickness =
           Homme::subview(src_layer_thickness, igp, jgp);
@@ -502,7 +502,7 @@ struct PpmVertRemap : public VertRemapAlg {
 
       Dispatch<ExecSpace>::parallel_scan(
           kv.team, NUM_PHYSICAL_LEV,
-          [&](const int &level, Real &accumulator, const bool last) {
+          [&](const int &level, ScalarValue &accumulator, const bool last) {
             if (last) {
               pt_pio(level) = accumulator;
             }
@@ -512,7 +512,7 @@ struct PpmVertRemap : public VertRemapAlg {
           });
       Dispatch<ExecSpace>::parallel_scan(
           kv.team, NUM_PHYSICAL_LEV,
-          [&](const int &level, Real &accumulator, const bool last) {
+          [&](const int &level, ScalarValue &accumulator, const bool last) {
             if (last) {
               pt_pin(level) = accumulator;
             }
@@ -644,28 +644,28 @@ struct PpmVertRemap : public VertRemapAlg {
     });
   }
 
-  KOKKOS_FORCEINLINE_FUNCTION Real
-  integrate_parabola(const Real sq_coeff, const Real lin_coeff,
-                     const Real const_coeff, Real x1, Real x2) const {
+  KOKKOS_FORCEINLINE_FUNCTION ScalarValue
+  integrate_parabola(const ScalarValue sq_coeff, const ScalarValue lin_coeff,
+                     const ScalarValue const_coeff, ScalarValue x1, ScalarValue x2) const {
     return (const_coeff * (x2 - x1) + lin_coeff * (x2 * x2 - x1 * x1) / 2.0) +
            sq_coeff * (x2 * x2 * x2 - x1 * x1 * x1) / 3.0;
   }
 
-  ExecViewManaged<Real * [NP][NP][_ppm_consts::DPO_PHYSICAL_LEV]> m_dpo;
+  ExecViewManaged<ScalarValue * [NP][NP][_ppm_consts::DPO_PHYSICAL_LEV]> m_dpo;
   // pio corresponds to the points in each layer of the source layer thickness
-  ExecViewManaged<Real * [NP][NP][_ppm_consts::PIO_PHYSICAL_LEV]> m_pio;
+  ExecViewManaged<ScalarValue * [NP][NP][_ppm_consts::PIO_PHYSICAL_LEV]> m_pio;
   // pin corresponds to the points in each layer of the target layer thickness
-  ExecViewManaged<Real * [NP][NP][_ppm_consts::PIN_PHYSICAL_LEV]> m_pin;
-  ExecViewManaged<Real * [NP][NP][10][_ppm_consts::PPMDX_PHYSICAL_LEV]> m_ppmdx;
-  ExecViewManaged<Real * [NP][NP][NUM_PHYSICAL_LEV]>  m_z2;
+  ExecViewManaged<ScalarValue * [NP][NP][_ppm_consts::PIN_PHYSICAL_LEV]> m_pin;
+  ExecViewManaged<ScalarValue * [NP][NP][10][_ppm_consts::PPMDX_PHYSICAL_LEV]> m_ppmdx;
+  ExecViewManaged<ScalarValue * [NP][NP][NUM_PHYSICAL_LEV]>  m_z2;
   ExecViewManaged<int * [NP][NP][NUM_PHYSICAL_LEV]>   m_kid;
 
   TeamUtils<ExecSpace> m_ppm_tu;
-  ExecViewManaged<Real * [NP][NP][_ppm_consts::AO_PHYSICAL_LEV]> m_ao;
-  ExecViewManaged<Real * [NP][NP][_ppm_consts::MASS_O_PHYSICAL_LEV]> m_mass_o;
-  ExecViewManaged<Real * [NP][NP][_ppm_consts::DMA_PHYSICAL_LEV]> m_dma;
-  ExecViewManaged<Real * [NP][NP][_ppm_consts::AI_PHYSICAL_LEV]> m_ai;
-  ExecViewManaged<Real * [NP][NP][3][NUM_PHYSICAL_LEV]> m_parabola_coeffs;
+  ExecViewManaged<ScalarValue * [NP][NP][_ppm_consts::AO_PHYSICAL_LEV]> m_ao;
+  ExecViewManaged<ScalarValue * [NP][NP][_ppm_consts::MASS_O_PHYSICAL_LEV]> m_mass_o;
+  ExecViewManaged<ScalarValue * [NP][NP][_ppm_consts::DMA_PHYSICAL_LEV]> m_dma;
+  ExecViewManaged<ScalarValue * [NP][NP][_ppm_consts::AI_PHYSICAL_LEV]> m_ai;
+  ExecViewManaged<ScalarValue * [NP][NP][3][NUM_PHYSICAL_LEV]> m_parabola_coeffs;
 };
 
 } // namespace Ppm

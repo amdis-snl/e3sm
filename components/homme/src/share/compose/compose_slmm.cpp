@@ -123,35 +123,35 @@ void finalize_init_phase (IslMpi<MT>& cm, typename IslMpi<MT>::Advecter& advecte
   sync_to_device(cm);
 }
 
-template <typename MT>
-void set_hvcoord (IslMpi<MT>& cm, const Real etai_beg, const Real etai_end,
-                  const Real* etam) {
-  if (cm.etam.size() > 0) return;
-#if defined COMPOSE_HORIZ_OPENMP
-# pragma omp barrier
-# pragma omp master
-#endif
-  {
-    slmm_assert(cm.nlev > 0);
-    cm.etai_beg = etai_beg;
-    cm.etai_end = etai_end;
-    cm.etam = typename IslMpi<MT>::template ArrayD<Real*>("etam", cm.nlev);
-    const auto h = ko::create_mirror_view(cm.etam);
-    for (int k = 0; k < cm.nlev; ++k) {
-      h(k) = etam[k];
-      slmm_assert(k == 0 || h(k) > h(k-1));
-      slmm_assert(h(k) > 0 && h(k) < 1);
-    }
-    ko::deep_copy(cm.etam, h);
-  }
-#if defined COMPOSE_HORIZ_OPENMP
-# pragma omp barrier
-#endif
-}
+// template <typename MT>
+// void set_hvcoord (IslMpi<MT>& cm, const Real etai_beg, const Real etai_end,
+//                   const Real* etam) {
+//   if (cm.etam.size() > 0) return;
+// #if defined COMPOSE_HORIZ_OPENMP
+// # pragma omp barrier
+// # pragma omp master
+// #endif
+//   {
+//     slmm_assert(cm.nlev > 0);
+//     cm.etai_beg = etai_beg;
+//     cm.etai_end = etai_end;
+//     cm.etam = typename IslMpi<MT>::template ArrayD<Real*>("etam", cm.nlev);
+//     const auto h = ko::create_mirror_view(cm.etam);
+//     for (int k = 0; k < cm.nlev; ++k) {
+//       h(k) = etam[k];
+//       slmm_assert(k == 0 || h(k) > h(k-1));
+//       slmm_assert(h(k) > 0 && h(k) < 1);
+//     }
+//     ko::deep_copy(cm.etam, h);
+//   }
+// #if defined COMPOSE_HORIZ_OPENMP
+// # pragma omp barrier
+// #endif
+// }
 
-template void set_hvcoord(
-  IslMpi<ko::MachineTraits>& cm, const Real etai_beg, const Real etai_end,
-  const Real* etam);
+// template void set_hvcoord(
+//   IslMpi<ko::MachineTraits>& cm, const Real etai_beg, const Real etai_end,
+//   const Real* etam);
 
 // Set pointers to HOMME data arrays.
 template <typename MT>

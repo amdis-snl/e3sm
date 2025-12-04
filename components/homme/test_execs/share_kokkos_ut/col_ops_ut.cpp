@@ -18,6 +18,8 @@ using namespace Homme;
 // ============= COLUMN OPS ================ //
 constexpr int NUM_PTS = 4;
 constexpr int num_elems = 10;
+constexpr int NPL = NUM_PHYSICAL_LEV;
+constexpr int NIL = NUM_INTERFACE_LEV;
 
 TEST_CASE("col_ops_interpolation", "interpolation") {
 
@@ -77,8 +79,8 @@ TEST_CASE("col_ops_interpolation", "interpolation") {
     for (int ie=0; ie<num_elems; ++ie) {
       for (int igp=0; igp<NUM_PTS; ++igp) {
         for (int jgp=0; jgp<NUM_PTS; ++jgp) {
-          auto mid_out = viewAsReal(Homme::subview(h_midpoints_field_out,ie,igp,jgp));
-          auto int_out = viewAsReal(Homme::subview(h_interface_field_out,ie,igp,jgp));
+          auto mid_out = unpackView(Homme::subview(h_midpoints_field_out,ie,igp,jgp));
+          auto int_out = unpackView(Homme::subview(h_interface_field_out,ie,igp,jgp));
 
           // First midpoint should be fine, but first interface should be 0
           REQUIRE (mid_out(0) == 1.0);
@@ -121,8 +123,9 @@ TEST_CASE("col_ops_interpolation", "interpolation") {
     for (int ie=0; ie<num_elems; ++ie) {
       for (int igp=0; igp<NUM_PTS; ++igp) {
         for (int jgp=0; jgp<NUM_PTS; ++jgp) {
-          auto mid_out = viewAsReal(Homme::subview(h_midpoints_field_out,ie,igp,jgp));
-          auto int_out = viewAsReal(Homme::subview(h_interface_field_out,ie,igp,jgp));
+          auto mid_out = unpackView(Homme::subview(h_midpoints_field_out,ie,igp,jgp));
+          auto int_out = unpackView(Homme::subview(h_interface_field_out,ie,igp,jgp));
+
           // First midpoint should be fine, but first interface should be equal to the first midpoint
           REQUIRE (mid_out(0) == 0.5);
           REQUIRE (int_out(0) == 0.0);
@@ -174,7 +177,7 @@ TEST_CASE("col_ops_interpolation", "interpolation") {
     for (int ie=0; ie<num_elems; ++ie) {
       for (int igp=0; igp<NUM_PTS; ++igp) {
         for (int jgp=0; jgp<NUM_PTS; ++jgp) {
-          auto mid_out = viewAsReal(Homme::subview(h_midpoints_field_out,ie,igp,jgp));
+          auto mid_out = unpackView(Homme::subview(h_midpoints_field_out,ie,igp,jgp));
           for (int k=0; k<NUM_PHYSICAL_LEV; ++k) {
 
             REQUIRE (mid_out(k) == (1.0 + (k*k + (k+1)*(k+1))/2.0));
@@ -211,14 +214,12 @@ TEST_CASE("col_ops_reduction", "packed_reduction") {
     Kokkos::deep_copy(d_interface_field_in,h_interface_field_in);
     
     // To use with std library for checking results
-    std::vector<double> mid_data(NUM_PHYSICAL_LEV);
-    std::vector<double> int_data(NUM_INTERFACE_LEV);
+    std::vector<ScalarValue> mid_data(NUM_PHYSICAL_LEV);
+    std::vector<ScalarValue> int_data(NUM_INTERFACE_LEV);
 
     // Forward and inclusive
     SECTION("packed") {
       using CO = ColumnOps;
-      constexpr int NPL = NUM_PHYSICAL_LEV;
-      constexpr int NIL = NUM_INTERFACE_LEV;
       Kokkos::parallel_for(Homme::get_default_team_policy<ExecSpace>(num_elems),
                            KOKKOS_LAMBDA(const TeamMember& team) {
         KernelVariables kv(team);
@@ -238,8 +239,8 @@ TEST_CASE("col_ops_reduction", "packed_reduction") {
 
           using pfm_type = decltype(provide_field_mid);
           using pfi_type = decltype(provide_field_int);
-          Real& mid_sum = d_midpoints_field_out(kv.ie,igp,jgp,0)[0];
-          Real& int_sum = d_interface_field_out(kv.ie,igp,jgp,0)[0];
+          ScalarValue& mid_sum = d_midpoints_field_out(kv.ie,igp,jgp,0)[0];
+          ScalarValue& int_sum = d_interface_field_out(kv.ie,igp,jgp,0)[0];
           CO::column_reduction<NPL,pfm_type,true>(kv, provide_field_mid, mid_sum);
           CO::column_reduction<NIL,pfi_type,true>(kv, provide_field_int, int_sum);
         });
@@ -254,17 +255,20 @@ TEST_CASE("col_ops_reduction", "packed_reduction") {
             // Compute using std functions
 
             // Copy from host view to std vector
-            auto mid_in = viewAsReal(Homme::subview(h_midpoints_field_in,ie,igp,jgp));
-            auto int_in = viewAsReal(Homme::subview(h_interface_field_in,ie,igp,jgp));
-            std::copy_n(mid_in.data(),NPL,mid_data.begin());
-            std::copy_n(int_in.data(),NIL,int_data.begin());
+            auto mid_in = unpackView(Homme::subview(h_midpoints_field_in,ie,igp,jgp));
+            auto int_in = unpackView(Homme::subview(h_interface_field_in,ie,igp,jgp));
+            for (int k=0; k<NPL; ++k) {
+              mid_data[k] = mid_in(k);
+              int_data[k] = int_in(k);
+            }
+            int_data[NIL-1] = int_in(NIL-1);
 
             // Manuallly do the reduction, in the right order
-            Real sum_mid = 0.0;
-            Real sum_int = 0.0;
+            ScalarValue sum_mid = 0.0;
+            ScalarValue sum_int = 0.0;
 
-            Real tmp_m[VECTOR_SIZE] = {0};
-            Real tmp_i[VECTOR_SIZE] = {0};
+            ScalarValue tmp_m[VECTOR_SIZE] = {0};
+            ScalarValue tmp_i[VECTOR_SIZE] = {0};
             for (int ivec=0; ivec<VECTOR_SIZE; ++ivec) {
               for (int ilev=0; ilev<NUM_LEV-1; ++ilev) {
                 tmp_m[ivec] += mid_data[ilev*VECTOR_SIZE+ivec];
@@ -286,8 +290,8 @@ TEST_CASE("col_ops_reduction", "packed_reduction") {
             }
 
             // Check answer
-            auto mid_out = viewAsReal(Homme::subview(h_midpoints_field_out,ie,igp,jgp));
-            auto int_out = viewAsReal(Homme::subview(h_interface_field_out,ie,igp,jgp));
+            auto mid_out = unpackView(Homme::subview(h_midpoints_field_out,ie,igp,jgp));
+            auto int_out = unpackView(Homme::subview(h_interface_field_out,ie,igp,jgp));
             REQUIRE (mid_out(0) == sum_mid);
             REQUIRE (int_out(0) == sum_int);
           }
@@ -322,10 +326,10 @@ TEST_CASE("col_ops_scan_sum", "scan_sum") {
   Kokkos::deep_copy(d_interface_field_in,h_interface_field_in);
   
   // To use with std library for checking results
-  std::vector<double> mid_data(NUM_PHYSICAL_LEV);
-  std::vector<double> int_data(NUM_INTERFACE_LEV);
-  std::vector<double> mid_sums(NUM_PHYSICAL_LEV);
-  std::vector<double> int_sums(NUM_INTERFACE_LEV);
+  std::vector<ScalarValue> mid_data(NUM_PHYSICAL_LEV);
+  std::vector<ScalarValue> int_data(NUM_INTERFACE_LEV);
+  std::vector<ScalarValue> mid_sums(NUM_PHYSICAL_LEV);
+  std::vector<ScalarValue> int_sums(NUM_INTERFACE_LEV);
 
   // Forward and inclusive
   SECTION("fwd_inclusive") {
@@ -362,10 +366,13 @@ TEST_CASE("col_ops_scan_sum", "scan_sum") {
           // Compute using std functions
 
           // Copy from host view to std vector
-          auto mid_in = viewAsReal(Homme::subview(h_midpoints_field_in,ie,igp,jgp));
-          auto int_in = viewAsReal(Homme::subview(h_interface_field_in,ie,igp,jgp));
-          std::copy_n(mid_in.data(),NUM_PHYSICAL_LEV,mid_data.begin());
-          std::copy_n(int_in.data(),NUM_INTERFACE_LEV,int_data.begin());
+          auto mid_in = unpackView(Homme::subview(h_midpoints_field_in,ie,igp,jgp));
+          auto int_in = unpackView(Homme::subview(h_interface_field_in,ie,igp,jgp));
+          for (int k=0; k<NPL; ++k) {
+            mid_data[k] = mid_in(k);
+            int_data[k] = int_in(k);
+          }
+          int_data[NIL-1] = int_in(NIL-1);
 
           // scan sum the std vectors
           std::fill(mid_sums.begin(),mid_sums.end(),0.0);
@@ -374,8 +381,8 @@ TEST_CASE("col_ops_scan_sum", "scan_sum") {
           std::partial_sum(int_data.begin(),int_data.end(),int_sums.begin());
 
           // Check answer
-          auto mid_out = viewAsReal(Homme::subview(h_midpoints_field_out,ie,igp,jgp));
-          auto int_out = viewAsReal(Homme::subview(h_interface_field_out,ie,igp,jgp));
+          auto mid_out = unpackView(Homme::subview(h_midpoints_field_out,ie,igp,jgp));
+          auto int_out = unpackView(Homme::subview(h_interface_field_out,ie,igp,jgp));
           for (int k=0; k<NUM_PHYSICAL_LEV; ++k) {
             REQUIRE (mid_out(k) == mid_sums[k]);
             REQUIRE (int_out(k) == int_sums[k]);
@@ -421,10 +428,13 @@ TEST_CASE("col_ops_scan_sum", "scan_sum") {
           // Compute using std functions
 
           // Copy from host view to std vector
-          auto mid_in = viewAsReal(Homme::subview(h_midpoints_field_in,ie,igp,jgp));
-          auto int_in = viewAsReal(Homme::subview(h_interface_field_in,ie,igp,jgp));
-          std::copy_n(mid_in.data(),NUM_PHYSICAL_LEV,mid_data.begin());
-          std::copy_n(int_in.data(),NUM_INTERFACE_LEV,int_data.begin());
+          auto mid_in = unpackView(Homme::subview(h_midpoints_field_in,ie,igp,jgp));
+          auto int_in = unpackView(Homme::subview(h_interface_field_in,ie,igp,jgp));
+          for (int k=0; k<NPL; ++k) {
+            mid_data[k] = mid_in(k);
+            int_data[k] = int_in(k);
+          }
+          int_data[NIL-1] = int_in(NIL-1);
 
           // scan sum the std vectors
           std::fill(mid_sums.begin(),mid_sums.end(),0.0);
@@ -433,8 +443,8 @@ TEST_CASE("col_ops_scan_sum", "scan_sum") {
           std::partial_sum(int_data.rbegin(),int_data.rend(),int_sums.rbegin());
 
           // Check answer
-          auto mid_out = viewAsReal(Homme::subview(h_midpoints_field_out,ie,igp,jgp));
-          auto int_out = viewAsReal(Homme::subview(h_interface_field_out,ie,igp,jgp));
+          auto mid_out = unpackView(Homme::subview(h_midpoints_field_out,ie,igp,jgp));
+          auto int_out = unpackView(Homme::subview(h_interface_field_out,ie,igp,jgp));
           for (int k=0; k<NUM_PHYSICAL_LEV; ++k) {
             REQUIRE (mid_out(k) == mid_sums[k]);
             REQUIRE (int_out(k) == int_sums[k]);
@@ -480,10 +490,13 @@ TEST_CASE("col_ops_scan_sum", "scan_sum") {
           // Compute using std functions
 
           // Copy from host view to std vector
-          auto mid_in = viewAsReal(Homme::subview(h_midpoints_field_in,ie,igp,jgp));
-          auto int_in = viewAsReal(Homme::subview(h_interface_field_in,ie,igp,jgp));
-          std::copy_n(mid_in.data(),NUM_PHYSICAL_LEV,mid_data.begin());
-          std::copy_n(int_in.data(),NUM_INTERFACE_LEV,int_data.begin());
+          auto mid_in = unpackView(Homme::subview(h_midpoints_field_in,ie,igp,jgp));
+          auto int_in = unpackView(Homme::subview(h_interface_field_in,ie,igp,jgp));
+          for (int k=0; k<NPL; ++k) {
+            mid_data[k] = mid_in(k);
+            int_data[k] = int_in(k);
+          }
+          int_data[NIL-1] = int_in(NIL-1);
 
           // scan sum the std vectors
           // std::exclusive_sum is only in c++17, not c++11. To emulate that, do a standard partial sum,
@@ -493,8 +506,8 @@ TEST_CASE("col_ops_scan_sum", "scan_sum") {
           std::partial_sum(mid_data.begin(),--mid_data.end(),++mid_sums.begin());
           std::partial_sum(int_data.begin(),--int_data.end(),++int_sums.begin());
     
-          auto mid_out = viewAsReal(Homme::subview(h_midpoints_field_out,ie,igp,jgp));
-          auto int_out = viewAsReal(Homme::subview(h_interface_field_out,ie,igp,jgp));
+          auto mid_out = unpackView(Homme::subview(h_midpoints_field_out,ie,igp,jgp));
+          auto int_out = unpackView(Homme::subview(h_interface_field_out,ie,igp,jgp));
           for (int k=0; k<NUM_PHYSICAL_LEV; ++k) {
             REQUIRE (mid_out(k) == mid_sums[k]);
             REQUIRE (int_out(k) == int_sums[k]);
@@ -540,10 +553,13 @@ TEST_CASE("col_ops_scan_sum", "scan_sum") {
           // Compute using std functions
 
           // Copy from host view to std vector
-          auto mid_in = viewAsReal(Homme::subview(h_midpoints_field_in,ie,igp,jgp));
-          auto int_in = viewAsReal(Homme::subview(h_interface_field_in,ie,igp,jgp));
-          std::copy_n(mid_in.data(),NUM_PHYSICAL_LEV,mid_data.begin());
-          std::copy_n(int_in.data(),NUM_INTERFACE_LEV,int_data.begin());
+          auto mid_in = unpackView(Homme::subview(h_midpoints_field_in,ie,igp,jgp));
+          auto int_in = unpackView(Homme::subview(h_interface_field_in,ie,igp,jgp));
+          for (int k=0; k<NPL; ++k) {
+            mid_data[k] = mid_in(k);
+            int_data[k] = int_in(k);
+          }
+          int_data[NIL-1] = int_in(NIL-1);
 
           // scan sum the std vectors
           // std::exclusive_sum is only in c++17, not c++11. To emulate that, do a standard partial sum,
@@ -553,8 +569,8 @@ TEST_CASE("col_ops_scan_sum", "scan_sum") {
           std::partial_sum(mid_data.rbegin(),--mid_data.rend(),++mid_sums.rbegin());
           std::partial_sum(int_data.rbegin(),--int_data.rend(),++int_sums.rbegin());
     
-          auto mid_out = viewAsReal(Homme::subview(h_midpoints_field_out,ie,igp,jgp));
-          auto int_out = viewAsReal(Homme::subview(h_interface_field_out,ie,igp,jgp));
+          auto mid_out = unpackView(Homme::subview(h_midpoints_field_out,ie,igp,jgp));
+          auto int_out = unpackView(Homme::subview(h_interface_field_out,ie,igp,jgp));
           for (int k=0; k<NUM_PHYSICAL_LEV; ++k) {
             REQUIRE (mid_out(k) == mid_sums[k]);
             REQUIRE (int_out(k) == int_sums[k]);
@@ -592,8 +608,10 @@ TEST_CASE("col_ops_scan_sum", "scan_sum") {
           // Compute manually
 
           // Copy from host view to std vector
-          auto mid_in = viewAsReal(Homme::subview(h_midpoints_field_in,ie,igp,jgp));
-          std::copy_n(mid_in.data(),NUM_PHYSICAL_LEV,mid_data.begin());
+          auto mid_in = unpackView(Homme::subview(h_midpoints_field_in,ie,igp,jgp));
+          for (int k=0; k<NPL; ++k) {
+            mid_data[k] = mid_in(k);
+          }
 
           std::fill(int_sums.begin(),int_sums.end(),0.0);
           int_sums[0] = s0; // Init the first entry
@@ -602,7 +620,7 @@ TEST_CASE("col_ops_scan_sum", "scan_sum") {
           }
 
           // Check answer
-          auto int_out = viewAsReal(Homme::subview(h_interface_field_out,ie,igp,jgp));
+          auto int_out = unpackView(Homme::subview(h_interface_field_out,ie,igp,jgp));
           for (int k=0; k<NUM_PHYSICAL_LEV; ++k) {
             REQUIRE (int_out(k) == int_sums[k]);
           }
@@ -644,8 +662,10 @@ TEST_CASE("col_ops_scan_sum", "scan_sum") {
           // Compute manually
 
           // Copy from host view to std vector
-          auto mid_in = viewAsReal(Homme::subview(h_midpoints_field_in,ie,igp,jgp));
-          std::copy_n(mid_in.data(),NUM_PHYSICAL_LEV,mid_data.begin());
+          auto mid_in = unpackView(Homme::subview(h_midpoints_field_in,ie,igp,jgp));
+          for (int k=0; k<NPL; ++k) {
+            mid_data[k] = mid_in(k);
+          }
 
           std::fill(int_sums.begin(),int_sums.end(),0.0);
           int_sums[NUM_INTERFACE_LEV-1] = s0; // Init the last entry
@@ -655,7 +675,7 @@ TEST_CASE("col_ops_scan_sum", "scan_sum") {
           }
 
           // Check answer
-          auto int_out = viewAsReal(Homme::subview(h_interface_field_out,ie,igp,jgp));
+          auto int_out = unpackView(Homme::subview(h_interface_field_out,ie,igp,jgp));
           for (int k=NUM_INTERFACE_LEV-1; k>=0; --k) {
             REQUIRE (int_out(k) == int_sums[k]);
           }
@@ -694,8 +714,10 @@ TEST_CASE("col_ops_scan_sum", "scan_sum") {
           // Compute manually
 
           // Copy from host view to std vector
-          auto mid_in = viewAsReal(Homme::subview(h_midpoints_field_in,ie,igp,jgp));
-          std::copy_n(mid_in.data(),NUM_PHYSICAL_LEV,mid_data.begin());
+          auto mid_in = unpackView(Homme::subview(h_midpoints_field_in,ie,igp,jgp));
+          for (int k=0; k<NPL; ++k) {
+            mid_data[k] = mid_in(k);
+          }
 
           std::fill(int_sums.begin(),int_sums.end(),0.0);
           int_sums[0] = s0; // Init the first entry
@@ -704,7 +726,7 @@ TEST_CASE("col_ops_scan_sum", "scan_sum") {
           }
 
           // Check answer
-          auto int_out = viewAsReal(Homme::subview(h_interface_field_out,ie,igp,jgp));
+          auto int_out = unpackView(Homme::subview(h_interface_field_out,ie,igp,jgp));
           for (int k=0; k<NUM_INTERFACE_LEV; ++k) {
             REQUIRE (int_out(k) == int_sums[k]);
           }
@@ -746,8 +768,10 @@ TEST_CASE("col_ops_scan_sum", "scan_sum") {
           // Compute manually
 
           // Copy from host view to std vector
-          auto mid_in = viewAsReal(Homme::subview(h_midpoints_field_in,ie,igp,jgp));
-          std::copy_n(mid_in.data(),NUM_PHYSICAL_LEV,mid_data.begin());
+          auto mid_in = unpackView(Homme::subview(h_midpoints_field_in,ie,igp,jgp));
+          for (int k=0; k<NPL; ++k) {
+            mid_data[k] = mid_in(k);
+          }
 
           std::fill(int_sums.begin(),int_sums.end(),0.0);
           int_sums[NUM_INTERFACE_LEV-1] = s0; // Init the last entry
@@ -757,7 +781,7 @@ TEST_CASE("col_ops_scan_sum", "scan_sum") {
           }
 
           // Check answer
-          auto int_out = viewAsReal(Homme::subview(h_interface_field_out,ie,igp,jgp));
+          auto int_out = unpackView(Homme::subview(h_interface_field_out,ie,igp,jgp));
           for (int k=0; k<NUM_INTERFACE_LEV; ++k) {
             REQUIRE (int_out(k) == int_sums[k]);
           }

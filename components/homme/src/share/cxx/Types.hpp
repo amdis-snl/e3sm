@@ -7,6 +7,8 @@
 #ifndef HOMMEXX_TYPES_HPP
 #define HOMMEXX_TYPES_HPP
 
+#include "SacadoTypes.hpp" // Needs to be before Kokkos
+
 #include <Kokkos_Core.hpp>
 
 #include "PackTraits.hpp"
@@ -30,21 +32,47 @@ using F90Ptr = Real *const; // Using this in a function signature emphasizes
 using CF90Ptr = const Real *const; // Using this in a function signature
                                    // emphasizes that the ordering is Fortran
 
-using VectorTagType = KokkosKernels::Batched::Experimental::SIMD<Real, ExecSpace>;
+#ifdef HOMMEXX_ENABLE_FWD_SENS
+using ScalarValue = FadType;
+#else
+using ScalarValue = Real;
+#endif
+
+inline Real ADValue(const Real& v) { return v; }
+#ifdef HOMMEXX_ENABLE_FAD_TYPES
+inline Real ADValue(const FadType& v) { return v.val(); }
+#endif
+
+using VectorTagType = KokkosKernels::Batched::Experimental::SIMD<ScalarValue, ExecSpace>;
 
 using VectorType = KokkosKernels::Batched::Experimental::VectorTag<VectorTagType, VECTOR_SIZE>;
 
 using Scalar = KokkosKernels::Batched::Experimental::Vector<VectorType>;
 
+#ifdef HOMMEXX_ENABLE_FWD_SENS
+using RealVectorTagType = KokkosKernels::Batched::Experimental::SIMD<Real, ExecSpace>;
+
+using RealVectorType = KokkosKernels::Batched::Experimental::VectorTag<RealVectorTagType, VECTOR_SIZE>;
+
+using RealScalar = KokkosKernels::Batched::Experimental::Vector<RealVectorType>;
+#endif
+
 // Specialize PackTraits for Scalar
 template<>
 struct PackTraits<Scalar> {
   static constexpr int pack_length = Scalar::vector_length;
+  using value_type = ScalarValue;
+};
+#ifdef HOMMEXX_ENABLE_FWD_SENS
+template<>
+struct PackTraits<RealScalar> {
+  static constexpr int pack_length = Scalar::vector_length;
   using value_type = Real;
 };
+#endif
 
 static_assert(sizeof(Scalar) > 0, "Vector type has 0 size");
-static_assert(sizeof(Scalar) == sizeof(Real[VECTOR_SIZE]), "Vector type is not correctly defined");
+static_assert(sizeof(Scalar) == sizeof(ScalarValue[VECTOR_SIZE]), "Vector type is not correctly defined");
 static_assert(Scalar::vector_length>0, "Vector type is not correctly defined (vector_length=0)");
 
 using MemoryManaged   = Kokkos::MemoryTraits<Kokkos::Restrict>;
@@ -194,10 +222,35 @@ struct Real2 {
   }
 };
 
+struct ScalarValue2 {
+  Homme::ScalarValue v[2];
+  KOKKOS_FORCEINLINE_FUNCTION
+  ScalarValue2 () : v{0,0} {}
+
+  KOKKOS_FORCEINLINE_FUNCTION
+  ScalarValue2& operator+= (const ScalarValue2& o) {
+    v[0] += o.v[0];
+    v[1] += o.v[1];
+    return *this;
+  }
+};
+
+#ifdef HOMMEXX_ENABLE_FAD_TYPES
+template<>
+struct reduction_identity<Homme::FadType> {
+  KOKKOS_FORCEINLINE_FUNCTION
+  static Homme::FadType sum()  {return Homme::FadType(reduction_identity<Homme::Real>::sum());}
+  static Homme::FadType min()  {return Homme::FadType(reduction_identity<Homme::Real>::min());}
+  static Homme::FadType max()  {return Homme::FadType(reduction_identity<Homme::Real>::max());}
+};
+#endif
+
 template<>
 struct reduction_identity<Homme::Scalar> {
   KOKKOS_FORCEINLINE_FUNCTION
-  static Homme::Scalar sum()  {return Homme::Scalar(reduction_identity<Homme::Real>::sum());}
+  static Homme::Scalar sum()  {return Homme::Scalar(reduction_identity<Homme::ScalarValue>::sum());}
+  static Homme::Scalar min()  {return Homme::Scalar(reduction_identity<Homme::ScalarValue>::min());}
+  static Homme::Scalar max()  {return Homme::Scalar(reduction_identity<Homme::ScalarValue>::max());}
 };
 
 // Specialization of a Kokkos structure, needed in the initialization of reduction operations.
@@ -206,6 +259,113 @@ template<> struct reduction_identity<Real2> {
   static Real2 sum() { return Real2(); }
 };
 
+// Specialization of a Kokkos structure, needed in the initialization of reduction operations.
+template<> struct reduction_identity<ScalarValue2> {
+  KOKKOS_FORCEINLINE_FUNCTION
+  static ScalarValue2 sum() { return ScalarValue2(); }
+};
+
 } // namespace Kokkos
+
+#ifdef HOMMEXX_ENABLE_FWD_SENS
+
+namespace KokkosKernels {
+namespace Batched {
+namespace Experimental {
+
+KOKKOS_FORCEINLINE_FUNCTION
+Homme::Scalar
+operator+(const Homme::RealScalar& a, const Homme::Scalar& b) {
+  Homme::Scalar r_val;
+VECTOR_SIMD_LOOP
+  for (int i = 0; i < Homme::Scalar::vector_length; i++) {
+    r_val[i] = a[i] + b[i];
+  }
+  return r_val;
+}
+
+KOKKOS_FORCEINLINE_FUNCTION
+Homme::Scalar
+operator+(const Homme::Scalar& a, const Homme::RealScalar& b) {
+  Homme::Scalar r_val;
+VECTOR_SIMD_LOOP
+  for (int i = 0; i < Homme::Scalar::vector_length; i++) {
+    r_val[i] = a[i] + b[i];
+  }
+  return r_val;
+}
+
+// KOKKOS_FORCEINLINE_FUNCTION
+// Homme::Scalar
+// operator+(const Homme::RealScalar& a, const Homme::FadType& b) {
+//   Homme::Scalar r_val;
+// VECTOR_SIMD_LOOP
+//   for (int i = 0; i < Homme::Scalar::vector_length; i++) {
+//     r_val[i] = a[i] + b;
+//   }
+//   return r_val;
+// }
+
+// KOKKOS_FORCEINLINE_FUNCTION
+// Homme::Scalar
+// operator+(const Homme::FadType& a, const Homme::RealScalar& b) {
+//   Homme::Scalar r_val;
+// VECTOR_SIMD_LOOP
+//   for (int i = 0; i < Homme::Scalar::vector_length; i++) {
+//     r_val[i] = a + b[i];
+//   }
+//   return r_val;
+// }
+
+KOKKOS_FORCEINLINE_FUNCTION
+Homme::Scalar
+operator*(const Homme::RealScalar& a, const Homme::Scalar& b) {
+  Homme::Scalar r_val;
+VECTOR_SIMD_LOOP
+  for (int i = 0; i < Homme::Scalar::vector_length; i++) {
+    r_val[i] = a[i] * b[i];
+  }
+  return r_val;
+}
+
+KOKKOS_FORCEINLINE_FUNCTION
+Homme::Scalar
+operator*(const Homme::Scalar& a, const Homme::RealScalar& b) {
+  Homme::Scalar r_val;
+VECTOR_SIMD_LOOP
+  for (int i = 0; i < Homme::Scalar::vector_length; i++) {
+    r_val[i] = a[i] * b[i];
+  }
+  return r_val;
+}
+
+// KOKKOS_FORCEINLINE_FUNCTION
+// Homme::Scalar
+// operator*(const Homme::RealScalar& a, const Homme::FadType& b) {
+//   Homme::Scalar r_val;
+// VECTOR_SIMD_LOOP
+//   for (int i = 0; i < Homme::Scalar::vector_length; i++) {
+//     r_val[i] = a[i] * b;
+//   }
+//   return r_val;
+// }
+
+// KOKKOS_FORCEINLINE_FUNCTION
+// Homme::Scalar
+// operator*(const Homme::FadType& a, const Homme::RealScalar& b) {
+//   Homme::Scalar r_val;
+// VECTOR_SIMD_LOOP
+//   for (int i = 0; i < Homme::Scalar::vector_length; i++) {
+//     r_val[i] = a * b[i];
+//   }
+//   return r_val;
+// }
+
+} // Experimental
+} // Batched
+} // KokkosKernels
+
+#endif
+
 
 #endif // HOMMEXX_TYPES_HPP

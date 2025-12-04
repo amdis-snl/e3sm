@@ -804,15 +804,15 @@ private:
 
     // Size doesn't matter; just need to get a pointer to the start of the
     // shared memory.
-    Real* const team_data = Memory<ExecSpace>::get_shmem<Real>(team);
+    ScalarValue* const team_data = Memory<ExecSpace>::get_shmem<ScalarValue>(team);
 
     const auto f = [&] (const int ilev) {
       const int vpi = ilev / VECTOR_SIZE, vsi = ilev % VECTOR_SIZE;
 
-      Real* const data = team_data ?
+      ScalarValue* const data = team_data ?
       team_data + 2 * NP2 * team.team_rank() :
       nullptr;
-      Memory<ExecSpace>::AutoArray<Real, NP2> x(data), c(data + NP2);
+      Memory<ExecSpace>::AutoArray<ScalarValue, NP2> x(data), c(data + NP2);
 
       Dispatch<>::parallel_for_NP2(team, [&] (const int& k) {
           const int i = k / NP, j = k % NP;
@@ -821,14 +821,14 @@ private:
           x[k] = ptens(i,j,vpi)[vsi]/dpm;
         });
 
-      Kokkos::Real2 sums;
-      Dispatch<>::parallel_reduce_NP2(team, [&] (const int& k, Kokkos::Real2& sums) {
+      Kokkos::ScalarValue2 sums;
+      Dispatch<>::parallel_reduce_NP2(team, [&] (const int& k, Kokkos::ScalarValue2& sums) {
           sums.v[0] += x[k]*c[k];
           sums.v[1] += c[k];
         }, sums);
       if (sums.v[1] <= 0) return; //! this should never happen, but if it does, dont limit
 
-      Real minp = qlim(0,vpi)[vsi], maxp = qlim(1,vpi)[vsi];
+      ScalarValue minp = qlim(0,vpi)[vsi], maxp = qlim(1,vpi)[vsi];
       // This is a slightly different spot than where this comment came from,
       // but it's logically equivalent to do it here.
       //! IMPOSE ZERO THRESHOLD.  do this here so it can be turned off for
@@ -877,17 +877,17 @@ public: // Expose for unit testing.
                            const Array2Lvl& qlim, const ArrayGllLvl& ptens) {
     struct Limit {
       KOKKOS_INLINE_FUNCTION bool
-      operator() (const TeamMember& team, const Real& mass,
-                  const Real& minp, const Real& maxp,
-                  Real* KOKKOS_RESTRICT const x,
-                  Real const* KOKKOS_RESTRICT const c) const {
+      operator() (const TeamMember& team, const ScalarValue& mass,
+                  const ScalarValue& minp, const ScalarValue& maxp,
+                  ScalarValue* KOKKOS_RESTRICT const x,
+                  ScalarValue const* KOKKOS_RESTRICT const c) const {
         const int maxiter = NP*NP - 1;
         const Real tol_limiter = 5e-14;
 
         for (int iter = 0; iter < maxiter; ++iter) {
-          Real addmass = 0;
-          Dispatch<>::parallel_reduce_NP2(team, [&] (const int& k, Real& addmass) {
-              Real delta = 0;
+         ScalarValue addmass = 0;
+          Dispatch<>::parallel_reduce_NP2(team, [&] (const int& k, ScalarValue& addmass) {
+              ScalarValue delta = 0;
               if (x[k] > maxp) {
                 delta = x[k] - maxp;
                 x[k] = maxp;
@@ -902,24 +902,24 @@ public: // Expose for unit testing.
             break;
 
           if (addmass > 0) {
-            Real weightssum = 0;
-            Dispatch<>::parallel_reduce_NP2(team, [&] (const int& k, Real& weightssum) {
+            ScalarValue weightssum = 0;
+            Dispatch<>::parallel_reduce_NP2(team, [&] (const int& k, ScalarValue& weightssum) {
                 if (x[k] < maxp)
                   weightssum += c[k];
               }, weightssum);
             const auto adw = addmass/weightssum;
             Dispatch<>::parallel_for_NP2(team, [&] (const int& k) {
-                x[k] += (x[k] < maxp) ? adw : 0;
+                x[k] += (x[k] < maxp) ? adw : ScalarValue(0);
               });
           } else {
-            Real weightssum = 0;
-            Dispatch<>::parallel_reduce_NP2(team, [&] (const int& k, Real& weightssum) {
+            ScalarValue weightssum = 0;
+            Dispatch<>::parallel_reduce_NP2(team, [&] (const int& k, ScalarValue& weightssum) {
                 if (x[k] > minp)
                   weightssum += c[k];
               }, weightssum);
             const auto adw = addmass/weightssum;
             Dispatch<>::parallel_for_NP2(team, [&] (const int& k) {
-                x[k] += (x[k] > minp) ? adw : 0;
+                x[k] += (x[k] > minp) ? adw : ScalarValue(0);
               });
           }
         }
@@ -938,14 +938,14 @@ public: // Expose for unit testing.
                         const Array2Lvl& qlim, const ArrayGllLvl& ptens) {
     struct Limit {
       KOKKOS_INLINE_FUNCTION bool
-      operator() (const TeamMember& team, const Real& /* mass */,
-                  const Real& minp, const Real& maxp,
-                  Real* KOKKOS_RESTRICT const x,
-                  Real const* KOKKOS_RESTRICT const c) const {
+      operator() (const TeamMember& team, const ScalarValue& /* mass */,
+                  const ScalarValue& minp, const ScalarValue& maxp,
+                  ScalarValue* KOKKOS_RESTRICT const x,
+                  ScalarValue const* KOKKOS_RESTRICT const c) const {
         // Clip.
-        Kokkos::Real2 reds;
-        Dispatch<>::parallel_reduce_NP2(team, [&] (const int& k, Kokkos::Real2& reds) {
-            Real delta = 0;
+        Kokkos::ScalarValue2 reds;
+        Dispatch<>::parallel_reduce_NP2(team, [&] (const int& k, Kokkos::ScalarValue2& reds) {
+            ScalarValue delta = 0;
             if (x[k] > maxp) {
               delta = x[k] - maxp;
               x[k] = maxp;
@@ -958,12 +958,12 @@ public: // Expose for unit testing.
             reds.v[0] += delta*c[k];
           }, reds);
         if (reds.v[0] == 0) return false;
-        const Real addmass = reds.v[0];
+        const ScalarValue addmass = reds.v[0];
 
         if (addmass > 0) {
-          Real fac = 0;
+          ScalarValue fac = 0;
           // Get sum of weights. Don't store them; we don't want another array.
-          Dispatch<>::parallel_reduce_NP2(team, [&] (const int& k, Real& fac) {
+          Dispatch<>::parallel_reduce_NP2(team, [&] (const int& k, ScalarValue& fac) {
               fac += c[k]*(maxp - x[k]);
             }, fac);
           if (fac > 0) {
@@ -974,8 +974,8 @@ public: // Expose for unit testing.
               });
           }
         } else {
-          Real fac = 0;
-          Dispatch<>::parallel_reduce_NP2(team, [&] (const int& k, Real& fac) {
+          ScalarValue fac = 0;
+          Dispatch<>::parallel_reduce_NP2(team, [&] (const int& k, ScalarValue& fac) {
               fac += c[k]*(x[k] - minp);
             }, fac);
           if (fac > 0) {
@@ -1006,17 +1006,17 @@ KOKKOS_INLINE_FUNCTION void SerialLimiter<ExecSpace>
 #define forij for (int i = 0; i < NP; ++i) for (int j = 0; j < NP; ++j)
 #define forlev for (int lev = 0; lev < NUM_PHYSICAL_LEV; ++lev)
 
-  ViewUnmanaged<const Real[NP][NP][NUM_LEV*VECTOR_SIZE]>
+  ViewUnmanaged<const ScalarValue[NP][NP][NUM_LEV*VECTOR_SIZE]>
     dpmass(&idpmass(0,0,0)[0]);
-  ViewUnmanaged<Real[NP][NP][NUM_LEV*VECTOR_SIZE]>
+  ViewUnmanaged<ScalarValue[NP][NP][NUM_LEV*VECTOR_SIZE]>
     c(&irwrk(0,0,0,0)[0]);
-  ViewUnmanaged<Real[2][NUM_LEV*VECTOR_SIZE]>
+  ViewUnmanaged<ScalarValue[2][NUM_LEV*VECTOR_SIZE]>
     qlim(&iqlim(0,0)[0]);
 
   if (limiter_option == 8) {
-    ViewUnmanaged<Real[NP][NP][NUM_LEV*VECTOR_SIZE]>
+    ViewUnmanaged<ScalarValue[NP][NP][NUM_LEV*VECTOR_SIZE]>
       x(&iptens(0,0,0)[0]);
-    Real mass[NUM_PHYSICAL_LEV] = {0}, sumc[NUM_PHYSICAL_LEV] = {0};
+    ScalarValue mass[NUM_PHYSICAL_LEV] = {0}, sumc[NUM_PHYSICAL_LEV] = {0};
 
     forij {
       const auto& sphij = sphweights(i,j);
@@ -1043,12 +1043,12 @@ KOKKOS_INLINE_FUNCTION void SerialLimiter<ExecSpace>
     int donecnt = 0;
     char done[NUM_PHYSICAL_LEV] = {0};
     for (int iter = 0; iter < maxiter; ++iter) {
-      Real addmass[NUM_PHYSICAL_LEV] = {0};
+      ScalarValue addmass[NUM_PHYSICAL_LEV] = {0};
 
       forij {
         VECTOR_SIMD_LOOP forlev {
           auto& xij = x(i,j,lev);
-          Real delta = 0;
+          ScalarValue delta = 0;
           if (xij < qlim(0,lev)) {
             delta = xij - qlim(0,lev);
             xij = qlim(0,lev);
@@ -1069,7 +1069,7 @@ KOKKOS_INLINE_FUNCTION void SerialLimiter<ExecSpace>
       }
       if (donecnt == NUM_PHYSICAL_LEV) break;
 
-      Real f[NUM_PHYSICAL_LEV] = {0};
+      ScalarValue f[NUM_PHYSICAL_LEV] = {0};
       forij {
         VECTOR_SIMD_LOOP forlev {
           if (done[lev]) continue;
@@ -1108,11 +1108,11 @@ KOKKOS_INLINE_FUNCTION void SerialLimiter<ExecSpace>
       }
     }
   } else if (limiter_option == 9) {
-    ViewUnmanaged<Real[NP][NP][NUM_LEV*VECTOR_SIZE]>
+    ViewUnmanaged<ScalarValue[NP][NP][NUM_LEV*VECTOR_SIZE]>
       ptens(&iptens(0,0,0)[0]);
-    ViewUnmanaged<Real[NP][NP][NUM_LEV*VECTOR_SIZE]>
+    ViewUnmanaged<ScalarValue[NP][NP][NUM_LEV*VECTOR_SIZE]>
       x(&irwrk(1,0,0,0)[0]);
-    Real mass[NUM_PHYSICAL_LEV] = {0}, sumc[NUM_PHYSICAL_LEV] = {0};
+    ScalarValue mass[NUM_PHYSICAL_LEV] = {0}, sumc[NUM_PHYSICAL_LEV] = {0};
 
     forij {
       const auto& sphij = sphweights(i,j);
@@ -1134,7 +1134,7 @@ KOKKOS_INLINE_FUNCTION void SerialLimiter<ExecSpace>
         qlim(1,lev) = mass[lev]/sumc[lev];
     }
 
-    Real addmass[NUM_PHYSICAL_LEV] = {0};
+    ScalarValue addmass[NUM_PHYSICAL_LEV] = {0};
     // This is here to be BFB with the Fortran impl. When BFB is no longer
     // required, it is almost certainly better to remove this variable and the
     // conditionals on it.
@@ -1143,7 +1143,7 @@ KOKKOS_INLINE_FUNCTION void SerialLimiter<ExecSpace>
     forij {
       VECTOR_SIMD_LOOP forlev {
         auto& xij = x(i,j,lev);
-        Real delta = 0;
+        ScalarValue delta = 0;
         if (xij < qlim(0,lev)) {
           delta = xij - qlim(0,lev);
           xij = qlim(0,lev);
@@ -1158,7 +1158,7 @@ KOKKOS_INLINE_FUNCTION void SerialLimiter<ExecSpace>
       }
     }
 
-    Real f[NUM_PHYSICAL_LEV] = {0};
+    ScalarValue f[NUM_PHYSICAL_LEV] = {0};
     forij {
       VECTOR_SIMD_LOOP forlev {
         auto& xij = x(i,j,lev);

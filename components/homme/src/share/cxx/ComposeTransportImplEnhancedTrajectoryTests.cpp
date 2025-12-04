@@ -44,7 +44,7 @@ struct ColData {
   int npack;
   ExecView<Scalar*> d;
   ExecView<Scalar*>::HostMirror h;
-  ExecView<Real*>::HostMirror r;
+  ExecView<ScalarValue*>::HostMirror r;
 
   ColData (const std::string& name, const int nlev) {
     npack = calc_npack(nlev);
@@ -60,7 +60,7 @@ struct ElData {
   int npack;
   ExecView<Scalar***> d;
   ExecView<Scalar***>::HostMirror h;
-  ExecView<Real***>::HostMirror r;
+  ExecView<ScalarValue***>::HostMirror r;
 
   ElData (const std::string& name, const int nlev) {
     npack = calc_npack(nlev);
@@ -92,14 +92,16 @@ int test_find_support (TestData&) {
   return ne;
 }
 
-void todev (const std::vector<Real>& h, const RnV& d) {
+template <typename Sc>
+void todev (const std::vector<Real>& h, const ExecView<Sc*>& d) {
   assert(h.size() <= d.size());
   const auto m = Kokkos::create_mirror_view(d);
   for (size_t i = 0; i < h.size(); ++i) m(i) = h[i];
   Kokkos::deep_copy(d, m);
 }
 
-void fillcols (const int n, const Real* const h, const RelnV::HostMirror& a) {
+template <typename a_type>
+void fillcols (const int n, const Real* const h, const a_type& a) {
   assert(n <= a.extent_int(2));
   for (int i = 0; i < a.extent_int(0); ++i)
     for (int j = 0; j < a.extent_int(1); ++j)
@@ -107,21 +109,24 @@ void fillcols (const int n, const Real* const h, const RelnV::HostMirror& a) {
         a(i,j,k) = h[k];  
 }
 
-void todev (const int n, const Real* const h, const RelnV& d) {
+template <typename Sc>
+void todev (const int n, const Real* const h, const ExecView<Sc***>& d) {
   const auto m = Kokkos::create_mirror_view(d);
   fillcols(n, h, m)  ;
   Kokkos::deep_copy(d, m);
 }
 
-void todev (const std::vector<Real>& h, const RelnV& d) {
+template <typename Sc>
+void todev (const std::vector<Real>& h, const ExecView<Sc***>& d) {
   todev(h.size(), h.data(), d);
 }
 
-void tohost (const ExecView<const Real*>& d, std::vector<Real>& h) {
+template <typename Sc>
+void tohost (const ExecView<const ScalarValue*>& d, std::vector<Sc>& h) {
   assert(h.size() <= d.size());
   const auto m = Kokkos::create_mirror_view(d);
   Kokkos::deep_copy(m, d);
-  for (size_t i = 0; i < h.size(); ++i) h[i] = m(i);
+  for (size_t i = 0; i < h.size(); ++i) h[i] = ADValue(m(i));
 }
 
 void run_linterp (const std::vector<Real>& x, const std::vector<Real>& y,
@@ -129,7 +134,7 @@ void run_linterp (const std::vector<Real>& x, const std::vector<Real>& y,
   const auto n = x.size(), ni = xi.size();
   assert(y.size() == n); assert(yi.size() == ni);
   // input -> device (test different sizes >= n)
-  ExecView<Real*> xv("xv", n), yv("yv", n+1), xiv("xiv", ni+2), yiv("yiv", ni+3);
+  ExecView<ScalarValue*> xv("xv", n), yv("yv", n+1), xiv("xiv", ni+2), yiv("yiv", ni+3);
   todev(x, xv);
   todev(y, yv);
   todev(xi, xiv);
@@ -198,10 +203,11 @@ int test_linterp (TestData& td) {
   return nerr;
 }
 
+template <typename Sc>
 int make_random_deta (TestData& td, const Real deta_tol, const int nlev,
-                      Real* const deta) {
+                      Sc* const deta) {
   int nerr = 0;
-  Real sum = 0;
+  Sc sum = 0;
   for (int k = 0; k < nlev; ++k) {
     deta[k] = td.urand(0, 1) + 0.1;
     sum += deta[k];
@@ -213,7 +219,8 @@ int make_random_deta (TestData& td, const Real deta_tol, const int nlev,
   return nerr;
 }
 
-int make_random_deta (TestData& td, const Real deta_tol, const RnV& deta) {
+template <typename Sc>
+int make_random_deta (TestData& td, const Real deta_tol, const ExecView<Sc*>& deta) {
   int nerr = 0;
   const int nlev = deta.extent_int(0);
   const auto m = Kokkos::create_mirror_view(deta);
@@ -222,7 +229,9 @@ int make_random_deta (TestData& td, const Real deta_tol, const RnV& deta) {
   return nerr;  
 }
 
-int make_random_deta (TestData& td, const Real deta_tol, const RelnV& deta) {
+
+template <typename Sc>
+int make_random_deta (TestData& td, const Real deta_tol, const ExecView<Sc***>& deta) {
   int nerr = 0;
   const int nlev = deta.extent_int(2);
   const auto m = Kokkos::create_mirror_view(deta);
@@ -246,11 +255,11 @@ int test_deta_caas (TestData& td) {
 
     // nlev+1 deltas: deta = diff([0, etam, 1])
     ExecView<Real*> deta_ref("deta_ref", nlev+1);
-    ExecView<Real***> deta("deta",NP,NP,nlev+1), wrk("wrk",NP,NP,nlev+1);
+    ExecView<ScalarValue***> deta("deta",NP,NP,nlev+1), wrk("wrk",NP,NP,nlev+1);
     nerr += make_random_deta(td, deta_tol, deta_ref);
 
     const auto policy = get_test_team_policy(1, nlev);
-    const auto run = [&] (const RelnV& deta) {
+    const auto run = [&] (const ExecView<ScalarValue***>& deta) {
       const auto f = KOKKOS_LAMBDA(const cti::MT& team) {
         KernelVariables kv(team);
         deta_caas(kv, nlev+1, deta_ref, deta_tol, wrk, deta);
@@ -261,7 +270,7 @@ int test_deta_caas (TestData& td) {
 
     { // Test that if all is OK, the input is not altered.
       nerr += make_random_deta(td, deta_tol, deta);
-      ExecView<Real***>::HostMirror copy("copy",NP,NP,nlev+1);
+      ExecView<ScalarValue***>::HostMirror copy("copy",NP,NP,nlev+1);
       Kokkos::deep_copy(copy, deta);
       run(deta);
       const auto m = cti::cmvdc(deta);
@@ -302,7 +311,7 @@ int test_deta_caas (TestData& td) {
             for (int k = 1; k < nlev; ++k) hde(i,j,k) = etam[k] - etam[k-1];
             hde(i,j,nlev) = 1 - etam[nlev-1];
             // Make sure we have a meaningful test.
-            Real minval = 1;
+            ScalarValue minval = 1;
             for (int k = 0; k <= nlev; ++k) minval = std::min(minval, hde(i,j,k));
             if (minval >= deta_tol) err("meaningful test");
           }
@@ -313,15 +322,15 @@ int test_deta_caas (TestData& td) {
           for (int j = 0; j < NP; ++j) {
             const int idx = get_idx(i,j);
             // Min val should be deta_tol.
-            Real minval = 1;
+            ScalarValue minval = 1;
             for (int k = 0; k <= nlev; ++k) minval = std::min(minval, hde(i,j,k));
             if (minval != deta_tol) err("min val");
             // Sum of levels should be 1.
-            Real sum = 0;
+            ScalarValue sum = 0;
             for (int k = 0; k <= nlev; ++k) sum += hde(i,j,k);
             if (std::abs(sum - 1) > tol) err("sum 1");
             // Only two deltas should be affected.
-            Real maxdiff = 0;
+            ScalarValue maxdiff = 0;
             for (int k = 0; k <= nlev; ++k) {
               const auto diff = std::abs(hde(i,j,k) - hder(k));
               if (k == idx or k == idx+1) {
@@ -339,13 +348,13 @@ int test_deta_caas (TestData& td) {
       const auto hde = Kokkos::create_mirror_view(deta);
       for (int i = 0; i < NP; ++i)
         for (int j = 0; j < NP; ++j) {
-          Real sum = 0;
+          ScalarValue sum = 0;
           for (int k = 0; k <= nlev; ++k) {
             hde(i,j,k) = td.urand(-0.5, 0.5);
             sum += hde(i,j,k);
           }
           // Make the column sum to 0.2 for safety in the next step.
-          const Real colsum = 0.2;
+          const ScalarValue colsum = 0.2;
           for (int k = 0; k <= nlev; ++k) hde(i,j,k) += (colsum - sum)/(nlev+1);
           for (int k = 0; k <= nlev; ++k) hde(i,j,k) /= colsum;
           sum = 0;
@@ -357,7 +366,7 @@ int test_deta_caas (TestData& td) {
       Kokkos::deep_copy(hde, deta);
       for (int i = 0; i < NP; ++i)
         for (int j = 0; j < NP; ++j) {
-          Real sum = 0, minval = 1;
+          ScalarValue sum = 0, minval = 1;
           for (int k = 0; k <= nlev; ++k) sum += hde(i,j,k);
           for (int k = 0; k <= nlev; ++k) minval = std::min(minval, hde(i,j,k));
           if (std::abs(sum - 1) > 1e3*td.eps) ++nerr;
@@ -439,8 +448,8 @@ int test_limit_etam (TestData& td) {
     const Real deta_tol = 1e5*td.eps/nlev;
 
     ExecView<Real*> hy_etai("hy_etai",nlev+1), detam("detam",nlev+1);
-    ExecView<Real***> wrk1("wrk1",NP,NP,nlev+1), wrk2("wrk2",NP,NP,nlev+1);
-    ExecView<Real***> etam("etam",NP,NP,nlev);
+    ExecView<ScalarValue***> wrk1("wrk1",NP,NP,nlev+1), wrk2("wrk2",NP,NP,nlev+1);
+    ExecView<ScalarValue***> etam("etam",NP,NP,nlev);
 
     HybridLevels h;
     fill(h, nlev);
@@ -485,7 +494,7 @@ int test_limit_etam (TestData& td) {
       if (k == col2_idx) continue;
       if (std::abs(he(0,2,k) - h.etam[k]) > tol) ok = false;
     }
-    Real mingap = 1;
+    ScalarValue mingap = 1;
     for (int i = 0; i < NP; ++i)
       for (int j = 0; j < NP; ++j) {
         mingap = std::min(mingap, he(i,j,0) - h.etai[0]);
@@ -510,9 +519,9 @@ int test_eta_interp (TestData& td) {
     fill(h, nlev);
 
     ExecView<Real*> hy_etai("hy_etai",nlev+1);
-    ExecView<Real***> x("x",NP,NP,nlev), y("y",NP,NP,nlev);
-    ExecView<Real***> xi("xi",NP,NP,nlev+1), yi("yi",NP,NP,nlev+1);
-    ExecView<Real***> xwrk("xwrk",NP,NP,nlev+2), ywrk("ywrk",NP,NP,nlev+2);
+    ExecView<ScalarValue***> x("x",NP,NP,nlev), y("y",NP,NP,nlev);
+    ExecView<ScalarValue***> xi("xi",NP,NP,nlev+1), yi("yi",NP,NP,nlev+1);
+    ExecView<ScalarValue***> xwrk("xwrk",NP,NP,nlev+2), ywrk("ywrk",NP,NP,nlev+2);
 
     todev(h.etai, hy_etai);
 
@@ -618,9 +627,9 @@ int test_eta_to_dp (TestData& td) {
     fill(h, nlev);
 
     ExecView<Real*> hy_bi("hy_bi",nlev+1), hy_etai("hy_etai",nlev+1);
-    ExecView<Real***> etai("etai",NP,NP,nlev+1), wrk("wrk",NP,NP,nlev+1);
-    ExecView<Real***> dp("dp",NP,NP,nlev);
-    ExecView<Real[NP][NP]> ps("ps");
+    ExecView<ScalarValue***> etai("etai",NP,NP,nlev+1), wrk("wrk",NP,NP,nlev+1);
+    ExecView<ScalarValue***> dp("dp",NP,NP,nlev);
+    ExecView<ScalarValue[NP][NP]> ps("ps");
     const Real hy_ps0 = h.ps0;
 
     todev(h.bi, hy_bi);
@@ -645,8 +654,8 @@ int test_eta_to_dp (TestData& td) {
 
     { // Test that for etai_ref we get the same as the usual formula.
       todev(h.etai, etai);
-      HostView<Real***> dp1("dp1",NP,NP,nlev);
-      Real dp1_max = 0;
+      HostView<ScalarValue***> dp1("dp1",NP,NP,nlev);
+      ScalarValue dp1_max = 0;
       for (int i = 0; i < NP; ++i)
         for (int j = 0; j < NP; ++j)
           for (int k = 0; k < nlev; ++k) {
@@ -656,7 +665,7 @@ int test_eta_to_dp (TestData& td) {
           }
       run();
       const auto dph = cti::cmvdc(dp);
-      Real err_max = 0;
+      ScalarValue err_max = 0;
       for (int i = 0; i < NP; ++i)
         for (int j = 0; j < NP; ++j)
           for (int k = 0; k < nlev; ++k)
@@ -672,7 +681,7 @@ int test_eta_to_dp (TestData& td) {
       const auto dph1 = cti::cmvdc(dp);
       for (int i = 0; i < NP; ++i)
         for (int j = 0; j < NP; ++j) {
-          Real ps = h.ai[0]*h.ps0;
+          ScalarValue ps = h.ai[0]*h.ps0;
           for (int k = 0; k < nlev; ++k)
             ps += dph1(i,j,k);
           if (std::abs(ps - psm(i,j)) > tol*psm(i,j)) err("t2");
@@ -716,8 +725,8 @@ int test_calc_ps (TestData& td) {
 
     const Real alpha[] = {td.urand(0,1), td.urand(0,1)};
 
-    ExecView<Real[NP][NP]> ps("ps");
-    ExecView<Real[2][NP][NP]> ps2("ps2");
+    ExecView<ScalarValue[NP][NP]> ps("ps");
+    ExecView<ScalarValue[2][NP][NP]> ps2("ps2");
     const auto policy = get_test_team_policy(1, nlev);
     const auto f = KOKKOS_LAMBDA(const cti::MT& team) {
       KernelVariables kv(team);
@@ -732,13 +741,13 @@ int test_calc_ps (TestData& td) {
     for (int i = 0; i < NP; ++i)
       for (int j = 0; j < NP; ++j) {
         {
-          Real ps = h.ai[0]*h.ps0;
+          ScalarValue ps = h.ai[0]*h.ps0;
           for (int k = 0; k < nlev; ++k)
             ps += dp1.r(i,j,k);
           if (std::abs(ps_h(i,j) - ps) > tol*ps) ++nerr;
         }
         for (int t = 0; t < 2; ++t) {
-          Real ps = h.ai[0]*h.ps0;
+          ScalarValue ps = h.ai[0]*h.ps0;
           for (int k = 0; k < nlev; ++k)
             ps += (1 - alpha[t])*dp1.r(i,j,k) + alpha[t]*dp2.r(i,j,k);
           if (std::abs(ps2_h(t,i,j) - ps) > tol*ps) ++nerr;
@@ -768,7 +777,7 @@ int test_calc_etadotmid_from_etadotdpdnint (TestData& td) {
 
     ColData hydai("hydai",nlev), hydbi("hydbi",nlev), hydetai("hydetai",nlev);
     ElData wrk("wrk",nlev+1), ed("ed",nlev+1);
-    ExecView<Real[NP][NP]> ps("ps");
+    ExecView<ScalarValue[NP][NP]> ps("ps");
     const Real ps0 = h.ps0;
 
     const auto ps_m = Kokkos::create_mirror_view(ps);

@@ -3,7 +3,14 @@
 
 #include "Hommexx_config.h"
 
-#include <Sacado_Fad_SFad.hpp>
+#ifdef HOMMEXX_ENABLE_FAD_TYPES
+
+// Disable view specializations
+#define SACADO_DISABLE_FAD_VIEW_SPEC
+
+#include <Sacado.hpp>
+
+//#include <Sacado_Fad_SFad.hpp>
 
 namespace Homme {
 
@@ -13,6 +20,11 @@ using SFadN = Sacado::Fad::SFad<T,N>;
 
 template<typename T>
 using SFad = SFadN<T,HOMMEXX_SFAD_SIZE>;
+
+using FadType = SFad<double>;
+
 }
+
+#endif // HOMMEXX_ENABLE_FAD_TYPES
 
 #endif // HOMMEXX_SACADO_TYPES_HPP

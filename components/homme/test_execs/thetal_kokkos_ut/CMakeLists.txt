@@ -297,65 +297,68 @@ ENDIF()
 cxx_unit_test (dirk_ut "${DIRK_UT_F90_SRCS}" "${DIRK_UT_CXX_SRCS}" "${DIRK_UT_INCLUDE_DIRS}" "${CONFIG_DEFINES}" ${NUM_CPUS})
 TARGET_LINK_LIBRARIES(dirk_ut thetal_kokkos_ut_lib)
 
-# ### Compose semi-Lagrangian transport unit tests
+if (NOT HOMMEXX_ENABLE_FWD_SENS)
+  # ### Compose semi-Lagrangian transport unit tests
+  # NOTE: we don't use it for now in the AMDIS effort, so hold off conversion to Fad types
 
-SET (COMPOSE_UT_CXX_SRCS
-  ${THETA_UT_DIR}/compose_ut.cpp
-)
+  SET (COMPOSE_UT_CXX_SRCS
+    ${THETA_UT_DIR}/compose_ut.cpp
+  )
 
-SET (COMPOSE_UT_F90_SRCS
-  ${THETA_UT_DIR}/compose_interface.F90
-  ${THETA_UT_DIR}/thetal_test_interface.F90
-  ${SHARE_UT_DIR}/geometry_interface.F90
-)
+  SET (COMPOSE_UT_F90_SRCS
+    ${THETA_UT_DIR}/compose_interface.F90
+    ${THETA_UT_DIR}/thetal_test_interface.F90
+    ${SHARE_UT_DIR}/geometry_interface.F90
+  )
 
-SET (COMPOSE_UT_INCLUDE_DIRS
-  ${SRC_THETA_DIR}/cxx
-  ${SRC_SHARE_DIR}
-  ${SRC_SHARE_DIR}/compose
-  ${SRC_SHARE_DIR}/cxx
-  ${THETA_UT_DIR}
-  ${THETA_LIB_MODULE_DIR}
-  ${UTILS_TIMING_SRC_DIR}
-  ${UTILS_TIMING_BIN_DIR}
-  ${CMAKE_CURRENT_BINARY_DIR}
-  ${CMAKE_BINARY_DIR}/src/share/cxx
-)
+  SET (COMPOSE_UT_INCLUDE_DIRS
+    ${SRC_THETA_DIR}/cxx
+    ${SRC_SHARE_DIR}
+    ${SRC_SHARE_DIR}/compose
+    ${SRC_SHARE_DIR}/cxx
+    ${THETA_UT_DIR}
+    ${THETA_LIB_MODULE_DIR}
+    ${UTILS_TIMING_SRC_DIR}
+    ${UTILS_TIMING_BIN_DIR}
+    ${CMAKE_CURRENT_BINARY_DIR}
+    ${CMAKE_BINARY_DIR}/src/share/cxx
+  )
 
-SET (NUM_CPUS 1)
-cxx_unit_test (compose_ut "${COMPOSE_UT_F90_SRCS}" "${COMPOSE_UT_CXX_SRCS}" "${COMPOSE_UT_INCLUDE_DIRS}" "${CONFIG_DEFINES}" ${NUM_CPUS})
-TARGET_LINK_LIBRARIES(compose_ut thetal_kokkos_ut_lib)
-
-# ### GllFvRemap unit tests
-
-SET (GLLFVREMAP_UT_CXX_SRCS
-  ${THETA_UT_DIR}/gllfvremap_ut.cpp
-)
-
-SET (GLLFVREMAP_UT_F90_SRCS
-  ${THETA_UT_DIR}/gllfvremap_interface.F90
-  ${THETA_UT_DIR}/compose_interface.F90
-  ${THETA_UT_DIR}/thetal_test_interface.F90
-  ${SHARE_UT_DIR}/geometry_interface.F90
-)
-
-SET (GLLFVREMAP_UT_INCLUDE_DIRS
-  ${SRC_THETA_DIR}/cxx
-  ${SRC_SHARE_DIR}
-  ${SRC_SHARE_DIR}/cxx
-  ${THETA_UT_DIR}
-  ${THETA_LIB_MODULE_DIR}
-  ${UTILS_TIMING_SRC_DIR}
-  ${UTILS_TIMING_BIN_DIR}
-  ${CMAKE_CURRENT_BINARY_DIR}
-  ${CMAKE_BINARY_DIR}/src/share/cxx
-)
-
-IF (USE_NUM_PROCS)
-  SET (NUM_CPUS ${USE_NUM_PROCS})
-ELSE()
   SET (NUM_CPUS 1)
-ENDIF()
-cxx_unit_test (gllfvremap_ut "${GLLFVREMAP_UT_F90_SRCS}" "${GLLFVREMAP_UT_CXX_SRCS}" "${GLLFVREMAP_UT_INCLUDE_DIRS}" "${CONFIG_DEFINES}" ${NUM_CPUS})
-TARGET_LINK_LIBRARIES(gllfvremap_ut thetal_kokkos_ut_lib)
-cxx_unit_test_add_test(gllfvremap_planar_ut gllfvremap_ut ${NUM_CPUS} "hommexx -planar")
+  cxx_unit_test (compose_ut "${COMPOSE_UT_F90_SRCS}" "${COMPOSE_UT_CXX_SRCS}" "${COMPOSE_UT_INCLUDE_DIRS}" "${CONFIG_DEFINES}" ${NUM_CPUS})
+  TARGET_LINK_LIBRARIES(compose_ut thetal_kokkos_ut_lib)
+
+  # ### GllFvRemap unit tests
+  # NOTE: we don't use it in hommexx standalone, so hold off conversion to Fad types
+  SET (GLLFVREMAP_UT_CXX_SRCS
+    ${THETA_UT_DIR}/gllfvremap_ut.cpp
+  )
+
+  SET (GLLFVREMAP_UT_F90_SRCS
+    ${THETA_UT_DIR}/gllfvremap_interface.F90
+    ${THETA_UT_DIR}/compose_interface.F90
+    ${THETA_UT_DIR}/thetal_test_interface.F90
+    ${SHARE_UT_DIR}/geometry_interface.F90
+  )
+
+  SET (GLLFVREMAP_UT_INCLUDE_DIRS
+    ${SRC_THETA_DIR}/cxx
+    ${SRC_SHARE_DIR}
+    ${SRC_SHARE_DIR}/cxx
+    ${THETA_UT_DIR}
+    ${THETA_LIB_MODULE_DIR}
+    ${UTILS_TIMING_SRC_DIR}
+    ${UTILS_TIMING_BIN_DIR}
+    ${CMAKE_CURRENT_BINARY_DIR}
+    ${CMAKE_BINARY_DIR}/src/share/cxx
+  )
+
+  IF (USE_NUM_PROCS)
+    SET (NUM_CPUS ${USE_NUM_PROCS})
+  ELSE()
+    SET (NUM_CPUS 1)
+  ENDIF()
+  cxx_unit_test (gllfvremap_ut "${GLLFVREMAP_UT_F90_SRCS}" "${GLLFVREMAP_UT_CXX_SRCS}" "${GLLFVREMAP_UT_INCLUDE_DIRS}" "${CONFIG_DEFINES}" ${NUM_CPUS})
+  TARGET_LINK_LIBRARIES(gllfvremap_ut thetal_kokkos_ut_lib)
+  cxx_unit_test_add_test(gllfvremap_planar_ut gllfvremap_ut ${NUM_CPUS} "hommexx -planar")
+endif()

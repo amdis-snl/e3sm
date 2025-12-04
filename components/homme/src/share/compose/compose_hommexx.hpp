@@ -13,14 +13,24 @@ using SetView = Kokkos::View<DataType, Kokkos::LayoutRight, Kokkos::DefaultExecu
 
 typedef SetView<HommexxReal*****> SetView5;
 
+// ETP:  currently a no-op to get the code to link with FadTypes
+//       but will need to be handled for semi-lagrangian transport eventually
+template <typename Sc>
+void set_views(const SetView<HommexxReal***>& spheremp,
+               const SetView<Sc****>& dp, const SetView<Sc*****>& dp3d,
+               const SetView<Sc******>& qdp, const SetView<Sc*****>& q,
+               const SetView<Sc*****>& dep_points, const SetView<Sc*****>& vnode,
+               const SetView<Sc*****>& vdep, const int trajectory_ndim) {}
+
 void set_views(const SetView<HommexxReal***>& spheremp,
                const SetView<HommexxReal****>& dp, const SetView5& dp3d,
                const SetView<HommexxReal******>& qdp, const SetView5& q,
                const SetView5& dep_points, const SetView5& vnode,
                const SetView5& vdep, const int trajectory_ndim);
 
+template <typename Sc>
 void set_hvcoord(const HommexxReal etai_beg, const HommexxReal etai_end,
-                 const HommexxReal* etam);
+                 const Sc* etam);
 void calc_v_departure(const int step, const HommexxReal dtsub);
 
 void advect(const int np1, const int n0_qdp, const int np1_qdp);

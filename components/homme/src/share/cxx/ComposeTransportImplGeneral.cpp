@@ -78,20 +78,23 @@ void ComposeTransportImpl::reset (const SimulationParams& params) {
     if (m_data.trajectory_nsubstep > 1)
       m_data.vdep  = DeparturePoints("vdep" , nel, num_phys_lev, np, np, ndim);
     homme::compose::set_views(
-      g.m_spheremp,
-      homme::compose::SetView<Real****>  (reinterpret_cast<Real*>(d.m_dp.data()),
+      homme::compose::SetView<Real***>  (g.m_spheremp),
+      homme::compose::SetView<ScalarValue****>  (reinterpret_cast<ScalarValue*>(d.m_dp.data()),
                                           nel, np, np, nlev),
-      homme::compose::SetView<Real*****> (
-        reinterpret_cast<Real*>(independent_time_steps ?
+      homme::compose::SetView<ScalarValue*****> (
+        reinterpret_cast<ScalarValue*>(independent_time_steps ?
                                 d.m_divdp.data() :
                                 s.m_dp3d.data()),
         nel, (independent_time_steps ? 1 : NUM_TIME_LEVELS), np, np, nlev),
-      homme::compose::SetView<Real******>(
-        reinterpret_cast<Real*>(t.qdp.data()),
+      homme::compose::SetView<ScalarValue******>(
+        reinterpret_cast<ScalarValue*>(t.qdp.data()),
         nel, t.qdp.extent_int(1), t.qdp.extent_int(2), np, np, nlev),
-      homme::compose::SetView<Real*****> (reinterpret_cast<Real*>(t.Q.data()),
+      homme::compose::SetView<ScalarValue*****> (reinterpret_cast<ScalarValue*>(t.Q.data()),
                                           nel, t.Q.extent_int(1), np, np, nlev),
-      m_data.dep_pts, m_data.vnode, m_data.vdep, ndim);
+      homme::compose::SetView<ScalarValue*****> (m_data.dep_pts), 
+      homme::compose::SetView<ScalarValue*****> (m_data.vnode),
+      homme::compose::SetView<ScalarValue*****> (m_data.vdep),
+      ndim);
   }
 
   m_data.independent_time_steps = independent_time_steps;
@@ -292,5 +295,26 @@ void ComposeTransportImpl::run (const TimeLevel& tl, const Real dt) {
 }
 
 } // namespace Homme
+
+#ifdef HOMMEXX_ENABLE_FAD_TYPES
+namespace homme {
+  namespace islmpi {
+    inline Homme::Real Compose_ADValue(const Homme::FadType& x) {return x.val();}
+  } // namespace islmpi
+} // namespace homme
+
+#include "compose_slmm_islmpi.hpp"
+namespace homme {
+  islmpi::IslMpi<>::Ptr get_isl_mpi_singleton();
+
+  namespace compose {
+  #include "compose_set_hvcoord_impl.hpp"
+
+    template void set_hvcoord(const HommexxReal etai_beg, const HommexxReal etai_end,
+                              const Homme::FadType* etam);
+                              
+  } // namespace compose
+} // namespace homme
+#endif
 
 #endif // HOMME_ENABLE_COMPOSE

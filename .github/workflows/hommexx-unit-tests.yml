@@ -35,9 +35,6 @@ jobs:
       - name: Check out the repository
         uses: actions/checkout@v5
         with:
-          persist-credentials: false
-          show-progress: false
-          submodules: recursive
           path: e3sm/source
       - name: Show action trigger
         uses: ./e3sm/source/.github/actions/show-workflow-trigger
@@ -45,7 +42,9 @@ jobs:
         run: |
           cd ${GITHUB_WORKSPACE}
           mkdir trilinos && cd trilinos
-          git clone https://github.com/trilinos/Trilinos.git source
+          git clone --filter=blob:none https://github.com/trilinos/Trilinos.git source
+          cd source
+          git checkout master
       - name: trilinos-config
         run: |
           cd ${GITHUB_WORKSPACE}/trilinos
@@ -67,6 +66,15 @@ jobs:
         run : |
           cd ${GITHUB_WORKSPACE}/trilinos/build
           make -j4 install
+      - name: get submodules
+        run: |
+          git config --global url."https://github.com/".insteadOf git@github.com:
+          cd ${GITHUB_WORKSPACE}/e3sm/source
+          git submodule update --init --recursive cime
+          git submodule update --init externals/ekat
+          cd externals/ekat
+          git submodule update --init extern/kokkos
+          git submodule update --init extern/Catch2
       - name: hommexx-configure
         run: |
           cd ${GITHUB_WORKSPACE}/e3sm
@@ -80,7 +88,9 @@ jobs:
            \
            -D HOMME_FIND_BLASLAPACK:BOOL=ON           \
            -D HOMME_AMDIS_PROJECT:BOOL=ON             \
+           -D HOMMEXX_ENABLE_FWD_SENS:BOOL=ON         \
            -D HOMMEXX_ENABLE_FAD_TYPES:BOOL=ON        \
+           -D HOMMEXX_BFB_TESTING:BOOL=ON             \
            -D BUILD_HOMME_WITHOUT_PIOLIBRARY:BOOL=ON  \
            \
            -S ${GITHUB_WORKSPACE}/e3sm/source/components/homme

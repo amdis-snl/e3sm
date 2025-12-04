@@ -63,4 +63,19 @@ void hash (const int tl, const ExecViewManaged<Real****>& v,
   hash(accum, accum_out);
 }
 
+#ifdef HOMMEXX_ENABLE_FAD_TYPES
+void hash (const int tl, const ExecViewManaged<FadType****>& v,
+           HashType& accum_out) {
+  HashType accum;
+  Kokkos::parallel_reduce(
+    MDRangePolicy<ExecSpace, 4>(
+      {0, tl, 0, 0},
+      {v.extent_int(0), tl+1, v.extent_int(2), v.extent_int(3)}),
+    KOKKOS_LAMBDA(int i0, int i1, int i2, int i3, HashType& accum) {
+      Homme::hash(v(i0,i1,i2,i3).val(), accum);
+    }, HashReducer<>(accum));
+  hash(accum, accum_out);
+}
+#endif
+
 } // Homme

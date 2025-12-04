@@ -28,6 +28,9 @@ struct ConstIfConst {
 template<typename ScalarType>
 using RealType = typename Impl::ConstIfConst<ScalarType,Real>::type;
 
+template<typename ScalarType>
+using UnpackedType = typename Impl::ConstIfConst<ScalarType,ScalarValue>::type;
+
 // ================ Reinterpret a view of Scalar as a view of Real ======================= //
 // Note: we template on ScalarType to allow both const and non-const, but the underlying
 //       type (the one you get with std::remove_const) *must* be Scalar (as defined in Types.hpp).
@@ -53,6 +56,42 @@ viewAsReal(ViewType<ScalarType [DIM1][DIM2], Properties...> v_in) {
   using ReturnST = RealType<ScalarType>;
   using ReturnView = Unmanaged<ViewType<RealType<ScalarType>[DIM1][DIM2*VECTOR_SIZE],Properties...>>;
   return ReturnView(reinterpret_cast<ReturnST*>(v_in.data()));
+}
+
+template <typename ST, int N0, typename... Properties>
+KOKKOS_INLINE_FUNCTION
+Unmanaged<Kokkos::View<UnpackedType<ST>[N0*VECTOR_SIZE],Properties...>>
+unpackView(const ViewType<ST[N0], Properties...>& v_in)
+{
+  using RetView = Unmanaged<ViewType<UnpackedType<ST>[N0*VECTOR_SIZE],Properties...>>;
+  return RetView(reinterpret_cast<ScalarValue*>(v_in.data()));
+}
+
+template <typename ST, int N0, int N1, typename... Properties>
+KOKKOS_INLINE_FUNCTION
+Unmanaged<ViewType<UnpackedType<ST>[N0][N1*VECTOR_SIZE],Properties...>>
+unpackView(const ViewType<ST[N0][N1], Properties...>& v_in)
+{
+  using RetView = Unmanaged<ViewType<UnpackedType<ST>[N0][N1*VECTOR_SIZE],Properties...>>;
+  return RetView(reinterpret_cast<ScalarValue*>(v_in.data()));
+}
+
+template <typename ST, int N0, int N1, int N2, typename... Properties>
+KOKKOS_INLINE_FUNCTION
+Unmanaged<ViewType<UnpackedType<ST>[N0][N1][N2*VECTOR_SIZE],Properties...>>
+unpackView(const ViewType<ST[N0][N1][N2], Properties...>& v_in)
+{
+  using RetView = Unmanaged<ViewType<UnpackedType<ST>[N0][N1][N2*VECTOR_SIZE],Properties...>>;
+  return RetView(reinterpret_cast<ScalarValue*>(v_in.data()));
+}
+
+template <typename ST, int N0, int N1, int N2, int N3, typename... Properties>
+KOKKOS_INLINE_FUNCTION
+Unmanaged<ViewType<UnpackedType<ST>[N0][N1][N2][N3*VECTOR_SIZE],Properties...>>
+unpackView(const ViewType<ST[N0][N1][N2][N3], Properties...>& v_in)
+{
+  using RetView = Unmanaged<ViewType<UnpackedType<ST>[N0][N1][N2][N3*VECTOR_SIZE],Properties...>>;
+  return RetView(reinterpret_cast<ScalarValue*>(v_in.data()));
 }
 
 template <typename ScalarType, int DIM1, int DIM2, int DIM3, typename... Properties>
@@ -120,6 +159,65 @@ void print_col (const char* prefix, const ExecViewUnmanaged<const Real[NUM_LEVEL
     printf(" %3.15f",v(k));
   }
   printf("\n");
+}
+
+template<typename ViewT>
+int has_nans (const ViewT& v)
+{
+  int dim0 = v.extent(0);
+  int dim1 = v.extent(1);
+  int dim2 = v.extent(2);
+  int dim3 = v.extent(3);
+  int dim4 = v.extent(4);
+  int dim5 = v.extent(5);
+  auto vh = Kokkos::create_mirror_view(v);
+  Kokkos::deep_copy(vh,v);
+  constexpr int N = v.rank;
+  if constexpr (N==0) {
+    return Homme::isnan(ADValue(vh()));
+  } else if constexpr (N==1) {
+    for (int i=0;i<dim0;++i)
+      if (Homme::isnan(ADValue(vh(i))))
+        return i;
+  } else if constexpr (N==2) {
+    for (int i=0; i<dim0; ++i)
+      for (int j=0; j<dim1; ++j)
+        if (Homme::isnan(ADValue(vh(i,j))))
+          return i*dim1+j;
+  } else if constexpr (N==3) {
+    for (int i=0; i<dim0; ++i)
+      for (int j=0; j<dim1; ++j)
+        for (int k=0; k<dim2; ++k)
+          if (Homme::isnan(ADValue(vh(i,j,k))))
+            return i*dim1*dim2+j*dim2+k;
+  } else if constexpr (N==4) {
+    for (int i=0; i<dim0; ++i)
+      for (int j=0; j<dim1; ++j)
+        for (int k=0; k<dim2; ++k)
+          for (int l=0; l<dim3; ++l)
+            if (Homme::isnan(ADValue(vh(i,j,k,l))))
+              return i*dim1*dim2*dim3+j*dim2*dim3+k*dim3+l;
+  } else if constexpr (N==5) {
+    for (int i=0; i<dim0; ++i)
+      for (int j=0; j<dim1; ++j)
+        for (int k=0; k<dim2; ++k)
+          for (int l=0; l<dim3; ++l)
+            for (int m=0; m<dim4; ++m)
+              if (Homme::isnan(ADValue(vh(i,j,k,l,m))))
+                return i*dim1*dim2*dim3*dim4+j*dim2*dim3*dim4+k*dim3*dim4+l*dim4+m;
+  } else if constexpr (N==6) {
+    for (int i=0; i<dim0; ++i)
+      for (int j=0; j<dim1; ++j)
+        for (int k=0; k<dim2; ++k)
+          for (int l=0; l<dim3; ++l)
+            for (int m=0; m<dim4; ++m)
+              for (int n=0; n<dim5; ++n)
+                if (Homme::isnan(ADValue(vh(i,j,k,l,m,n))))
+                  return i*dim1*dim2*dim3*dim4*dim5+j*dim2*dim3*dim4*dim5+k*dim3*dim4*dim5+l*dim4*dim5+m*dim5+n;
+  } else {
+    throw std::runtime_error("[has_nans] Unsupported rank");
+  }
+  return -1;
 }
 
 } // namespace Homme

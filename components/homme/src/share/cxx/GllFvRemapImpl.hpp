@@ -325,10 +325,10 @@ struct GllFvRemapImpl {
   template <typename CR1, typename VW, typename VQ>
   static KOKKOS_FUNCTION void
   limiter_clip_and_sum_real1 (const MT& team, const int n, const Real s, const CR1& geo,
-                              Real& qmin, Real& qmax, const VW& wrk, const VQ& q) {
+                              ScalarValue& qmin, ScalarValue& qmax, const VW& wrk, const VQ& q) {
     const auto f = [&] (const int) {
       auto& c = wrk;
-      Real mass = 0, qmass = 0;
+      ScalarValue mass = 0, qmass = 0;
       for (int i = 0; i < n; ++i) {
         c(i) = s*geo(i);
         mass  += c(i);
@@ -337,7 +337,7 @@ struct GllFvRemapImpl {
       if (qmass < qmin*mass) qmin = qmass/mass;
       if (qmass > qmax*mass) qmax = qmass/mass;
 
-      Real addmass = 0;
+      ScalarValue addmass = 0;
       bool modified = false;
       // Clip.
       for (int i = 0; i < n; ++i) {
@@ -358,13 +358,13 @@ struct GllFvRemapImpl {
       if ( ! modified) return;
 
       // Compute weights normalization.
-      Real den = 0;
+      ScalarValue den = 0;
       if (addmass > 0) { for (int i = 0; i < n; ++i) den += (qmax - q(i))*c(i); }
       else             { for (int i = 0; i < n; ++i) den += (q(i) - qmin)*c(i); }
       if (den == 0) return;
       // Redistribute mass.
       for (int i = 0; i < n; ++i) {
-        const auto v = addmass > 0 ? qmax - q(i) : q(i) - qmin;
+        const auto v = addmass > 0 ? ScalarValue(qmax - q(i)) : ScalarValue(q(i) - qmin);
         q(i) += addmass*(v/den);
       }
     };
@@ -372,9 +372,9 @@ struct GllFvRemapImpl {
   }
 
   template <typename View> static KOKKOS_INLINE_FUNCTION
-  Real* pack2real (const View& v) { return &(*v.data())[0]; }
+  typename View::value_type::value_type* pack2real (const View& v) { return &(*v.data())[0]; }
   template <typename View> static KOKKOS_INLINE_FUNCTION
-  const Real* cpack2real (const View& v) { return &(*v.data())[0]; }
+  const typename View::value_type::value_type* cpack2real (const View& v) { return &(*v.data())[0]; }
   template <typename View> static KOKKOS_INLINE_FUNCTION
   Scalar* real2pack (const View& v) { return reinterpret_cast<Scalar*>(v.data()); }
   template <typename View> static KOKKOS_INLINE_FUNCTION

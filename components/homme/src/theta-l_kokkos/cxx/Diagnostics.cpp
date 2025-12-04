@@ -49,14 +49,33 @@ void Diagnostics::init (const ElementsState& state, const ElementsGeometry& geom
   d_Qvar   = decltype(d_Qvar)  ("Qvar",   m_num_elems);
   d_Qmass  = decltype(d_Qmass) ("Qmass",  m_num_elems);
   d_Q1mass = decltype(d_Q1mass)("Q1mass", m_num_elems);
+#ifdef HOMMEXX_ENABLE_FWD_SENS
+  d_Qvar_r   = decltype(d_Qvar_r)  ("Qvar",   m_num_elems);
+  d_Qmass_r  = decltype(d_Qmass_r) ("Qmass",  m_num_elems);
+  d_Q1mass_r = decltype(d_Q1mass_r)("Q1mass", m_num_elems);
+#else
+  d_Qvar_r   = d_Qvar;
+  d_Qmass_r  = d_Qmass;
+  d_Q1mass_r = d_Q1mass;
+#endif
 
-  h_IEner  = decltype(h_IEner) (elem_accum_iener_ptr, m_num_elems);
-  h_KEner  = decltype(h_KEner) (elem_accum_kener_ptr, m_num_elems);
-  h_PEner  = decltype(h_PEner) (elem_accum_pener_ptr, m_num_elems);
+  h_IEner = decltype(h_IEner) (elem_accum_iener_ptr, m_num_elems);
+  h_KEner = decltype(h_KEner) (elem_accum_kener_ptr, m_num_elems);
+  h_PEner = decltype(h_PEner) (elem_accum_pener_ptr, m_num_elems);
 
   d_IEner  = decltype(d_IEner) ("Internal  Energy", m_num_elems);
   d_KEner  = decltype(d_KEner) ("Kinetic   Energy", m_num_elems);
   d_PEner  = decltype(d_PEner) ("Potential Energy", m_num_elems);
+
+#ifdef HOMMEXX_ENABLE_FWD_SENS
+    d_IEner_r = decltype(d_IEner_r)("IEner",   m_num_elems);
+    d_KEner_r = decltype(d_KEner_r)("KEner",  m_num_elems);
+    d_PEner_r = decltype(d_PEner_r)("PEner", m_num_elems);
+#else
+    d_IEner_r = d_IEner;
+    d_KEner_r = d_KEner;
+    d_PEner_r = d_PEner;
+#endif
 }
 
 int Diagnostics::requested_buffer_size () const {
@@ -99,12 +118,38 @@ void Diagnostics::init_buffers (const FunctorsBuffersManager& fbm) {
 }
 
 void Diagnostics::sync_diagnostics_to_host () {
-  Kokkos::deep_copy(h_IEner,  d_IEner);
-  Kokkos::deep_copy(h_PEner,  d_PEner);
-  Kokkos::deep_copy(h_KEner,  d_KEner);
-  Kokkos::deep_copy(h_Qvar,   d_Qvar);
-  Kokkos::deep_copy(h_Qmass,  d_Qmass);
-  Kokkos::deep_copy(h_Q1mass, d_Q1mass);
+  if constexpr (not std::is_same_v<Real,ScalarValue>) {
+    {
+      int beg[4] = {};
+      int end[4] = {m_num_elems, NUM_DIAG_TIMES,NP,NP};
+      Kokkos::MDRangePolicy<ExecSpace,Kokkos::Rank<4>> p(beg,end);
+      auto copy_energy = KOKKOS_LAMBDA(int ie, int k, int ip, int jp) {
+        d_IEner_r(ie,k,ip,jp) = ADValue(d_IEner(ie,k,ip,jp));
+        d_KEner_r(ie,k,ip,jp) = ADValue(d_KEner(ie,k,ip,jp));
+        d_PEner_r(ie,k,ip,jp) = ADValue(d_PEner(ie,k,ip,jp));
+      };
+      Kokkos::parallel_for(p,copy_energy);
+    }
+    {
+      int beg[4] = {};
+      int end[4] = {m_num_elems, QSIZE_D,NP,NP};
+      Kokkos::MDRangePolicy<ExecSpace,Kokkos::Rank<4>> p(beg,end);
+      auto copy_tracers = KOKKOS_LAMBDA(int ie, int iq, int ip, int jp) {
+        for (int k=0; k<NUM_DIAG_TIMES; ++k) {
+          d_Qvar_r(ie,k,iq,ip,jp) = ADValue(d_Qvar(ie,k,iq,ip,jp));
+          d_Qmass_r(ie,k,iq,ip,jp) = ADValue(d_Qmass(ie,k,iq,ip,jp));
+        }
+        d_Q1mass_r(ie,iq,ip,jp) = ADValue(d_Q1mass(ie,iq,ip,jp));
+      };
+      Kokkos::parallel_for(p,copy_tracers);
+    }
+  }
+  Kokkos::deep_copy(h_IEner,  d_IEner_r);
+  Kokkos::deep_copy(h_PEner,  d_PEner_r);
+  Kokkos::deep_copy(h_KEner,  d_KEner_r);
+  Kokkos::deep_copy(h_Qvar,   d_Qvar_r);
+  Kokkos::deep_copy(h_Qmass,  d_Qmass_r);
+  Kokkos::deep_copy(h_Q1mass, d_Q1mass_r);
 }
 
 void Diagnostics::run_diagnostics (const bool before_advance, const int ivar)

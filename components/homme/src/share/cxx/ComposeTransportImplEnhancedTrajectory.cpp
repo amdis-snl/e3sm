@@ -159,7 +159,7 @@ void update_dep_points (
     int ie, lev, i, j;
     cti::idx_ie_physlev_ij(idx, ie, lev, i, j);
     // Update horizontal position.
-    Real p[3];
+    ScalarValue p[3];
     for (int d = 0; d < 3; ++d)
       p[d] = dep_pts(ie,lev,i,j,d) - dtsub*vdep(ie,lev,i,j,d)/scale_factor;
     if (is_sphere) {
@@ -340,7 +340,7 @@ void interp_departure_points_to_floating_level_midpoints (const CTI& c, const in
       };
       c.loop_ij(kv, f);
       // Compute divdp.
-      const ExecViewUnmanaged<Real[NP][NP]> ps(cti::pack2real(vwrk));
+      const ExecViewUnmanaged<ScalarValue[NP][NP]> ps(cti::pack2real(vwrk));
       calc_ps(kv, nlev,
               ps0, hyai0,
               Homme::subview(dp3d, ie, np1),
@@ -390,7 +390,7 @@ void interp_departure_points_to_floating_level_midpoints (const CTI& c, const in
       if (is_sphere) {
         // Normalize.
         const auto h = [&] (const int i, const int j, const int k) {
-          Real norm = 0;
+          ScalarValue norm = 0;
           for (int d = 0; d < 3; ++d) norm += square(dep_pts(ie,k,i,j,d));
           norm = std::sqrt(norm);
           for (int d = 0; d < 3; ++d) dep_pts(ie,k,i,j,d) /= norm;
@@ -407,7 +407,7 @@ void dss_vnode (const CTI& c, const cti::DeparturePoints& vnode) {
   const auto& spheremp = c.m_geometry.m_spheremp;
   const auto& rspheremp = c.m_geometry.m_rspheremp;
   const auto& vp = c.m_tracers.qtens_biharmonic;
-  const ExecViewUnmanaged<Real**[NP][NP][NUM_LEV*VECTOR_SIZE]>
+  const ExecViewUnmanaged<ScalarValue**[NP][NP][NUM_LEV*VECTOR_SIZE]>
     v(cti::pack2real(vp), vp.extent_int(0), vp.extent_int(1));
   const auto f = KOKKOS_LAMBDA (const int idx) {
     int ie, lev, i, j;
@@ -440,21 +440,21 @@ void ComposeTransportImpl::setup_enhanced_trajectory () {
   // diff(etai)
   m_data.hydetai = decltype(m_data.hydetai)("hydetai");
   const auto detai_pack = Kokkos::create_mirror_view(m_data.hydetai);
-  HostViewUnmanaged<Real[NUM_PHYSICAL_LEV]> detai(pack2real(detai_pack));
+  HostViewUnmanaged<ScalarValue[NUM_PHYSICAL_LEV]> detai(pack2real(detai_pack));
   for (int k = 0; k < num_phys_lev; ++k)
     detai(k) = etai(k+1) - etai(k);
   Kokkos::deep_copy(m_data.hydetai, detai_pack);
 
   const auto etamp = cmvdc(m_hvcoord.etam);
-  HostViewUnmanaged<Real[NUM_PHYSICAL_LEV]> etam(pack2real(etamp));
+  HostViewUnmanaged<ScalarValue[NUM_PHYSICAL_LEV]> etam(pack2real(etamp));
   
   // hydetam_ref.
   m_data.hydetam_ref = decltype(m_data.hydetam_ref)("hydetam_ref");
   const auto m = Kokkos::create_mirror_view(m_data.hydetam_ref);
   const int nlev = num_phys_lev;
-  m(0) = etam(0) - etai(0);
-  for (int k = 1; k < nlev; ++k) m(k) = etam(k) - etam(k-1);
-  m(nlev) = etai(nlev) - etam(nlev-1);
+  m(0) = ADValue(etam(0) - etai(0));
+  for (int k = 1; k < nlev; ++k) m(k) = ADValue(etam(k) - etam(k-1));
+  m(nlev) = ADValue(etai(nlev) - etam(nlev-1));
   Kokkos::deep_copy(m_data.hydetam_ref, m);
 
   // etam

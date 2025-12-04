@@ -61,6 +61,18 @@ BoundaryExchange::BoundaryExchange()
   m_recv_pending = false;
 
   m_diagnostics_level = 0;
+
+#ifdef HOMMEXX_ENABLE_FWD_SENS
+  if constexpr (std::is_same_v<ScalarValue,FadType>) {
+    // We need a user-defined mpi datatype. Since SFad are
+    // contiguous in memory, we can use MPI_Type_contiguous
+    MPI_Type_contiguous(1+HOMMEXX_SFAD_SIZE, MPI_DOUBLE, &m_scalar_dtype);
+    MPI_Type_commit(&m_scalar_dtype);
+  } else
+#endif
+  {
+    m_scalar_dtype = MPI_DOUBLE;
+  }
 }
 
 BoundaryExchange::BoundaryExchange(std::shared_ptr<Connectivity> connectivity, std::shared_ptr<MpiBuffersManager> buffers_manager)
@@ -223,7 +235,7 @@ void BoundaryExchange::registration_completed()
   assert (m_buffers_manager);
 
   // Create the MPI data types, for corners and edges
-  // Note: this is the size per element, per connection. It is the number of Real's to send/receive to/from the neighbor
+  // Note: this is the size per element, per connection. It is the number of ScalarValue's to send/receive to/from the neighbor
   // Note: for 2d/3d fields, we have 1 Real per GP (per level, in 3d). For 1d fields,
   //       we have 2 Real per level (max and min over element).
 
@@ -363,8 +375,8 @@ void BoundaryExchange::exchange_min_max ()
 static void
 pack (const ExecViewUnmanaged<const HaloExchangeUnstructuredConnectionInfo*> ucon,
       const ExecViewUnmanaged<const int*> ucon_ptr,
-      const ExecViewUnmanaged<ExecViewManaged<Real[NP][NP]>**> fields_2d,
-      const ExecViewUnmanaged<ExecViewUnmanaged<Real*>**> send_2d_buffers,
+      const ExecViewUnmanaged<ExecViewManaged<ScalarValue[NP][NP]>**> fields_2d,
+      const ExecViewUnmanaged<ExecViewUnmanaged<ScalarValue*>**> send_2d_buffers,
       const int num_elems, const int num_2d_fields) {
   HOMMEXX_STATIC const ConnectionHelpers helpers;
   const int nconn = ucon.extent_int(0);
@@ -533,8 +545,8 @@ void BoundaryExchange::recv_and_unpack () {
 static void
 unpack (const ExecViewUnmanaged<const HaloExchangeUnstructuredConnectionInfo*> ucon,
         const ExecViewUnmanaged<const int*> ucon_ptr,
-        const ExecViewUnmanaged<ExecViewManaged<Real[NP][NP]>**> fields_2d,
-        const ExecViewUnmanaged<ExecViewUnmanaged<Real*>**> recv_2d_buffers,
+        const ExecViewUnmanaged<ExecViewManaged<ScalarValue[NP][NP]>**> fields_2d,
+        const ExecViewUnmanaged<ExecViewUnmanaged<ScalarValue*>**> recv_2d_buffers,
         const ExecViewUnmanaged<const Real * [NP][NP]>* rspheremp,
         const int num_elems, const int num_2d_fields) {
   HOMMEXX_STATIC const ConnectionHelpers helpers;
@@ -1087,9 +1099,9 @@ void BoundaryExchange::build_buffer_views_and_requests()
       h_buf_offset[info.sharing] += h_increment_1d[info.kind]*NUM_LEV*VECTOR_SIZE;
     }
     for (int f = 0; f < m_num_2d_fields; ++f) {
-      h_send_2d_buffers(f, i) = ExecViewUnmanaged<Real*>(
+      h_send_2d_buffers(f, i) = ExecViewUnmanaged<ScalarValue*>(
         send_buffer.get() + h_buf_offset[info.sharing], helpers.CONNECTION_SIZE[info.kind]);
-      h_recv_2d_buffers(f, i) = ExecViewUnmanaged<Real*>(
+      h_recv_2d_buffers(f, i) = ExecViewUnmanaged<ScalarValue*>(
         recv_buffer.get() + h_buf_offset[info.sharing], helpers.CONNECTION_SIZE[info.kind]);
       h_buf_offset[info.sharing] += h_increment_2d[info.kind];
     }
@@ -1148,8 +1160,8 @@ void BoundaryExchange::build_buffer_views_and_requests()
     free_requests();
     m_send_requests.resize(npids);
     m_recv_requests.resize(npids);
-    MPIViewManaged<Real*>::pointer_type send_ptr = buffers_manager->get_mpi_send_buffer().data();
-    MPIViewManaged<Real*>::pointer_type recv_ptr = buffers_manager->get_mpi_recv_buffer().data();
+    MPIViewManaged<ScalarValue*>::pointer_type send_ptr = buffers_manager->get_mpi_send_buffer().data();
+    MPIViewManaged<ScalarValue*>::pointer_type recv_ptr = buffers_manager->get_mpi_recv_buffer().data();
     int offset = 0;
     for (size_t ip = 0; ip < npids; ++ip) {
       int count = 0;
@@ -1158,11 +1170,11 @@ void BoundaryExchange::build_buffer_views_and_requests()
         const auto& info = ucon(i);
         count += m_elem_buf_size[info.kind];
       }
-      HOMMEXX_MPI_CHECK_ERROR(MPI_Send_init(send_ptr + offset, count, MPI_DOUBLE,
+      HOMMEXX_MPI_CHECK_ERROR(MPI_Send_init(send_ptr + offset, count, m_scalar_dtype,
                                             pids[ip], m_exchange_type, mpi_comm,
                                             &m_send_requests[ip]),
                               m_connectivity->get_comm().mpi_comm());
-      HOMMEXX_MPI_CHECK_ERROR(MPI_Recv_init(recv_ptr + offset, count, MPI_DOUBLE,
+      HOMMEXX_MPI_CHECK_ERROR(MPI_Recv_init(recv_ptr + offset, count, m_scalar_dtype,
                                             pids[ip], m_exchange_type, mpi_comm,
                                             &m_recv_requests[ip]),
                               m_connectivity->get_comm().mpi_comm());

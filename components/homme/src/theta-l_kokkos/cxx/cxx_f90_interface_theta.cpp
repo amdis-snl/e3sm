@@ -177,6 +177,9 @@ void init_simulation_params_c (const int& remap_alg, const int& limiter_option, 
   // Now this structure can be used safely
   params.params_set = true;
 
+#ifndef SCREAM
+  params.print();
+#endif
 }
 
 void init_hvcoord_c (const Real& ps0, CRCPtr& hybrid_am_ptr, CRCPtr& hybrid_ai_ptr,
@@ -203,13 +206,16 @@ void cxx_push_results_to_f90(F90Ptr &elem_state_v_ptr,         F90Ptr &elem_stat
   // F90 ptrs to arrays (np,np,num_time_levels,nelemd) can be stuffed directly
   // in an unmanaged view
   // with scalar Real*[NUM_TIME_LEVELS][NP][NP] (with runtime dimension nelemd)
+  // but with Fad scalar type we have to do an element-wise copy
   HostViewUnmanaged<Real * [NUM_TIME_LEVELS][NP][NP]> ps_v_f90(
       elem_state_ps_v_ptr, num_elems);
 
-  auto ps_v_host = Kokkos::create_mirror_view(state.m_ps_v);
+  // auto ps_v_host = Kokkos::create_mirror_view(state.m_ps_v);
 
-  Kokkos::deep_copy(ps_v_host, state.m_ps_v);
-  Kokkos::deep_copy(ps_v_f90, ps_v_host);
+  // Kokkos::deep_copy(ps_v_host, state.m_ps_v);
+  // Kokkos::deep_copy(ps_v_f90, ps_v_host);
+
+  sync_to_host(state.m_ps_v, ps_v_f90);
 
   ElementsDerivedState &derived = Context::singleton().get<ElementsDerivedState>();
   sync_to_host(derived.m_omega_p,

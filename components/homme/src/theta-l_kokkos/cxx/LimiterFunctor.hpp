@@ -80,8 +80,9 @@ struct LimiterFunctor {
     const int nslots = m_tu.get_num_ws_slots();
 
     int num_scalar_mid_buf = Buffers::num_3d_scalar_mid_buf;
+    int scl_sz = 1+HOMMEXX_SFAD_SIZE;
 
-    return num_scalar_mid_buf  *NP*NP*NUM_LEV  *VECTOR_SIZE*nslots ;
+    return num_scalar_mid_buf  *NP*NP*NUM_LEV  *VECTOR_SIZE*nslots * scl_sz;
   }
 
   void init_buffers (const FunctorsBuffersManager& fbm) {
@@ -132,20 +133,20 @@ struct LimiterFunctor {
 
       kv.team_barrier();
 
-      Real min_diff = Kokkos::reduction_identity<Real>::min();
-      auto diff_as_real = Homme::viewAsReal(diff);
-      auto dp_as_real   = Homme::viewAsReal(dp);
-      auto dp0_as_real  = Homme::viewAsReal(dp0);
-      Kokkos::Min<Real,ExecSpace> reducer(min_diff);
+      ScalarValue min_diff = Kokkos::reduction_identity<ScalarValue>::min();
+      auto diff_scalarized = Homme::unpackView(diff);
+      auto dp_scalarized   = Homme::unpackView(dp);
+      auto dp0_scalarized  = Homme::unpackView(dp0);
+      Kokkos::Min<ScalarValue,ExecSpace> reducer(min_diff);
       Kokkos::parallel_reduce(Kokkos::ThreadVectorRange(kv.team,NUM_PHYSICAL_LEV),
-                              [&](const int k,Real& result) {
+                              [&](const int k,ScalarValue& result) {
 #ifndef HOMMEXX_BFB_TESTING
-        if(diff_as_real(k) < 0){
+        if(diff_scalarized(k) < 0){
           Kokkos::printf("WARNING:CAAR: dp3d too small. k=%d, dp3d(k)=%f, dp0=%f \n",
-                         k+1,dp_as_real(k),dp0_as_real(k));
+                         k+1,dp_scalarized(k),dp0_scalarized(k));
         }
 #endif
-        result = result<=diff_as_real(k) ? result : diff_as_real(k);
+        result = result<=diff_scalarized(k) ? result : diff_scalarized(k);
       }, reducer);
 
       auto vtheta_dp = Homme::subview(m_state.m_vtheta_dp,kv.ie,m_np1,igp,jgp);
@@ -158,7 +159,7 @@ struct LimiterFunctor {
         });
 
         // Gotta apply vertical mixing, to prevent levels from getting too thin.
-        Real mass = 0.0;
+        ScalarValue mass = 0.0;
         ColumnOps::column_reduction<NUM_PHYSICAL_LEV>(kv.team,diff,mass);
 
         if (mass<0) {
@@ -172,11 +173,11 @@ struct LimiterFunctor {
 
         // This loop must be done over physical levels, unless we implement
         // masks, like it has been done in the E3SM/scream project
-        Real mass_new = 0.0;
+        ScalarValue mass_new = 0.0;
         Dispatch<>::parallel_reduce(kv.team,
                                     Kokkos::ThreadVectorRange(kv.team,NUM_PHYSICAL_LEV),
-                                    [&](const int k, Real& accum) {
-          auto& val = diff_as_real(k);
+                                    [&](const int k, ScalarValue& accum) {
+          auto& val = diff_scalarized(k);
           val = (val<0 ? 0.0 : val);
           accum += val;
         }, mass_new);

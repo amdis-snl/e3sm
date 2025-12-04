@@ -146,13 +146,16 @@ public:
   }
 
   int requested_buffer_size () const {
-    const int nslots = m_tu_tracers.get_num_ws_slots();
+    const int nslots = std::max(m_tu_tracers_pre.get_num_ws_slots(),
+                                m_tu_tracers.get_num_ws_slots());
+    // const int nslots = m_tu_tracers.get_num_ws_slots();
     const int nelems = m_num_state_elems;
     constexpr int mid_size = NP*NP*NUM_LEV*VECTOR_SIZE;
     constexpr int int_size = NP*NP*NUM_LEV_P*VECTOR_SIZE;
 
     // 3 persistent midlayers, 2 non-persistent midlayer, and 1 non-persistent interface
-    return mid_size*(nelems*4+nslots) + int_size*nslots;
+    // Multiply by (1+HOMMEXX_SFAD_SIZE)
+    return (1+HOMMEXX_SFAD_SIZE)*(mid_size*(nelems*4+nslots) + int_size*nslots);
   }
 
   void init_buffers (const FunctorsBuffersManager& fbm) {
@@ -160,6 +163,7 @@ public:
                                    m_tu_tracers.get_num_ws_slots());
 
     constexpr int mid_size = NP*NP*NUM_LEV;
+    constexpr int int_size = NP*NP*NUM_LEV_P;
 
     Scalar* mem = reinterpret_cast<Scalar*>(fbm.get_memory());
 
@@ -179,6 +183,18 @@ public:
     mem += mid_size*num_slots;
 
     m_pi_i = decltype(m_pi_i)(mem,num_slots);
+    mem += int_size*num_slots;
+
+    int used = reinterpret_cast<Real*>(mem) - fbm.get_memory();
+    if (used!=requested_buffer_size()) {
+      printf("used: %d\n",used);
+      printf("requested: %d\n",requested_buffer_size());
+      printf("nelems: %d\n",m_num_state_elems);
+      printf("nslots: %d\n",num_slots);
+      printf("mid_size: %d\n",mid_size);
+      printf("int_size: %d\n",int_size);
+      throw std::runtime_error("wrong used size");
+    }
   }
 
   void states_forcing (const Real dt, const int np1) {
@@ -260,13 +276,13 @@ public:
   }
 
   KOKKOS_INLINE_FUNCTION
-  Real compute_fqdt (const int& k,
+  ScalarValue compute_fqdt (const int& k,
                      const ExecViewUnmanaged<Scalar[NUM_LEV]>& fq,
                      const ExecViewUnmanaged<Scalar[NUM_LEV]>& qdp) const {
     const int ilev = k / VECTOR_SIZE;
     const int ivec = k % VECTOR_SIZE;
-    Real fqdt = m_dt * fq(ilev)[ivec];
-    const Real& qdp_s = qdp(ilev)[ivec];
+    ScalarValue fqdt = m_dt * fq(ilev)[ivec];
+    const ScalarValue& qdp_s = qdp(ilev)[ivec];
     if (qdp_s + fqdt < 0.0 && fqdt < 0.0) {
       if (qdp_s < 0.0) {
         fqdt = 0.0;
@@ -307,7 +323,7 @@ public:
       const int jgp = idx % NP;
 
       auto dp = Homme::subview(m_state.m_dp3d,kv.ie,m_np1,igp,jgp);
-      Real& ps = m_state.m_ps_v(kv.ie,m_np1,igp,jgp);
+      ScalarValue& ps = m_state.m_ps_v(kv.ie,m_np1,igp,jgp);
 
       // The hydrostatic pressure in compute_pnh_and_exner in EOS is only used
       // for the theta_hydrostatic_mode case. So only compute it then
@@ -356,10 +372,10 @@ public:
         auto qdp = Homme::subview(m_tracers.qdp,kv.ie,m_np1_qdp,0,igp,jgp);
         auto dp_adj = Homme::subview(m_dp_adj,kv.ie,igp,jgp);
         if (m_adjustment) {
-          Real added_mass = 0;
+          ScalarValue added_mass = 0;
           Dispatch<ExecSpace>::parallel_reduce(
             kv.team, Kokkos::ThreadVectorRange(kv.team, NUM_PHYSICAL_LEV),
-            [&](const int &k, Real &accumulator) {
+            [&](const int &k, ScalarValue &accumulator) {
               const int ilev = k / VECTOR_SIZE;
               const int ivec = k % VECTOR_SIZE;
               accumulator += dp(ilev)[ivec]*(fq(ilev)[ivec]-q(ilev)[ivec]);
@@ -374,10 +390,10 @@ public:
             });
           }
         } else {
-          Real ps_forcing = 0.0;
+          ScalarValue ps_forcing = 0.0;
           Dispatch<ExecSpace>::parallel_reduce(
             kv.team, Kokkos::ThreadVectorRange(kv.team, NUM_PHYSICAL_LEV),
-            [&](const int &k, Real &accumulator) {
+            [&](const int &k, ScalarValue &accumulator) {
               accumulator += compute_fqdt(k,fq,qdp)/m_dt;
             },ps_forcing);
           Kokkos::single(Kokkos::PerThread(kv.team), [&]() {
@@ -456,7 +472,7 @@ public:
       auto dp_adj = Homme::subview(m_dp_adj,kv.ie,igp,jgp);
       auto ft     = Homme::subview(m_forcing.m_ft,kv.ie,igp,jgp);
       auto fphi   = Homme::subview(m_forcing.m_fphi,kv.ie,igp,jgp);
-      const Real ps = m_state.m_ps_v(kv.ie,m_np1,igp,jgp);
+      const ScalarValue ps = m_state.m_ps_v(kv.ie,m_np1,igp,jgp);
 
       if (m_moist) {
         // Need to update dp, pnh and exner. Currently, pnh is storing pnh-pi

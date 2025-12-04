@@ -767,9 +767,33 @@ void step(
   Real* dep_points_r,
   Real* q_min_r, Real* q_max_r);
 
-template <typename MT = ko::MachineTraits>
+inline Real Compose_ADValue(Real x) {return x;}
+
+template <typename Sc, typename MT = ko::MachineTraits>
 void set_hvcoord(IslMpi<MT>& cm, const Real etai_beg, const Real etai_end,
-                 const Real* etam);
+                 const Sc* etam) {
+  if (cm.etam.size() > 0) return;
+#if defined COMPOSE_HORIZ_OPENMP
+# pragma omp barrier
+# pragma omp master
+#endif
+  {
+    slmm_assert(cm.nlev > 0);
+    cm.etai_beg = etai_beg;
+    cm.etai_end = etai_end;
+    cm.etam = typename IslMpi<MT>::template ArrayD<Real*>("etam", cm.nlev);
+    const auto h = ko::create_mirror_view(cm.etam);
+    for (int k = 0; k < cm.nlev; ++k) {
+      h(k) = Compose_ADValue(etam[k]);
+      slmm_assert(k == 0 || h(k) > h(k-1));
+      slmm_assert(h(k) > 0 && h(k) < 1);
+    }
+    ko::deep_copy(cm.etam, h);
+  }
+#if defined COMPOSE_HORIZ_OPENMP
+# pragma omp barrier
+#endif
+}
 
 template <typename MT = ko::MachineTraits>
 void calc_v_departure(

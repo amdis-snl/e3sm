@@ -91,7 +91,7 @@ contains
                               dcmip16_mu, theta_advect_form, test_case,                &
                               MAX_STRING_LEN, dt_remap_factor, dt_tracer_factor,       &
                               pgrad_correction, dp3d_thresh, vtheta_thresh,            &
-                              internal_diagnostics_level
+                              internal_diagnostics_level, test_with_forcing
     !
     ! Input(s)
     !
@@ -105,7 +105,7 @@ contains
     type (c_ptr) :: hybrid_am_ptr, hybrid_ai_ptr, hybrid_bm_ptr, hybrid_bi_ptr
     character(len=MAX_STRING_LEN), target :: test_name
 
-    integer :: disable_diagnostics_int, theta_hydrostatic_mode_int, use_moisture_int
+    integer :: disable_diagnostics_int, theta_hydrostatic_mode_int, use_moisture_int, ftype_cxx
 
     ! Initialize the C++ reference element structure (i.e., pseudo-spectral deriv matrix and ref element mass matrix)
     dvv = deriv1%dvv
@@ -122,11 +122,17 @@ contains
     theta_hydrostatic_mode_int = 0
     if (theta_hydrostatic_mode) theta_hydrostatic_mode_int = 1
 
+    if (test_with_forcing) then
+      ftype_cxx = ftype
+    else
+      ftype_cxx = -1
+    endif
+
     call init_simulation_params_c (vert_remap_q_alg, limiter_option, rsplit, qsplit, tstep_type,  &
                                    qsize, statefreq, nu, nu_p, nu_q, nu_s, nu_div, nu_top,        &
                                    hypervis_order, hypervis_subcycle, hypervis_subcycle_tom,      &
                                    hypervis_scaling,                                              &
-                                   dcmip16_mu, ftype, theta_advect_form,                          &
+                                   dcmip16_mu, ftype_cxx, theta_advect_form,                      &
                                    prescribed_wind,                                               &
                                    use_moisture_int,                                              &
                                    disable_diagnostics_int,                                       &

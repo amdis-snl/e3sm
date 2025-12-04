@@ -94,7 +94,7 @@ void ElementsDerivedState::randomize(const int seed, const Real dp3d_min) {
         }
       });
 
-      Real sum;
+      ScalarValue sum;
       // Compute delta_eta over the column
       ColumnOps::compute_midpoint_delta(kv,eta_dot_dpdn_ij,delta_eta_ij);
 

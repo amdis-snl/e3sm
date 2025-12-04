@@ -36,6 +36,15 @@ void genRandArray(Scalar *const x, int length, rngAlg &engine, PDF &&pdf) {
   }
 }
 
+#ifdef HOMMEXX_ENABLE_FAD_TYPES
+template <typename rngAlg, typename PDF>
+void genRandArray(FadType *const x, int length, rngAlg &engine, PDF &&pdf) {
+  for (int i = 0; i < length; ++i) {
+    x[i] = pdf(engine);
+  }
+}
+#endif
+
 template <typename ViewType, typename rngAlg, typename PDF>
 typename std::enable_if<Kokkos::is_view<ViewType>::value, void>::type
 genRandArray(ViewType view, rngAlg &engine, PDF &&pdf,
@@ -63,9 +72,8 @@ genRandArray(ViewType view, rngAlg &engine, PDF &&pdf) {
                [](typename ViewType::HostMirror) { return true; });
 }
 
-template <typename FPType>
-Real compare_answers(FPType target, FPType computed,
-                     FPType relative_coeff = 1.0) {
+inline Real compare_answers(Real target, Real computed,
+                            Real relative_coeff = 1) {
   Real denom = 1.0;
   if (relative_coeff > 0.0 && target != 0.0) {
     denom = relative_coeff * std::fabs(target);
@@ -73,6 +81,12 @@ Real compare_answers(FPType target, FPType computed,
 
   return std::fabs(target - computed) / denom;
 }
+#ifdef HOMMEXX_ENABLE_FWD_SENS
+inline Real compare_answers(Real target, ScalarValue computed,
+                Real relative_coeff = 1) {
+  return compare_answers(target,ADValue(computed),relative_coeff);
+}
+#endif
 
 } // namespace Homme
 

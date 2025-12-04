@@ -59,6 +59,8 @@ decltype(Kokkos::create_mirror_view(V())) cmvdc (const V& v) {
 
 template <typename View> static
 Real* pack2real (const View& v) { return &(*v.data())[0]; }
+template <typename View> static
+ScalarValue* pack2scalar (const View& v) { return &(*v.data())[0]; }
 
 class Random {
   using rngalg = std::mt19937_64;
@@ -147,10 +149,18 @@ struct Session {
     const auto hybi = cmvdc(h.hybrid_bi);
     const auto hyam = cmvdc(h.hybrid_am);
     const auto hybm = cmvdc(h.hybrid_bm);
+    HostViewManaged<Real[NUM_PHYSICAL_LEV]> hyam_r("");
+    HostViewManaged<Real[NUM_PHYSICAL_LEV]> hybm_r("");
+    for (int k=0; k<NUM_PHYSICAL_LEV; ++k) {
+      int ilev = k / VECTOR_SIZE;
+      int ivec = k % VECTOR_SIZE;
+      hyam_r[k] = ADValue(hyam(ilev)[ivec]);
+      hybm_r[k] = ADValue(hybm(ilev)[ivec]);
+    }
     
     auto& ref_FE = c.create<ReferenceElement>();
     std::vector<Real> dvv(NP*NP), mp(NP*NP);
-    init_compose_f90(ne, hyai.data(), hybi.data(), &hyam(0)[0], &hybm(0)[0], h.ps0,
+    init_compose_f90(ne, hyai.data(), hybi.data(), hyam_r.data(), hybm_r.data(), h.ps0,
                      dvv.data(), mp.data(), qsize, hv_q, p.limiter_option, cdr_check,
                      is_sphere, nearest_point, halo, traj_nsubstep);
     ref_FE.init_mass(mp.data());
@@ -312,7 +322,6 @@ static bool almost_equal (const Real& a, const Real& b,
            a, b, re, tol);
   return good;
 }
-
 static bool equal (const Real& a, const Real& b,
                    // Used only if not defined HOMMEXX_BFB_TESTING.
                    const Real tol = 0) {
@@ -325,13 +334,26 @@ static bool equal (const Real& a, const Real& b,
   return almost_equal(a, b, tol);
 #endif
 }
+#ifdef HOMMEXX_ENABLE_FWD_SENS
+static bool almost_equal (const ScalarValue& a, const ScalarValue& b,
+                   // Used only if not defined HOMMEXX_BFB_TESTING.
+                   const Real tol = 0) {
+  return almost_equal(ADValue(a),ADValue(b),tol);
+}
 
-typedef ExecViewUnmanaged<Real*[NP][NP][NUM_LEV*VECTOR_SIZE]> RNlev;
-typedef ExecViewUnmanaged<Real**[NP][NP][NUM_LEV*VECTOR_SIZE]> RsNlev;
-typedef ExecViewUnmanaged<Real***[NP][NP][NUM_LEV*VECTOR_SIZE]> RssNlev;
-typedef HostView<Real*[NP][NP][NUM_LEV*VECTOR_SIZE]> RNlevH;
-typedef HostView<Real**[NP][NP][NUM_LEV*VECTOR_SIZE]> RsNlevH;
-typedef HostView<Real***[NP][NP][NUM_LEV*VECTOR_SIZE]> RssNlevH;
+static bool equal (const ScalarValue& a, const ScalarValue& b,
+                   // Used only if not defined HOMMEXX_BFB_TESTING.
+                   const Real tol = 0) {
+  return equal(ADValue(a),ADValue(b),tol);
+}
+#endif
+
+typedef ExecViewUnmanaged<ScalarValue*[NP][NP][NUM_LEV*VECTOR_SIZE]> RNlev;
+typedef ExecViewUnmanaged<ScalarValue**[NP][NP][NUM_LEV*VECTOR_SIZE]> RsNlev;
+typedef ExecViewUnmanaged<ScalarValue***[NP][NP][NUM_LEV*VECTOR_SIZE]> RssNlev;
+typedef HostView<ScalarValue*[NP][NP][NUM_LEV*VECTOR_SIZE]> RNlevH;
+typedef HostView<ScalarValue**[NP][NP][NUM_LEV*VECTOR_SIZE]> RsNlevH;
+typedef HostView<ScalarValue***[NP][NP][NUM_LEV*VECTOR_SIZE]> RssNlevH;
 
 void run_sl_vertical_remap_bfb_cpp (const Session& s, ComposeTransport& ct,
                                     Real& diagnostic) {
@@ -354,9 +376,9 @@ void run_sl_vertical_remap_bfb_cpp (const Session& s, ComposeTransport& ct,
   const auto qdp_h = create_mirror_view(tracers.qdp);
   const auto dp3d_h = create_mirror_view(state.m_dp3d);
   const auto dp_h = create_mirror_view(derived.m_divdp);
-  RssNlevH qdp(pack2real(qdp_h), s.nelemd, qdp_h.extent_int(1), qdp_h.extent_int(2));
-  RsNlevH dp3d(pack2real(dp3d_h), s.nelemd, dp3d_h.extent_int(1));
-  RNlevH dp(pack2real(dp_h), s.nelemd);
+  RssNlevH qdp(pack2scalar(qdp_h), s.nelemd, qdp_h.extent_int(1), qdp_h.extent_int(2));
+  RsNlevH dp3d(pack2scalar(dp3d_h), s.nelemd, dp3d_h.extent_int(1));
+  RNlevH dp(pack2scalar(dp_h), s.nelemd);
   for (int ie = 0; ie < s.nelemd; ++ie)
     for (int iq = 0; iq < tracers.num_tracers(); ++iq)
       for (int k = 0; k < s.nlev; ++k)
@@ -376,7 +398,7 @@ void run_sl_vertical_remap_bfb_cpp (const Session& s, ComposeTransport& ct,
   ct.remap_q(tl);
 
   const auto q_h = cmvdc(tracers.Q);
-  RsNlevH q(pack2real(q_h), s.nelemd, q_h.extent_int(1));
+  RsNlevH q(pack2scalar(q_h), s.nelemd, q_h.extent_int(1));
   
   diagnostic = 0;
   for (int ie = 0; ie < s.nelemd; ++ie)
@@ -384,7 +406,7 @@ void run_sl_vertical_remap_bfb_cpp (const Session& s, ComposeTransport& ct,
       for (int k = 0; k < s.nlev; ++k)
         for (int j = 0; j < s.np; ++j)
           for (int i = 0; i < s.np; ++i)
-            diagnostic += q(ie,iq,i,j,k);
+            diagnostic += ADValue(q(ie,iq,i,j,k));
 }
 
 TEST_CASE ("compose_transport_testing") {
@@ -427,7 +449,7 @@ TEST_CASE ("compose_transport_testing") {
       REQUIRE(depc.extent_int(2) == s.np);
       REQUIRE(depc.extent_int(4) == 3);
       if (independent_time_steps) {
-        const auto dpreconc = cmvdc(RNlev(pack2real(s.e->m_derived.m_divdp), s.nelemd));
+        const auto dpreconc = cmvdc(RNlev(pack2scalar(s.e->m_derived.m_divdp), s.nelemd));
         for (int ie = 0; ie < s.nelemd; ++ie)
           for (int lev = 0; lev < s.nlev; ++lev)
             for (int i = 0; i < s.np; ++i)

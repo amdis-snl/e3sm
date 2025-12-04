@@ -37,13 +37,13 @@ public:
   Real hybrid_ai0;
 
   // hybrid ai
-  ExecViewUnmanaged<Real[NUM_INTERFACE_LEV]> hybrid_ai;
+  ExecViewManaged<Real[NUM_INTERFACE_LEV]> hybrid_ai;
   ExecViewManaged<Scalar[NUM_LEV_P]> hybrid_ai_packed;
   ExecViewManaged<Scalar[NUM_LEV]> hybrid_am;
   ExecViewManaged<Scalar[NUM_LEV]> hybrid_ai_delta;
 
   // hybrid bi
-  ExecViewUnmanaged<Real[NUM_INTERFACE_LEV]> hybrid_bi;
+  ExecViewManaged<Real[NUM_INTERFACE_LEV]> hybrid_bi;
   ExecViewManaged<Scalar[NUM_LEV_P]> hybrid_bi_packed;
   ExecViewManaged<Scalar[NUM_LEV]> hybrid_bm;
   ExecViewManaged<Scalar[NUM_LEV]> hybrid_bi_delta;
@@ -64,7 +64,7 @@ public:
   // This reference p is computed several times in the code, so we decide
   KOKKOS_INLINE_FUNCTION
   void compute_dp_ref (const KernelVariables& kv,
-                       const ExecViewUnmanaged<const Real[NP][NP]>& ps,
+                       const ExecViewUnmanaged<const ScalarValue[NP][NP]>& ps,
                        const ExecViewUnmanaged<Scalar [NP][NP][NUM_LEV]>& dp) const
   {
     Kokkos::parallel_for(Kokkos::TeamThreadRange(kv.team,NP*NP),
@@ -72,7 +72,7 @@ public:
       const int igp = point_idx / NP;
       const int jgp = point_idx % NP;
       auto point_dp = Homme::subview(dp,igp,jgp);
-      const Real point_ps = ps(igp,jgp);
+      const ScalarValue point_ps = ps(igp,jgp);
       Kokkos::parallel_for(Kokkos::ThreadVectorRange(kv.team,NUM_LEV),
                            [&](const int& ilev) {
         point_dp(ilev) = hybrid_ai_delta(ilev)*ps0 +
@@ -85,7 +85,7 @@ public:
   }
 
   KOKKOS_INLINE_FUNCTION
-  void compute_dp_ref (const KernelVariables& kv, const Real ps,
+  void compute_dp_ref (const KernelVariables& kv, const ScalarValue ps,
                        const ExecViewUnmanaged<Scalar [NUM_LEV]>& dp) const
   {
     Kokkos::parallel_for(Kokkos::ThreadVectorRange(kv.team,NUM_LEV),
@@ -98,7 +98,7 @@ public:
   KOKKOS_INLINE_FUNCTION
   void compute_ps_ref_from_dp (const KernelVariables& kv,
                        const ExecViewUnmanaged<const Scalar [NP][NP][NUM_LEV]>& dp,
-                       const ExecViewUnmanaged<      Real   [NP][NP]>& ps) const
+                       const ExecViewUnmanaged<      ScalarValue   [NP][NP]>& ps) const
   {
     Kokkos::parallel_for(Kokkos::TeamThreadRange(kv.team,NP*NP),
                          [&](const int idx) {
@@ -120,7 +120,7 @@ public:
   KOKKOS_INLINE_FUNCTION
   void compute_ps_ref_from_phis (const KernelVariables& kv,
                        const ExecViewUnmanaged<const Real [NP][NP]>& phis,
-                       const ExecViewUnmanaged<      Real [NP][NP]>& ps) const
+                          const ExecViewUnmanaged<      ScalarValue [NP][NP]>& ps) const
   {
     Kokkos::parallel_for(Kokkos::TeamThreadRange(kv.team,NP*NP),
                          [&](const int idx) {

@@ -39,6 +39,9 @@
 // If HOMMEXX_ENABLE_FAD_TYPES is defined, this sets the Sacado SFad type length
 #define HOMMEXX_SFAD_SIZE ${HOMMEXX_SFAD_SIZE}
 
+/* Whether forward sensitivities are enabled */
+#cmakedefine HOMMEXX_ENABLE_FWD_SENS
+
 // User-defined VECTOR_SIZE
 #define HOMMEXX_VECTOR_SIZE ${HOMMEXX_VECTOR_SIZE}
 

@@ -109,8 +109,8 @@ public:
       const int igp = point_idx / NP;
       const int jgp = point_idx % NP;
 
-      const auto Q   = viewAsReal(Homme::subview(m_tracers.Q,   kv.ie,         kv.iq, igp, jgp));
-      const auto qdp = viewAsReal(Homme::subview(m_tracers.qdp, kv.ie, t2_qdp, kv.iq, igp, jgp));
+      const auto Q   = unpackView(Homme::subview(m_tracers.Q,   kv.ie,         kv.iq, igp, jgp));
+      const auto qdp = unpackView(Homme::subview(m_tracers.qdp, kv.ie, t2_qdp, kv.iq, igp, jgp));
 
       auto& Qvar =   d_Qvar  (kv.ie,m_ivar,kv.iq,igp,jgp);
       auto& Qmass =  d_Qmass (kv.ie,m_ivar,kv.iq,igp,jgp);
@@ -119,21 +119,21 @@ public:
       // Compute Qvar
       Qvar = 0.0;
       Dispatch<>::parallel_reduce(kv.team, Kokkos::ThreadVectorRange(kv.team, NUM_PHYSICAL_LEV),
-                                  [&](const int ilev, Real& accumulator){
+                                  [&](const int ilev, ScalarValue& accumulator){
         accumulator += qdp(ilev)*Q(ilev);
       }, Qvar);
 
       // Compute Qmass
       Qmass = 0.0;
       Dispatch<>::parallel_reduce(kv.team, Kokkos::ThreadVectorRange(kv.team, NUM_PHYSICAL_LEV),
-                                  [&](const int ilev, Real& accumulator){
+                                  [&](const int ilev, ScalarValue& accumulator){
         accumulator += qdp(ilev);
       }, Qmass);
 
       // Compute Q1mass
       Q1mass = 0.0;
       Dispatch<>::parallel_reduce(kv.team, Kokkos::ThreadVectorRange(kv.team, NUM_PHYSICAL_LEV),
-                                  [&](const int ilev, Real& accumulator){
+                                  [&](const int ilev, ScalarValue& accumulator){
         accumulator += qdp(ilev);
       }, Q1mass);
     });
@@ -168,14 +168,14 @@ public:
 
       // Reinterpret everything as Real* instead of Scalar*.
       // Give up some vectorization on CPU, but diagnostics are not a performance sensitive part
-      auto u              = viewAsReal(Homme::subview(m_state.m_v,kv.ie,t1,0,igp,jgp));
-      auto v              = viewAsReal(Homme::subview(m_state.m_v,kv.ie,t1,1,igp,jgp));
-      auto pnh_real       = viewAsReal(Homme::subview(pnh,igp,jgp));
-      auto phi_real       = viewAsReal(Homme::subview(phi,igp,jgp));
-      auto dpt1_real      = viewAsReal(Homme::subview(dpt1,igp,jgp));
-      auto phi_i_real     = viewAsReal(Homme::subview(phi_i,igp,jgp));
-      auto vtheta_dp_real = viewAsReal(Homme::subview(vtheta_dp,igp,jgp));
-      auto exner_real     = viewAsReal(Homme::subview(exner,igp,jgp));
+      auto u              = unpackView(Homme::subview(m_state.m_v,kv.ie,t1,0,igp,jgp));
+      auto v              = unpackView(Homme::subview(m_state.m_v,kv.ie,t1,1,igp,jgp));
+      auto pnh_real       = unpackView(Homme::subview(pnh,igp,jgp));
+      auto phi_real       = unpackView(Homme::subview(phi,igp,jgp));
+      auto dpt1_real      = unpackView(Homme::subview(dpt1,igp,jgp));
+      auto phi_i_real     = unpackView(Homme::subview(phi_i,igp,jgp));
+      auto vtheta_dp_real = unpackView(Homme::subview(vtheta_dp,igp,jgp));
+      auto exner_real     = unpackView(Homme::subview(exner,igp,jgp));
 
       // Compute exner and pnh
       if (m_theta_hydrostatic_mode) {
@@ -209,15 +209,15 @@ public:
       // Compute KEner
       KEner = 0.0;
       Dispatch<>::parallel_reduce(kv.team, Kokkos::ThreadVectorRange(kv.team, NUM_PHYSICAL_LEV),
-                                  [&](const int ilev, Real& accumulator){
+                                  [&](const int ilev, ScalarValue& accumulator){
         accumulator += ((u(ilev)*u(ilev) + v(ilev)*v(ilev))/2.0) * dpt1_real(ilev);
       }, KEner);
 
       if (!m_theta_hydrostatic_mode) {
-        Real sum = 0.0;
-        auto w_i = viewAsReal(Homme::subview(m_state.m_w_i,kv.ie,t1,igp,jgp));
+        ScalarValue sum = 0.0;
+        auto w_i = unpackView(Homme::subview(m_state.m_w_i,kv.ie,t1,igp,jgp));
         Dispatch<>::parallel_reduce(kv.team,Kokkos::ThreadVectorRange(kv.team,NUM_PHYSICAL_LEV),
-                                    [&](const int ilev, Real& accumulator){
+                                    [&](const int ilev, ScalarValue& accumulator){
           accumulator += (w_i(ilev)*w_i(ilev) + w_i(ilev+1)*w_i(ilev+1))/4.0 *dpt1_real(ilev);
         },sum);
 
@@ -230,15 +230,15 @@ public:
       // Compute PEner
       PEner = 0.0;
       Dispatch<>::parallel_reduce(kv.team,Kokkos::ThreadVectorRange(kv.team, NUM_PHYSICAL_LEV),
-                                [&](const int ilev, Real& accumulator){
+                                [&](const int ilev, ScalarValue& accumulator){
         accumulator += phi_real(ilev)*dpt1_real(ilev);
       },PEner);
 
       // Compute IEner
       IEner = 0.0;
-      Kokkos::Real2 sum;
+      Kokkos::ScalarValue2 sum;
       Dispatch<>::parallel_reduce(kv.team,Kokkos::ThreadVectorRange(kv.team, NUM_PHYSICAL_LEV),
-                                  [&](const int ilev, Kokkos::Real2& accumulator){
+                                  [&](const int ilev, Kokkos::ScalarValue2& accumulator){
         accumulator.v[0] += PhysicalConstants::cp*vtheta_dp_real(ilev)*exner_real(ilev);
         accumulator.v[1] += (phi_i_real(ilev+1)-phi_i_real(ilev))*pnh_real(ilev);
       },sum);
@@ -248,6 +248,9 @@ public:
   }
 
 private:
+#ifdef KOKKOS_ENABLE_CUDA
+public:
+#endif
 
   static constexpr int NUM_DIAG_TIMES = 6;
 
@@ -255,17 +258,25 @@ private:
   HostViewUnmanaged<Real*[NUM_DIAG_TIMES][NP][NP]> h_KEner;
   HostViewUnmanaged<Real*[NUM_DIAG_TIMES][NP][NP]> h_PEner;
 
-  ExecViewManaged<Real*[NUM_DIAG_TIMES][NP][NP]> d_IEner;
-  ExecViewManaged<Real*[NUM_DIAG_TIMES][NP][NP]> d_KEner;
-  ExecViewManaged<Real*[NUM_DIAG_TIMES][NP][NP]> d_PEner;
+  ExecViewManaged<Real*[NUM_DIAG_TIMES][NP][NP]> d_IEner_r;
+  ExecViewManaged<Real*[NUM_DIAG_TIMES][NP][NP]> d_KEner_r;
+  ExecViewManaged<Real*[NUM_DIAG_TIMES][NP][NP]> d_PEner_r;
+
+  ExecViewManaged<ScalarValue*[NUM_DIAG_TIMES][NP][NP]> d_IEner;
+  ExecViewManaged<ScalarValue*[NUM_DIAG_TIMES][NP][NP]> d_KEner;
+  ExecViewManaged<ScalarValue*[NUM_DIAG_TIMES][NP][NP]> d_PEner;
 
   HostViewUnmanaged<Real*[NUM_DIAG_TIMES][QSIZE_D][NP][NP]> h_Qvar;
   HostViewUnmanaged<Real*[NUM_DIAG_TIMES][QSIZE_D][NP][NP]> h_Qmass;
   HostViewUnmanaged<Real*                [QSIZE_D][NP][NP]> h_Q1mass;
 
-  ExecViewManaged<Real*[NUM_DIAG_TIMES][QSIZE_D][NP][NP]> d_Qvar;
-  ExecViewManaged<Real*[NUM_DIAG_TIMES][QSIZE_D][NP][NP]> d_Qmass;
-  ExecViewManaged<Real*                [QSIZE_D][NP][NP]> d_Q1mass;
+  ExecViewManaged<Real*[NUM_DIAG_TIMES][QSIZE_D][NP][NP]> d_Qvar_r;
+  ExecViewManaged<Real*[NUM_DIAG_TIMES][QSIZE_D][NP][NP]> d_Qmass_r;
+  ExecViewManaged<Real*                [QSIZE_D][NP][NP]> d_Q1mass_r;
+
+  ExecViewManaged<ScalarValue*[NUM_DIAG_TIMES][QSIZE_D][NP][NP]> d_Qvar;
+  ExecViewManaged<ScalarValue*[NUM_DIAG_TIMES][QSIZE_D][NP][NP]> d_Qmass;
+  ExecViewManaged<ScalarValue*                [QSIZE_D][NP][NP]> d_Q1mass;
 
   HybridVCoord      m_hvcoord;
   EquationOfState   m_eos;
