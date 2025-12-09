@@ -41,7 +41,8 @@ jobs:
           conda install -c conda-forge                  \
             gcc=13.2.0 gxx=13.2.0 gfortran=13.2.0 cmake \
             openmpi openblas                            \
-            libnetcdf libpnetcdf netcdf-fortran
+            libnetcdf libpnetcdf netcdf-fortran         \
+            numpy xarray netCDF4
       - name: Check out the repository
         uses: actions/checkout@v5
         with:
