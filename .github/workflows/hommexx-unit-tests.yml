@@ -28,44 +28,25 @@ jobs:
     runs-on:  [ubuntu-latest]
     name: cpu-gcc
     steps:
-      - name: install dependencies
+      - name: Setup Miniconda
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          python-version: 3.9  # Specify your desired Python version
+          channels: conda-forge,defaults  # Specify your desired channels
+          auto-activate-base: false
+          activate-environment: homme-env
+      - name: Install conda packages
+        shell: bash -l {0}  # Use bash -l to ensure conda commands are available
         run: |
-          sudo apt-get install -y libblas-dev liblapack-dev libopenmpi-dev openmpi-bin
-          mkdir ${GITHUB_WORKSPACE}/e3sm
+          conda install -c conda-forge                  \
+            gcc=13.2.0 gxx=13.2.0 gfortran=13.2.0 cmake \
+            openmpi openblas
       - name: Check out the repository
         uses: actions/checkout@v5
         with:
           path: e3sm/source
       - name: Show action trigger
         uses: ./e3sm/source/.github/actions/show-workflow-trigger
-      - name: trilinos-clone
-        run: |
-          cd ${GITHUB_WORKSPACE}
-          mkdir trilinos && cd trilinos
-          git clone --filter=blob:none https://github.com/trilinos/Trilinos.git source
-          cd source
-          git checkout master
-      - name: trilinos-config
-        run: |
-          cd ${GITHUB_WORKSPACE}/trilinos
-          mkdir build && cd build
-          cmake -Wno-dev \
-            -D CMAKE_CC_COMPILER:STRING=gcc                               \
-            -D CMAKE_CXX_COMPILER:STRING=g++                              \
-            -D CMAKE_INSTALL_PREFIX=${GITHUB_WORKSPACE}/trilinos/install  \
-            \
-            -D Trilinos_ENABLE_EXAMPLES:BOOL=OFF                          \
-            -D Trilinos_ENABLE_TESTS:BOOL=OFF                             \
-            -D Trilinos_ENABLE_OpenMP:BOOL=OFF                            \
-            -D Trilinos_ENABLE_ALL_PACKAGES:BOOL=OFF                      \
-            -D Trilinos_ENABLE_ALL_OPTIONAL_PACKAGES:BOOL=OFF             \
-            -D Trilinos_ENABLE_Sacado:BOOL=ON                             \
-            \
-            -S ${GITHUB_WORKSPACE}/trilinos/source
-      - name: trilinos-build-install
-        run : |
-          cd ${GITHUB_WORKSPACE}/trilinos/build
-          make -j4 install
       - name: get submodules
         run: |
           git config --global url."https://github.com/".insteadOf git@github.com:
@@ -76,9 +57,9 @@ jobs:
           git submodule update --init extern/kokkos
           git submodule update --init extern/Catch2
       - name: hommexx-configure
+        shell: bash -l {0}  # Use bash -l to ensure conda commands are available
         run: |
           cd ${GITHUB_WORKSPACE}/e3sm
-          export Trilinos_ROOT=${GITHUB_WORKSPACE}/trilinos/install
           mkdir build && cd build
           cmake \
            -D CMAKE_CXX_COMPILER:STRING=mpicxx        \
@@ -87,18 +68,17 @@ jobs:
            -D CMAKE_BUILD_TYPE:STRING=DEBUG           \
            \
            -D HOMME_FIND_BLASLAPACK:BOOL=ON           \
-           -D HOMME_AMDIS_PROJECT:BOOL=ON             \
-           -D HOMMEXX_ENABLE_FWD_SENS:BOOL=ON         \
-           -D HOMMEXX_ENABLE_FAD_TYPES:BOOL=ON        \
            -D HOMMEXX_BFB_TESTING:BOOL=ON             \
            -D BUILD_HOMME_WITHOUT_PIOLIBRARY:BOOL=ON  \
            \
            -S ${GITHUB_WORKSPACE}/e3sm/source/components/homme
       - name: hommexx-build
+        shell: bash -l {0}  # Use bash -l to ensure conda commands are available
         run: |
           cd ${GITHUB_WORKSPACE}/e3sm/build
           make -j4
       - name: hommexx-test
+        shell: bash -l {0}  # Use bash -l to ensure conda commands are available
         run: |
           cd ${GITHUB_WORKSPACE}/e3sm/build
           ctest --output-on-failure -L unit
