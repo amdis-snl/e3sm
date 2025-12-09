@@ -30,7 +30,14 @@ jobs:
     steps:
       - name: install dependencies
         run: |
-          sudo apt-get install -y libblas-dev liblapack-dev libopenmpi-dev openmpi-bin
+          sudo apt-get install -y \
+            libblas-dev           \
+            liblapack-dev         \
+            libopenmpi-dev        \
+            openmpi-bin           \
+            libhdf5-openmpi-dev   \
+            libnetcdf-mpi-dev     \
+            libpnetcdf-dev
           mkdir ${GITHUB_WORKSPACE}/e3sm
       - name: Check out the repository
         uses: actions/checkout@v5
