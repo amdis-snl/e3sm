@@ -28,17 +28,20 @@ jobs:
     runs-on:  [ubuntu-latest]
     name: cpu-gcc
     steps:
-      - name: install dependencies
+      - name: Setup Miniconda
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          python-version: 3.9  # Specify your desired Python version
+          channels: conda-forge,defaults  # Specify your desired channels
+          auto-activate-base: false
+          activate-environment: homme-env
+      - name: Install conda packages
+        shell: bash -l {0}  # Use bash -l to ensure conda commands are available
         run: |
-          sudo apt-get install -y \
-            libblas-dev           \
-            liblapack-dev         \
-            libopenmpi-dev        \
-            openmpi-bin           \
-            libhdf5-openmpi-dev   \
-            libnetcdf-mpi-dev     \
-            libpnetcdf-dev
-          mkdir ${GITHUB_WORKSPACE}/e3sm
+          conda install -c conda-forge                  \
+            gcc=13.2.0 gxx=13.2.0 gfortran=13.2.0 cmake \
+            openmpi openblas                            \
+            libnetcdf libpnetcdf netcdf-fortran
       - name: Check out the repository
         uses: actions/checkout@v5
         with:
@@ -53,6 +56,7 @@ jobs:
           cd source
           git checkout master
       - name: trilinos-config
+        shell: bash -l {0}
         run: |
           cd ${GITHUB_WORKSPACE}/trilinos
           mkdir build && cd build
@@ -70,6 +74,7 @@ jobs:
             \
             -S ${GITHUB_WORKSPACE}/trilinos/source
       - name: trilinos-build-install
+        shell: bash -l {0}
         run : |
           cd ${GITHUB_WORKSPACE}/trilinos/build
           make -j4 install
@@ -84,6 +89,7 @@ jobs:
           git submodule update --init extern/kokkos
           git submodule update --init extern/Catch2
       - name: hommexx-configure
+        shell: bash -l {0}
         run: |
           cd ${GITHUB_WORKSPACE}/e3sm
           export Trilinos_ROOT=${GITHUB_WORKSPACE}/trilinos/install
@@ -101,13 +107,15 @@ jobs:
            \
            -S ${GITHUB_WORKSPACE}/e3sm/source/components/homme
       - name: hommexx-build
+        shell: bash -l {0}
         run: |
           cd ${GITHUB_WORKSPACE}/e3sm/build
           make -j4
       - name: hommexx-test
+        shell: bash -l {0}
         run: |
           cd ${GITHUB_WORKSPACE}/e3sm/build
-          ctest --output-on-failure -L AMDIS
+          ctest --output-on-failure -L 'AMDIS|unit'
       - name: Upload log files
         if: ${{ always() }}
         uses: actions/upload-artifact@v4
