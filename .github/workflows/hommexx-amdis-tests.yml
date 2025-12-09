@@ -79,6 +79,7 @@ jobs:
           cd ${GITHUB_WORKSPACE}/e3sm/source
           git submodule update --init --recursive cime
           git submodule update --init externals/ekat
+          git submodule update --init externals/scorpio
           cd externals/ekat
           git submodule update --init extern/kokkos
           git submodule update --init extern/Catch2
