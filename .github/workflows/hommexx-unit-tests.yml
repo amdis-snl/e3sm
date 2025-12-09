@@ -67,9 +67,10 @@ jobs:
            -D CMAKE_Fortran_COMPILER:STRING=mpifort   \
            -D CMAKE_BUILD_TYPE:STRING=DEBUG           \
            \
+           -D BUILD_HOMME_TOOL:BOOL=OFF               \
+           -D BUILD_HOMME_WITHOUT_PIOLIBRARY:BOOL=ON  \
            -D HOMME_FIND_BLASLAPACK:BOOL=ON           \
            -D HOMMEXX_BFB_TESTING:BOOL=ON             \
-           -D BUILD_HOMME_WITHOUT_PIOLIBRARY:BOOL=ON  \
            \
            -S ${GITHUB_WORKSPACE}/e3sm/source/components/homme
       - name: hommexx-build
