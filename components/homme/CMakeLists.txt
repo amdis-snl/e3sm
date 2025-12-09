@@ -71,7 +71,7 @@ if (HOMMEXX_ENABLE_FAD_TYPES)
   endif()
   find_package(Trilinos REQUIRED COMPONENTS Sacado)
 else()
-  set (HOMMEXX_SFAD_SIZE 0 CACHE INTERNAL STRING "Length of the SFad sacado type")
+  set (HOMMEXX_SFAD_SIZE 0 CACHE STRING "Length of the SFad sacado type" FORCE)
 endif()
 
 OPTION (HOMMEXX_ENABLE_FWD_SENS "Whether to build HOMEXX in forward sensitivity mode (experimental)" OFF)
