@@ -122,6 +122,12 @@ void HyperviscosityFunctorImpl::init_params(const SimulationParams& params)
 #else
   m_process_nh_vars = not params.theta_hydrostatic_mode;
 #endif
+
+#ifdef HOMMEXX_TEST_HYPERVIS_FAD
+  m_data.rel_perturb.fastAccessDx(0) = 1;
+  m_data.rel_perturb.val() = params.rel_perturb;
+  m_data.nu *= (1 + m_data.rel_perturb);
+#endif
 }
 
 void HyperviscosityFunctorImpl::setup(const ElementsGeometry&     geometry,

@@ -90,9 +90,11 @@ contains
     !use physical_constants, only : dd_pi
     ! -------------------------------
     !use coordinate_systems_mod, only : sphere_tri_area
+#ifndef HOMME_WITHOUT_PIOLIBRARY
     ! --------------------------------
     use common_io_mod, only : homme_pio_init
     ! --------------------------------
+#endif
 
 
     implicit none
@@ -144,8 +146,9 @@ contains
     call t_startf('init')
 
     call readnl(par)
+#ifndef HOMME_WITHOUT_PIOLIBRARY
     call homme_pio_init(par%rank,par%comm)
-
+#endif
     if (par%masterproc) then
 
        ! =============================================

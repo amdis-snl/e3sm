@@ -65,7 +65,9 @@ module element_mod
 
      type (elem_state_t)      :: state
      type (derived_state_t)   :: derived
-     type (elem_accum_t)       :: accum
+     type (elem_accum_t)      :: accum
+
+     type (elem_state_t)      :: sens
 
      ! Metric terms
      real (kind=real_kind)    :: met(np,np,2,2)                       ! metric tensor on velocity and pressure grid

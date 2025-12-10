@@ -85,6 +85,7 @@ use physical_constants, only : Sx, Sy, Lx, Ly, dx, dy, dx_ref, dy_ref
     smooth_phis_nudt,     &
     initial_total_mass,   & ! set > 0 to set the initial_total_mass
     u_perturb,     &        ! J&W baroclinic test perturbation size
+    rel_perturb,   &
     moisture,      &
     use_moisture,      &
     vfile_mid,     &
@@ -317,6 +318,7 @@ use physical_constants, only : Sx, Sy, Lx, Ly, dx, dy, dx_ref, dy_ref
       smooth_phis_nudt, &
       initial_total_mass, &
       u_perturb,     &
+      rel_perturb,     &
       rotate_grid,   &
       mesh_file,     &               ! Name of mesh file
       theta_advect_form,     &
@@ -842,6 +844,7 @@ use physical_constants, only : Sx, Sy, Lx, Ly, dx, dy, dx_ref, dy_ref
     call MPI_bcast(smooth_phis_nudt,1,MPIreal_t   ,par%root,par%comm,ierr)
     call MPI_bcast(initial_total_mass ,1,MPIreal_t   ,par%root,par%comm,ierr)
     call MPI_bcast(u_perturb     ,1,MPIreal_t   ,par%root,par%comm,ierr)
+    call MPI_bcast(rel_perturb     ,1,MPIreal_t   ,par%root,par%comm,ierr)
     call MPI_bcast(rotate_grid   ,1,MPIreal_t   ,par%root,par%comm,ierr)
     call MPI_bcast(integration,MAX_STRING_LEN,MPIChar_t ,par%root,par%comm,ierr)
 #ifndef HOMME_WITHOUT_PIOLIBRARY

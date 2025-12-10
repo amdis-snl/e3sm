@@ -50,8 +50,6 @@ public:
 
   ExecViewManaged<ScalarValue * [NUM_TIME_LEVELS]   [NP][NP]           > m_ps_v;       // Surface pressure
 
-  void init_storage(const int num_elems);
-
   ElementsState() :
     m_num_elems(0)
     , m_policy(get_default_team_policy<ExecSpace>(1))

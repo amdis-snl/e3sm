@@ -21,7 +21,7 @@ module prim_movie_mod
   use cube_mod, only : cube_assemble
   use control_mod, only : test_case, runtype, geometry, &
        restartfreq, &
-       integration, qsplit
+       integration, qsplit, num_sensitivities
   use common_io_mod, only : &
        output_start_time,   &
        output_end_time,     &
@@ -99,7 +99,7 @@ contains
     use hybvcoord_mod, only : hvcoord_t
     use parallel_mod, only : abortmp
     use pio, only : PIO_InitDecomp, pio_setdebuglevel, pio_int, pio_double, pio_closefile !_EXTERNAL
-    use netcdf_io_mod, only : iodesc2d, iodesc3d, iodesc3d_subelem, iodesct, iodesc3dp1 
+    use netcdf_io_mod, only : iodesc2d, iodesc3d, iodesc3d_subelem, iodesct, iodesc3dp1, iodesc3d_sens
     use common_io_mod, only : num_io_procs, num_agg, io_stride
     use reduction_mod, only : parallelmax
     type (element_t), intent(in) :: elem(:)
@@ -116,6 +116,7 @@ contains
     integer*8 :: ii,jj,base
     integer(kind=nfsizekind) :: start(2), count(2)
     integer*8, allocatable :: compDOF(:)
+    integer*8, allocatable :: compDOF_sens(:)
     integer*8, allocatable :: compDOFp1(:)
     type(io_desc_t) :: iodescv, iodescvp1
     integer,allocatable  :: subelement_corners(:,:)
@@ -142,11 +143,12 @@ contains
       nxyp=nxyp+elem(ie)%idxp%NumUniquePts
     enddo
     global_nsub=(np-1)*(np-1)*nelem  ! total number of subelements
-    dimsize = (/GlobalUniqueCols,nlev,nlevp,nelem,0,global_nsub/)
+    dimsize = (/GlobalUniqueCols,nlev,nlevp,nelem,0,global_nsub,num_sensitivities/)
     call nf_output_register_dims(ncdf,maxdims, dimnames, dimsize)
 
 
     allocate(compdof(nxyp*nlevp), latp(nxyp),lonp(nxyp))
+    allocate(compDOF_sens(nxyp*nlevp*num_sensitivities))
     
     ! Create the DOF arrays for GLL points
     iorank=pio_iotask_rank(PIOFS)
@@ -160,6 +162,11 @@ contains
     call getDOF(elem, GlobalUniqueCols, nlev, compdof)
     call PIO_initDecomp(PIOFS, pio_double,(/GlobalUniqueCols,nlev/),&
          compDOF(1:nxyp*nlev),IOdesc3D)
+
+    if (par%masterproc) print *,'compDOF for 3d nlev sensitivities'
+    call getDOF(elem, GlobalUniqueCols, nlev*num_sensitivities, compdof_sens)
+    call PIO_initDecomp(PIOFS, pio_double,(/GlobalUniqueCols,nlev,num_sensitivities/),&
+         compDOF_sens(1:nxyp*nlev*num_sensitivities),iodesc3d_sens)
 
     if (par%masterproc) print *,'compDOF for 3d nlevp'
     call getDOF(elem, GlobalUniqueCols, nlevp, compdof)
@@ -467,8 +474,11 @@ contains
     use perf_mod, only : t_startf, t_stopf !_EXTERNAL
     use viscosity_mod, only : compute_zeta_C0
     use element_ops, only : get_field, get_field_i
+#ifdef MODEL_THETA_L
+    use element_ops, only : get_sens_field
+#endif
     use dcmip16_wrapper, only: precl
-    use netcdf_io_mod, only : iodesc3dp1 
+    use netcdf_io_mod, only : iodesc3dp1,iodesc3d_sens
 
     type (element_t)    :: elem(:)
 
@@ -484,12 +494,14 @@ contains
     real (kind=real_kind) :: vartmp(np,np,nlev), vartmp1(np,np,nlevp), arealocal(np,np)
     real (kind=real_kind) :: var2d(nxyp), var3d(nxyp,nlev), var3dp1(nxyp,nlevp), ke(np,np,nlev)
     real (kind=real_kind) :: temp3d(np,np,nlev,nelemd)
+    real (kind=real_kind) :: vartmp_sens(np,np,nlev,num_sensitivities)
+    real (kind=real_kind) :: var4d(nxyp,nlev,num_sensitivities)
 
     integer :: st, en, kmax, qindex, n0, n0_Q
     character(len=2) :: vname
 
     integer(kind=nfsizekind) :: start(3), count(3), start2d(2),count2d(2), &
-                                startp1(3), countp1(3)
+                                startp1(3), countp1(3), start4d(4), count4d(4)
     integer :: ncnt
     call t_startf('prim_movie_output:pio')
 
@@ -516,6 +528,10 @@ contains
              startp1(1:2)=0 
              startp1(3)=start(3)
              countp1(3)=1
+
+             count4d = 0
+             start4d = 0
+             start4d(4) = start(3)
 
              if(nf_selectedvar('ps', output_varnames)) then
                 if (par%masterproc) print *,'writing ps...'
@@ -594,7 +610,6 @@ contains
                 call nf_put_var(ncdf(ios),var3d,start, count, name='T')
              end if
 
-
              if(nf_selectedvar('Th', output_varnames)) then
                 pr0=1./(p0)
                 st=1
@@ -645,6 +660,70 @@ contains
                    st=en+1
                 enddo
                 call nf_put_var(ncdf(ios),var3d,start, count, name='v')
+             end if
+
+             if(nf_selectedvar('Th_sens', output_varnames)) then
+#ifdef MODEL_THETA_L
+                if (par%masterproc) print *,'writing Th_sens...'
+                st=1
+                do ie=1,nelemd
+                   en=st+elem(ie)%idxp%NumUniquePts-1
+                   call get_sens_field(elem(ie),'Th_sens',vartmp_sens(:,:,:,:),hvcoord,n0,n0_Q)
+                   call UniquePoints(elem(ie)%idxP,nlev,num_sensitivities,vartmp_sens(:,:,:,:),var4d(st:en,:,:))
+                   st=en+1
+                enddo
+                call nf_put_var(ncdf(ios),var4d,start4d, count4d, name='Th_sens',iodescin=iodesc3d_sens)
+#else
+                call abortmp("ERROR! Th_sens only available for theta-l_kokkos target")
+#endif
+             end if
+
+             if(nf_selectedvar('qv_sens', output_varnames)) then
+#ifdef MODEL_THETA_L
+                if (par%masterproc) print *,'writing qv_sens...'
+                st=1
+                do ie=1,nelemd
+                   en=st+elem(ie)%idxp%NumUniquePts-1
+                   call get_sens_field(elem(ie),'qv_sens',vartmp_sens(:,:,:,:),hvcoord,n0,n0_Q)
+                   call UniquePoints(elem(ie)%idxP,nlev,num_sensitivities,vartmp_sens(:,:,:,:),var4d(st:en,:,:))
+                   st=en+1
+                enddo
+                call nf_put_var(ncdf(ios),var4d,start4d, count4d, name='qv_sens',iodescin=iodesc3d_sens)
+#else
+                call abortmp("ERROR! qv_sens only available for theta-l_kokkos target")
+#endif
+             end if
+
+             if(nf_selectedvar('u_sens', output_varnames)) then
+#ifdef MODEL_THETA_L
+                if (par%masterproc) print *,'writing u_sens...'
+                st=1
+                do ie=1,nelemd
+                   en=st+elem(ie)%idxp%NumUniquePts-1
+                   call get_sens_field(elem(ie),'u_sens',vartmp_sens(:,:,:,:),hvcoord,n0,n0_Q)
+                   call UniquePoints(elem(ie)%idxP,nlev,num_sensitivities,vartmp_sens(:,:,:,:),var4d(st:en,:,:))
+                   st=en+1
+                enddo
+                call nf_put_var(ncdf(ios),var4d,start4d, count4d, name='u_sens',iodescin=iodesc3d_sens)
+#else
+                call abortmp("ERROR! u_sens only available for theta-l_kokkos target")
+#endif
+             end if
+
+             if(nf_selectedvar('v_sens', output_varnames)) then
+#ifdef MODEL_THETA_L
+                if (par%masterproc) print *,'writing v_sens...'
+                st=1
+                do ie=1,nelemd
+                   en=st+elem(ie)%idxp%NumUniquePts-1
+                   call get_sens_field(elem(ie),'v_sens',vartmp_sens(:,:,:,:),hvcoord,n0,n0_Q)
+                   call UniquePoints(elem(ie)%idxP,nlev,num_sensitivities,vartmp_sens(:,:,:,:),var4d(st:en,:,:))
+                   st=en+1
+                enddo
+                call nf_put_var(ncdf(ios),var4d,start4d, count4d, name='v_sens',iodescin=iodesc3d_sens)
+#else
+                call abortmp("ERROR! v_sens only available for theta-l_kokkos target")
+#endif
              end if
 
              if(nf_selectedvar('ke', output_varnames)) then

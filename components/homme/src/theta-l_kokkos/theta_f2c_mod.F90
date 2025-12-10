@@ -10,7 +10,7 @@ interface
   subroutine init_simulation_params_c (remap_alg, limiter_option, rsplit, qsplit, time_step_type,    &
                                        qsize, state_frequency, nu, nu_p, nu_q, nu_s, nu_div, nu_top, &
                                        hypervis_order, hypervis_subcycle, hypervis_subcycle_tom,     &
-                                       hypervis_scaling,                                             &
+                                       hypervis_scaling, rel_perturb,                                &
                                        dcmip16_mu, ftype, theta_adv_form, prescribed_wind, use_moisture, &
                                        disable_diagnostics, use_cpstar, transport_alg,               &
                                        theta_hydrostatic_mode, test_case_name, dt_remap_factor,      &
@@ -26,7 +26,8 @@ interface
     integer(kind=c_int),  intent(in) :: dt_remap_factor, dt_tracer_factor, transport_alg
     integer(kind=c_int),  intent(in) :: state_frequency, qsize, internal_diagnostics_level
     real(kind=c_double),  intent(in) :: nu, nu_p, nu_q, nu_s, nu_div, nu_top, hypervis_scaling, dcmip16_mu, &
-                                        scale_factor, laplacian_rigid_factor, dp3d_thresh, vtheta_thresh
+                                        scale_factor, laplacian_rigid_factor, dp3d_thresh, vtheta_thresh, &
+                                        rel_perturb
     integer(kind=c_int),  intent(in) :: hypervis_order, hypervis_subcycle, hypervis_subcycle_tom
     integer(kind=c_int),  intent(in) :: ftype, theta_adv_form
     integer(kind=c_int),  intent(in) :: prescribed_wind, use_moisture, disable_diagnostics, use_cpstar
@@ -192,6 +193,17 @@ interface
     type (c_ptr), intent(in) :: elem_state_phinh_i_ptr, elem_state_dp3d_ptr, elem_state_ps_v_ptr
     type (c_ptr), intent(in) :: elem_state_Qdp_ptr, elem_state_Q_ptr, elem_derived_omega_p_ptr
   end subroutine cxx_push_results_to_f90
+  subroutine cxx_push_sensitivities_to_f90(elem_sens_v_ptr, elem_sens_w_i_ptr, elem_sens_T_ptr,   &
+                                           elem_sens_phinh_i_ptr, elem_sens_dp3d_ptr, elem_sens_ps_v_ptr, &
+                                           elem_sens_Q_ptr) bind(c)
+    use iso_c_binding, only: c_ptr
+    !
+    ! Inputs
+    !
+    type (c_ptr), intent(in) :: elem_sens_v_ptr, elem_sens_w_i_ptr, elem_sens_T_ptr
+    type (c_ptr), intent(in) :: elem_sens_phinh_i_ptr, elem_sens_dp3d_ptr, elem_sens_ps_v_ptr
+    type (c_ptr), intent(in) :: elem_sens_Q_ptr
+  end subroutine cxx_push_sensitivities_to_f90
 
   subroutine push_test_state_to_c( &
        ! state

@@ -22,6 +22,8 @@
 !     initialize geopotential to be in hydrostatic balance
 !     used by DCMIP2012, 2016 tests
 ! Other routines:
+!  get_sens_field()
+!     returns sensitivity of potential temperature, u, v, etc
 !  get_field()
 !     returns temperature, potential temperature, phi, etc..
 !  get_field_i()
@@ -60,14 +62,14 @@ module element_ops
   use perf_mod,       only: t_startf, t_stopf, t_barrierf, t_adj_detailf ! _EXTERNAL
   use parallel_mod,   only: abortmp
   use physical_constants, only : p0, Cp, Rgas, Rwater_vapor, Cpwater_vapor, kappa, g, dd_pi, TREF
-  use control_mod,    only: use_moisture, theta_hydrostatic_mode, hv_ref_profiles
+  use control_mod,    only: use_moisture, theta_hydrostatic_mode, hv_ref_profiles, num_sensitivities
   use eos,            only: pnh_and_exner_from_eos, phi_from_eos
   implicit none
   private
 
   type(elem_state_t), dimension(:), allocatable :: state0 ! storage for save_initial_state routine
 
-  public get_field, get_field_i, get_state, get_pottemp
+  public get_field, get_field_i, get_state, get_pottemp, get_sens_field
   public get_temperature, get_phi, get_R_star, get_hydro_pressure
   public set_thermostate, set_state, set_state_i, set_elem_state
   public set_forcing_rayleigh_friction
@@ -79,6 +81,68 @@ module element_ops
   real (kind=real_kind), public :: tref_lapse_rate=0.0065D0
 contains
 
+subroutine get_sens_field(elem,name,field,hvcoord,nt,ntQ)
+  type (element_t),target,intent(in) :: elem
+  character(len=*),       intent(in) :: name
+  real (kind=real_kind),  intent(out):: field(:,:,:,:)
+  type (hvcoord_t),       intent(in) :: hvcoord
+  integer,                intent(in) :: nt
+  integer,                intent(in) :: ntQ
+
+  integer :: k, ider
+  real(kind=real_kind), dimension(np,np,nlev) :: sens_vth,sens_Rstar,sens_qv,vth,Rstar
+  real(kind=real_kind), pointer, dimension(:,:,:) :: vthdp,dp,qv
+  real(kind=real_kind), pointer, dimension(:,:,:,:) :: sens_dp,sens_vthdp
+
+  if (num_sensitivities <= 0) then
+    call abortmp("ERROR! sens field requested, but num_sensitivities<=0")
+  endif
+
+  select case(name)
+    case ('u_sens')
+      do ider=1,num_sensitivities
+        do k=1,nlev
+          field(:,:,k,ider) = elem%sens%v(:,:,1,k,ider)
+        enddo
+      enddo
+    case ('v_sens')
+      do ider=1,num_sensitivities
+        do k=1,nlev
+          field(:,:,k,ider) = elem%sens%v(:,:,2,k,ider)
+        enddo
+      enddo
+    case ('qv_sens')
+      dp => elem%state%dp3d(:,:,:,nt)
+      qv = elem%state%Qdp(:,:,:,1,ntQ) / dp
+
+      sens_dp => elem%sens%dp3d(:,:,:,:)
+      do ider=1,num_sensitivities
+        field(:,:,:,ider) = (elem%sens%Qdp(:,:,:,1,ider) - qv*sens_dp(:,:,:,ider)) / dp
+      enddo
+    case ('Th_sens')
+      vthdp => elem%state%vtheta_dp(:,:,:,nt)
+      dp => elem%state%dp3d(:,:,:,nt)
+      vth = vthdp/dp
+      qv = elem%state%Qdp(:,:,:,1,ntQ) / dp
+
+      sens_vthdp => elem%sens%vtheta_dp(:,:,:,:)
+      sens_dp => elem%sens%dp3d(:,:,:,:)
+      do ider=1,num_sensitivities
+        sens_qv = (elem%sens%Qdp(:,:,:,1,ider) - qv*sens_dp(:,:,:,ider)) / dp
+        sens_vth = (sens_vthdp(:,:,:,ider) - vth*sens_dp(:,:,:,ider)) / dp
+
+        call get_R_star(Rstar,qv)
+        call get_R_star(sens_Rstar,sens_qv)
+        sens_Rstar = sens_Rstar - Rgas
+
+        field(:,:,:,ider) = Rgas*(sens_vth*Rstar - vth*sens_Rstar) / (Rstar*Rstar)
+      enddo
+    case default
+       print *,'name = ',trim(name)
+       call abortmp('ERROR: get_sens_field name not supported in this model')
+  end select
+
+end subroutine get_sens_field
 
 recursive subroutine get_field(elem,name,field,hvcoord,nt,ntQ)
   implicit none
@@ -90,9 +154,8 @@ recursive subroutine get_field(elem,name,field,hvcoord,nt,ntQ)
   integer,                intent(in) :: ntQ
 
   integer :: k
-  real(kind=real_kind), dimension(np,np,nlev) :: tmp, p, pnh, dp, omega, rho, T, cp_star, Rstar
+  real(kind=real_kind), dimension(np,np,nlev) :: tmp, p, pnh, omega, rho, T, cp_star, Rstar
   real(kind=real_kind), dimension(np,np,nlevp) :: phi_i,pi_i
-
 
   select case(name)
     case ('temperature','T'); call get_temperature(elem,field,hvcoord,nt)

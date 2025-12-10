@@ -27,9 +27,9 @@ module common_movie_mod
 #ifndef HOMME_WITHOUT_PIOLIBRARY
 
 #ifdef _PRIM
-  integer, parameter :: varcnt =  38
+  integer, parameter :: varcnt =  42
 
-  integer, parameter :: maxdims =  6
+  integer, parameter :: maxdims =  7
 
   character*(*), parameter :: varnames(varcnt)=(/'ps         ', &
                                                  'geos       ', &
@@ -68,47 +68,55 @@ module common_movie_mod
                                                  'hybm       ', &
                                                  'hyai       ', &
                                                  'hybi       ', &
+                                                 'Th_sens    ', &
+                                                 'u_sens     ', &
+                                                 'v_sens     ', &
+                                                 'qv_sens    ', &
                                                  'time       '/)
 
 
-  integer, parameter :: vardims(maxdims,varcnt) =  reshape( (/ 1,5,0,0,0,0, & ! ps
-                                                               1,0,0,0,0,0, & ! geos
-                                                               1,0,0,0,0,0, & ! PHIS=geos
-                                                               1,5,0,0,0,0, & ! precl
-                                                               1,0,0,0,0,0, & ! area
-                                                               1,2,0,0,0,0, & ! cv_lat
-                                                               1,2,0,0,0,0, & ! cv_lon
-                                                               6,2,0,0,0,0, & ! subelement_corners
-                                                               1,2,5,0,0,0, & ! faceno
-                                                               1,2,5,0,0,0, & ! zeta
-                                                               1,2,5,0,0,0, & ! div
-                                                               1,2,5,0,0,0, & ! T
-                                                               1,2,5,0,0,0, & ! Th
-                                                               1,2,5,0,0,0, & ! u
-                                                               1,2,5,0,0,0, & ! v
-                                                               1,2,5,0,0,0, & ! w
-                                                               1,3,5,0,0,0, & ! w_i
-                                                               1,3,5,0,0,0, & ! mu_i
-                                                               1,3,5,0,0,0, & ! geo_i
-                                                               1,2,5,0,0,0, & ! pnh
-                                                               1,2,5,0,0,0, & ! ke
-                                                               1,5,0,0,0,0, & ! hypervis
-                                                               1,2,5,0,0,0, & ! Q
-                                                               1,2,5,0,0,0, & ! Q2
-                                                               1,2,5,0,0,0, & ! Q3
-                                                               1,2,5,0,0,0, & ! Q4
-                                                               1,2,5,0,0,0, & ! geo
-                                                               1,2,5,0,0,0, & !omega
-                                                               1,2,5,0,0,0, & !dp3d
-                                                               1,0,0,0,0,0, &  ! lat (y for planar)
-                                                               1,0,0,0,0,0, &  ! lon (x for planar)
-                                                               2,0,0,0,0,0, &  ! lev
-                                                               3,0,0,0,0,0, &  ! ilev
-                                                               2,0,0,0,0,0, &  !hyam
-                                                               2,0,0,0,0,0, &  !hybm
-                                                               3,0,0,0,0,0, &  !hyai
-                                                               3,0,0,0,0,0, &  !hybi
-                                                               5,0,0,0,0,0 /),&  ! time
+  integer, parameter :: vardims(maxdims,varcnt) =  reshape( (/ 1,5,0,0,0,0,0, & ! ps
+                                                               1,0,0,0,0,0,0, & ! geos
+                                                               1,0,0,0,0,0,0, & ! PHIS=geos
+                                                               1,5,0,0,0,0,0, & ! precl
+                                                               1,0,0,0,0,0,0, & ! area
+                                                               1,2,0,0,0,0,0, & ! cv_lat
+                                                               1,2,0,0,0,0,0, & ! cv_lon
+                                                               6,2,0,0,0,0,0, & ! subelement_corners
+                                                               1,2,5,0,0,0,0, & ! faceno
+                                                               1,2,5,0,0,0,0, & ! zeta
+                                                               1,2,5,0,0,0,0, & ! div
+                                                               1,2,5,0,0,0,0, & ! T
+                                                               1,2,5,0,0,0,0, & ! Th
+                                                               1,2,5,0,0,0,0, & ! u
+                                                               1,2,5,0,0,0,0, & ! v
+                                                               1,2,5,0,0,0,0, & ! w
+                                                               1,3,5,0,0,0,0, & ! w_i
+                                                               1,3,5,0,0,0,0, & ! mu_i
+                                                               1,3,5,0,0,0,0, & ! geo_i
+                                                               1,2,5,0,0,0,0, & ! pnh
+                                                               1,2,5,0,0,0,0, & ! ke
+                                                               1,5,0,0,0,0,0, & ! hypervis
+                                                               1,2,5,0,0,0,0, & ! Q
+                                                               1,2,5,0,0,0,0, & ! Q2
+                                                               1,2,5,0,0,0,0, & ! Q3
+                                                               1,2,5,0,0,0,0, & ! Q4
+                                                               1,2,5,0,0,0,0, & ! geo
+                                                               1,2,5,0,0,0,0, & !omega
+                                                               1,2,5,0,0,0,0, & !dp3d
+                                                               1,0,0,0,0,0,0, &  ! lat (y for planar)
+                                                               1,0,0,0,0,0,0, &  ! lon (x for planar)
+                                                               2,0,0,0,0,0,0, &  ! lev
+                                                               3,0,0,0,0,0,0, &  ! ilev
+                                                               2,0,0,0,0,0,0, &  !hyam
+                                                               2,0,0,0,0,0,0, &  !hybm
+                                                               3,0,0,0,0,0,0, &  !hyai
+                                                               3,0,0,0,0,0,0, &  !hybi
+                                                               1,2,7,5,0,0,0, &  !Th_sens
+                                                               1,2,7,5,0,0,0, &  !u_sens
+                                                               1,2,7,5,0,0,0, &  !v_sens
+                                                               1,2,7,5,0,0,0, &  !qv_sens
+                                                               5,0,0,0,0,0,0 /),&  ! time
                                                                shape=(/maxdims,varcnt/))
 
   integer, parameter :: vartype(varcnt)=(/nf_double, nf_double, nf_double,nf_double, nf_double,nf_double,nf_double,& !ps:cv_lon
@@ -117,7 +125,9 @@ module common_movie_mod
                                           nf_double, nf_double, nf_double,nf_double,& 
                                           nf_double, nf_double,nf_double,nf_double,nf_double,& !Q:geo
                                           nf_double, nf_double,nf_double,nf_double,nf_double,nf_double,& !omega:ilev
-                                          nf_double, nf_double,nf_double,nf_double,nf_double/)
+                                          nf_double, nf_double,nf_double,nf_double,& ! hybrid coords
+                                          nf_double,nf_double,nf_double,nf_double,& !sentitivities
+                                          nf_double/) !time
   logical, parameter :: varrequired(varcnt)=(/.false.,.false.,.false.,.false.,.false.,.false.,.false.,&
                                               .false.,.false.,.false.,.false.,.false.,&
                                               .false.,.false.,.false.,.false.,.false.,.false.,&
@@ -127,13 +137,15 @@ module common_movie_mod
                                               .true. ,.true. ,&   ! lev,ilev
                                               .true. ,.true. ,&   ! hy arrays
                                               .true. ,.true. ,&   ! hy arrays
+                                              .false.,.false.,.false.,.false.,& ! sensitivities
                                               .true./)            ! time
   character*(*),parameter :: dimnames(maxdims)=(/'ncol        ',&
                                                  'lev         ',&
                                                  'ilev        ',&
                                                  'nelem       ',&
                                                  'time        ',&
-                                                 'nsubelements'/)  
+                                                 'nsubelements',&
+                                                 'deriv       '/)  
 #else
   integer, parameter :: varcnt = 12
   integer, parameter :: maxdims=4

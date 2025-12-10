@@ -104,6 +104,12 @@ void initialize_hommexx_session ()
   }
 }
 
+int get_hommexx_sfad_size ()
+{
+  printf("hxx sfad sz: %d\n",HOMMEXX_SFAD_SIZE);
+  return HOMMEXX_SFAD_SIZE;
+}
+
 void finalize_hommexx_session ()
 {
   if (Session::m_inited) {

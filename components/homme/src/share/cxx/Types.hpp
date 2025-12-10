@@ -178,10 +178,10 @@ using Unmanaged =
                typename View::traits::device_type,
                Kokkos::MemoryTraits<
                  // All the current values...
-                 Impl::MemoryTraitsMask<View>::value |
+                 unsigned(Impl::MemoryTraitsMask<View>::value) |
                  // ... |ed with the one we want, whether or not it's
                  // already there.
-                 Kokkos::Unmanaged> >;
+                 unsigned(Kokkos::Unmanaged)> >;
 
 
 // To view the fully expanded name of a complicated template type T,

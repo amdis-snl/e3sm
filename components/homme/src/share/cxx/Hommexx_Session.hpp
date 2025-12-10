@@ -38,6 +38,7 @@ extern "C" {
 
 void initialize_hommexx_session ();
 void finalize_hommexx_session ();
+int get_hommexx_sfad_size ();
 
 } // extern "C"
 

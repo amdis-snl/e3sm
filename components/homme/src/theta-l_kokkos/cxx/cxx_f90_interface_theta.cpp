@@ -28,6 +28,7 @@
 #include "mpi/BoundaryExchange.hpp"
 #include "mpi/MpiBuffersManager.hpp"
 
+#include "SacadoTypes.hpp"
 #include "utilities/SyncUtils.hpp"
 
 #include "profiling.hpp"
@@ -42,7 +43,7 @@ void init_simulation_params_c (const int& remap_alg, const int& limiter_option, 
                                const int& time_step_type, const int& qsize, const int& state_frequency,
                                const Real& nu, const Real& nu_p, const Real& nu_q, const Real& nu_s, const Real& nu_div, const Real& nu_top,
                                const int& hypervis_order, const int& hypervis_subcycle, const int& hypervis_subcycle_tom,
-                               const double& hypervis_scaling, const double& dcmip16_mu,
+                               const double& hypervis_scaling, const double& rel_perturb, const double& dcmip16_mu,
                                const int& ftype, const int& theta_adv_form, const int& prescribed_wind, const int& use_moisture, const int& disable_diagnostics,
                                const int& use_cpstar, const int& transport_alg, const int& theta_hydrostatic_mode, const char** test_case,
                                const int& dt_remap_factor, const int& dt_tracer_factor,
@@ -125,6 +126,7 @@ void init_simulation_params_c (const int& remap_alg, const int& limiter_option, 
   params.dp3d_thresh                   = dp3d_thresh;
   params.vtheta_thresh                 = vtheta_thresh;
   params.internal_diagnostics_level    = internal_diagnostics_level;
+  params.rel_perturb                   = rel_perturb;
 
   if (time_step_type==5) {
     //5 stage, 3rd order, explicit
@@ -225,6 +227,100 @@ void cxx_push_results_to_f90(F90Ptr &elem_state_v_ptr,         F90Ptr &elem_stat
                HostViewUnmanaged<Real * [QSIZE_D][NUM_PHYSICAL_LEV][NP][NP]>(
                    elem_Q_ptr, num_elems));
 }
+
+void cxx_push_sensitivities_to_f90(F90Ptr &elem_sens_v_ptr,     F90Ptr &elem_sens_w_i_ptr,
+                                   F90Ptr &elem_sens_vthdp_ptr, F90Ptr &elem_sens_phinh_i_ptr,
+                                   F90Ptr &elem_sens_dp3d_ptr,  F90Ptr &elem_sens_ps_ptr,
+                                   F90Ptr &elem_sens_Qdp_ptr)
+{
+#ifdef HOMMEXX_ENABLE_FWD_SENS
+  SimulationParams& params = Context::singleton().get<SimulationParams>();
+  ElementsState &state = Context::singleton().get<ElementsState>();
+  Tracers &tracers = Context::singleton().get<Tracers>();
+  TimeLevel& tl = Context::singleton().get<TimeLevel>();
+  HybridVCoord& hvcoord = Context::singleton().get<HybridVCoord>();
+
+  auto Qdp_h = Kokkos::create_mirror_view(tracers.qdp);
+  auto v_h = Kokkos::create_mirror_view(state.m_v);
+  auto w_h = Kokkos::create_mirror_view(state.m_w_i);
+  auto vthdp_h = Kokkos::create_mirror_view(state.m_vtheta_dp);
+  auto dp_h = Kokkos::create_mirror_view(state.m_dp3d);
+  auto phi_h = Kokkos::create_mirror_view(state.m_phinh_i);
+  auto ps_h = Kokkos::create_mirror_view(state.m_ps_v);
+
+  Kokkos::deep_copy(Qdp_h, tracers.qdp);
+  Kokkos::deep_copy(v_h, state.m_v);
+  Kokkos::deep_copy(w_h, state.m_w_i);
+  Kokkos::deep_copy(vthdp_h, state.m_vtheta_dp);
+  Kokkos::deep_copy(dp_h, state.m_dp3d);
+  Kokkos::deep_copy(phi_h, state.m_phinh_i);
+  Kokkos::deep_copy(ps_h, state.m_ps_v);
+
+  // Uncomment this when the state views are indeed views of FAD types
+  int nelems = state.num_elems();
+  HostViewUnmanaged<Real****>   sens_ps_f90 (elem_sens_ps_ptr,nelems,HOMMEXX_SFAD_SIZE,NP,NP);
+  HostViewUnmanaged<Real*****>  sens_vthdp_f90 (elem_sens_vthdp_ptr,nelems,HOMMEXX_SFAD_SIZE,NUM_PHYSICAL_LEV,NP,NP);
+  HostViewUnmanaged<Real******> sens_v_f90 (elem_sens_v_ptr,nelems,HOMMEXX_SFAD_SIZE,NUM_PHYSICAL_LEV,2,NP,NP);
+  HostViewUnmanaged<Real*****>  sens_wi_f90 (elem_sens_w_i_ptr,nelems,HOMMEXX_SFAD_SIZE,NUM_INTERFACE_LEV,NP,NP);
+  HostViewUnmanaged<Real*****>  sens_dp_f90 (elem_sens_dp3d_ptr,nelems,HOMMEXX_SFAD_SIZE,NUM_PHYSICAL_LEV,NP,NP);
+  HostViewUnmanaged<Real*****>  sens_phi_f90 (elem_sens_phinh_i_ptr,nelems,HOMMEXX_SFAD_SIZE,NUM_INTERFACE_LEV,NP,NP);
+  HostViewUnmanaged<Real******> sens_Qdp_f90 (elem_sens_Qdp_ptr,nelems,HOMMEXX_SFAD_SIZE,QSIZE_D,NUM_PHYSICAL_LEV,NP,NP);
+
+  int n0 = tl.n0;
+  int qn0 = tl.n0_qdp;
+  for (int ie=0; ie<state.num_elems(); ++ie) {
+    for (int ip=0; ip<NP; ++ip) {
+      for (int jp=0; jp<NP; ++jp) {
+        for (int ider=0; ider<HOMMEXX_SFAD_SIZE; ++ider) {
+          sens_ps_f90 (ie,ider,ip,jp) = ps_h(ie,n0,ip,jp).fastAccessDx(ider);
+        }
+        for (int ilev=0; ilev<NUM_PHYSICAL_LEV; ++ilev) {
+          int ipack = ilev / VECTOR_SIZE;
+          int ivec  = ilev % VECTOR_SIZE;
+
+          auto dp = dp_h(ie,n0,ip,jp,ipack)[ivec];
+          auto u = v_h(ie,n0,0,ip,jp,ipack)[ivec];
+          auto v = v_h(ie,n0,1,ip,jp,ipack)[ivec];
+          auto w = w_h(ie,n0,ip,jp,ipack)[ivec];
+          auto phi = phi_h(ie,n0,ip,jp,ipack)[ivec];
+          auto vthdp = vthdp_h(ie,n0,ip,jp,ipack)[ivec];
+
+          for (int ider=0; ider<HOMMEXX_SFAD_SIZE; ++ider) {
+            sens_vthdp_f90 (ie,ider,ilev,ip,jp) = vthdp.fastAccessDx(ider);
+            sens_v_f90 (ie,ider,ilev,0,ip,jp) = u.fastAccessDx(ider);
+            sens_v_f90 (ie,ider,ilev,1,ip,jp) = v.fastAccessDx(ider);
+            sens_dp_f90 (ie,ider,ilev,ip,jp) = dp.fastAccessDx(ider);
+            sens_wi_f90 (ie,ider,ilev,ip,jp) = w.fastAccessDx(ider);
+            sens_phi_f90 (ie,ider,ilev,ip,jp) = phi.fastAccessDx(ider);
+            for (int iq=0; iq<QSIZE_D; ++iq) {
+              sens_Qdp_f90 (ie,ider,iq,ilev,ip,jp) = Qdp_h(ie,qn0,iq,ip,jp,ipack)[ivec].fastAccessDx(ider);
+            }
+          }
+        }
+        int ilev = NUM_PHYSICAL_LEV;
+        int ipack = ilev / VECTOR_SIZE;
+        int ivec  = ilev % VECTOR_SIZE;
+        auto w = w_h(ie,n0,ip,jp,ipack)[ivec];
+        auto phi = phi_h(ie,n0,ip,jp,ipack)[ivec];
+        for (int ider=0; ider<HOMMEXX_SFAD_SIZE; ++ider) {
+          sens_wi_f90 (ie,ider,ilev,ip,jp) = w.fastAccessDx(ider);
+          sens_phi_f90 (ie,ider,ilev,ip,jp) = phi.fastAccessDx(ider);
+        }
+      }
+    }
+  }
+
+#else
+  (void) elem_sens_v_ptr;
+  (void) elem_sens_w_i_ptr;
+  (void) elem_sens_vthdp_ptr;
+  (void) elem_sens_phinh_i_ptr;
+  (void) elem_sens_dp3d_ptr;
+  (void) elem_sens_ps_ptr;
+  (void) elem_sens_Qdp_ptr;
+#endif
+}
+
 
 //currently, we do not need FVTheta and FPHI, because they are computed from FT and FQ
 //in applycamforcing_tracers inside xx

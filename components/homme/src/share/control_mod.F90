@@ -51,6 +51,8 @@ module control_mod
   logical, public :: theta_hydrostatic_mode
 
 
+  integer, public :: num_sensitivities = 0
+
   integer, public  :: tstep_type= 5                           ! preqx timestepping options
   integer, public  :: rk_stage_user  = 0                      ! number of RK stages (shallow water model) 
   integer, public  :: ftype = 0                                ! Forcing Type
@@ -226,6 +228,8 @@ module control_mod
 #ifndef CAM
   real (kind=real_kind), public :: pertlim = 0          !pertibation to temperature [like CESM]
 #endif
+
+  real (kind=real_kind), public :: rel_perturb = 0  ! Generic relative perturbation to be used in tests (x *= 1+rel_perturb)
 
   ! shallow water advection test paramters
   ! kmass = level index with density.  other levels contain test tracers

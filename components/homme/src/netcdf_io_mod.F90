@@ -23,7 +23,7 @@ module netcdf_io_mod
   private
   ! end of analysis_nl namelist variables
   type(io_desc_t), save, public :: iodesc3d, iodesc2d, iodesct, iodesc2d_nc, iodesc3d_nc, iodesc3d_subelem, &
-                                   iodesc3dp1
+                                   iodesc3dp1, iodesc3d_sens
 
 
   interface nf_put_var_netcdf
@@ -32,6 +32,7 @@ module netcdf_io_mod
      module procedure nf_put1DR
      module procedure nf_put2DR
      module procedure nf_put2DI
+     module procedure nf_put3DR
   end interface
 
   ! public interfaces  
@@ -225,6 +226,37 @@ contains
     endif
     !$OMP END SINGLE
   end subroutine nf_put2DR
+
+  subroutine nf_put3DR(ncdf, var, start, count, varid, name, iodescin)
+    type(nf_handle), intent(inout) :: ncdf
+    real(kind=real_kind), intent(in) :: var(:,:,:)
+    integer(kind=nfsizekind), intent(in) :: start(:), count(:)
+    type(nf_variable), intent(in), optional, target :: varid
+    character*(*), intent(in),optional :: name
+    type(io_desc_t), intent(inout), optional :: iodescin
+    integer :: vindex, extent, ierr, msize
+    type (nf_variable), pointer :: varptr
+    !$OMP SINGLE
+    if(ncdf%state /= readystate) then
+       call abortmp('sanity check failed, bad file handle')
+    end if
+    if(present(varid)) then
+       varptr=>varid
+    else if(present(name)) then
+       vindex = get_varindex(name, ncdf%varlist)
+       varptr => ncdf%varlist(vindex)
+    else
+       call abortmp('one of the optional arguments name and varid must be provided')
+    end if
+    if(varptr%timedependent) call PIO_SetFrame(ncdf%FileID,varptr%vardesc,start(4))
+    msize = size(var)
+    if(present(iodescin)) then
+       call PIO_write_darray(ncdf%FileID, varptr%vardesc, iodescin, reshape(var,(/msize/)), ierr)
+    else
+       call PIO_write_darray(ncdf%FileID, varptr%vardesc, iodesc3d, reshape(var,(/msize/)), ierr)
+    endif
+    !$OMP END SINGLE
+  end subroutine nf_put3DR
 
 
 
