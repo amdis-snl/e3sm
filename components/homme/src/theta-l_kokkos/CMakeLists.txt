@@ -260,3 +260,9 @@ MACRO(THETAL_KOKKOS_SETUP)
   SET(USE_OPENACC FALSE)
 
 ENDMACRO(THETAL_KOKKOS_SETUP)
+
+# Check if we need to build the pyhommexx library
+option(HOMME_BUILD_PYHOMMEXX "Whether to build a version of the theta-l_kokkos library" OFF)
+if(HOMME_BUILD_PYHOMMEXX)
+  add_subdirectory (pyhommexx)
+endif()
