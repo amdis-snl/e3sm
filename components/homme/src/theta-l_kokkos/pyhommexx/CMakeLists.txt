@@ -45,6 +45,7 @@ execute_process(
 
 nanobind_add_module(pyhommexx
   pyhommexx.cpp
+  pyhommexx_impl.cpp
   pyhommexx_mod.F90
 )
 

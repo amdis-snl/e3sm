@@ -80,15 +80,69 @@ contains
     masterproc = par%masterproc
   end subroutine init_parallel_f90
 
-  subroutine prim_init_f90 () bind(c)
+  subroutine get_num_unique_pts_f90 (num_ptr) bind(c)
+    use iso_c_binding,  only: c_ptr, c_f_pointer, c_int
+    use dimensions_mod, only: nelemd
+
+    ! Inputs
+    type (c_ptr), intent(in) :: num_ptr
+
+    integer(kind=c_int), pointer :: num(:)
+    integer :: ie
+
+    call c_f_pointer(num_ptr,num,[nelemd])
+
+    do ie=1,nelemd
+      num(ie) = elem(ie)%idxP%NumUniquePts
+    enddo
+
+  end subroutine get_num_unique_pts_f90
+
+  subroutine get_unique_pts_f90 (ia_ptr,ja_ptr) bind(c)
+    use iso_c_binding,  only: c_ptr, c_f_pointer, c_int
+    use dimensions_mod, only: nelemd, np
+
+    ! Inputs
+    type (c_ptr), intent(in) :: ia_ptr,ja_ptr
+
+    integer(kind=c_int), pointer :: ia(:,:)
+    integer(kind=c_int), pointer :: ja(:,:)
+
+    integer :: ie, n
+
+    call c_f_pointer(ia_ptr,ia,[np*np,nelemd])
+    call c_f_pointer(ja_ptr,ja,[np*np,nelemd])
+
+    do ie=1,nelemd
+      do n=1,elem(ie)%idxP%NumUniquePts
+        ja(n,ie) = elem(ie)%idxP%ia(n)-1 ! These are for C++, so use 0-based indexing
+        ia(n,ie) = elem(ie)%idxP%ja(n)-1
+      enddo
+    enddo
+
+  end subroutine get_unique_pts_f90
+
+  subroutine prim_init_f90 (nl_fname_c) bind(c)
+    use iso_c_binding,   only: c_ptr, c_f_pointer, C_NULL_CHAR
     use prim_driver_mod, only: prim_init1, prim_init2
     use dimensions_mod,  only: nelemd
-    use control_mod,     only: vfile_mid, vfile_int
+    use control_mod,     only: vfile_mid, vfile_int, MAX_STRING_LEN
     use parallel_mod,    only: abortmp
     use hybvcoord_mod,   only: hvcoord_init
+    use namelist_mod,    only: use_nl_file, nml_filename
+
+    ! Inputs
+    type (c_ptr), intent(in) :: nl_fname_c
 
     ! Locals
-    integer :: ierr
+    integer :: ierr,str_len
+    character(len=MAX_STRING_LEN), pointer :: nl_fname_ptr
+
+    ! Force namelist mod to read from file
+    use_nl_file = .true.
+    call c_f_pointer(nl_fname_c,nl_fname_ptr)
+    str_len = index(nl_fname_ptr, C_NULL_CHAR) - 1
+    nml_filename = trim(nl_fname_ptr(1:str_len))
 
     call prim_init1(elem,  par,dom_mt,tl)
 
@@ -100,14 +154,6 @@ contains
 
     call prim_init2(elem, hybrid,1,nelemd,tl, hvcoord)
   end subroutine prim_init_f90
-
-  subroutine prim_forward_f90 () bind(c)
-    use time_mod,        only: tstep
-    use prim_driver_mod, only: prim_run_subcycle
-    use dimensions_mod,  only: nelemd
-
-    call prim_run_subcycle(elem, hybrid,1,nelemd, tstep, .false., tl, hvcoord,1)
-  end subroutine prim_forward_f90
 
   subroutine prim_finalize_f90 () bind(c)
     use prim_driver_mod, only: prim_finalize

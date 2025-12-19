@@ -7,10 +7,13 @@
 
 #include <typeinfo>
 
-namespace pyhommexx
-{
+namespace Homme {
+namespace pyhommexx {
 
-namespace nb = nanobind;
+int get_f_comm (MPI_Comm comm)
+{
+  return MPI_Comm_c2f(comm);
+}
 
 MPI_Comm get_c_comm (nb::object py_comm)
 {
@@ -26,31 +29,7 @@ MPI_Comm get_c_comm (nb::object py_comm)
   return *comm_ptr;
 }
 
-const char* get_c_string(nb::object py_str) {
-  // Ensure the Python string is of the correct type
-  if (!PyUnicode_Check(py_str.ptr())) {
-    throw std::bad_cast();
-  }
-
-  // Convert the Python string to a C string
-  PyObject* py_bytes = PyUnicode_AsEncodedString(py_str.ptr(), "utf-8", "Error");
-  if (py_bytes == nullptr) {
-    throw std::runtime_error("Failed to convert Python string to bytes.");
-  }
-
-  // Get the C string from the bytes object
-  const char* c_str = PyBytes_AsString(py_bytes);
-  if (c_str == nullptr) {
-    Py_DECREF(py_bytes);
-    throw std::runtime_error("Failed to convert bytes to C string.");
-  }
-
-  // Decrease the reference count of the bytes object
-  Py_DECREF(py_bytes);
-
-  return c_str; // Return the C string
-}
-
 } // namespace pyhommexx
+} // namespace Homme
 
 #endif // PYHOMMEXX_UTILS_HPP

@@ -1,41 +1,22 @@
-#include "pyhommexx_utils.hpp"
-#include "pyhommexx_c2f.hpp"
+#include "pyhommexx_decl.hpp"
 
 #include <nanobind/nanobind.h>
-#include <mpi4py/mpi4py.h>
-#include <mpi.h>
-#include <cstdio>
-#include <fstream>
 
-namespace nb = nanobind;
-
-namespace pyhommexx
-{
-
-void init (nb::object py_comm)
-{
-  const auto& comm = get_c_comm(py_comm);
-  init_parallel_f90(MPI_Comm_c2f(comm));
-
-  prim_init_f90();
-}
-
-void forward()
-{
-  prim_forward_f90();
-}
-
-void finalize()
-{
-  prim_finalize_f90();
-}
+namespace Homme {
+namespace pyhommexx {
 
 NB_MODULE (pyhommexx,m) {
 
   m.doc() = "Python interface to theta-l_kokkos Hommexx target";
   m.def("init",&init);
+  m.def("get_params",&get_params);
+  m.def("get_num_unique_pts",&get_num_unique_pts);
+  m.def("get_unique_pts",&get_unique_pts);
+  // m.def("set_state",&set_state);
+  m.def("get_state",&get_state);
   m.def("forward",&forward);
   m.def("finalize",&finalize);
 }
 
 } // namespace pyhommexx
+} // namespace 
