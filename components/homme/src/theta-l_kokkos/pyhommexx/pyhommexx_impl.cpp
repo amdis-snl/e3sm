@@ -7,6 +7,7 @@
 #include "ElementsGeometry.hpp"
 #include "SimulationParams.hpp"
 #include "TimeLevel.hpp"
+#include "Tracers.hpp"
 #include "Types.hpp"
 #include "mpi/Comm.hpp"
 #include "utilities/ViewUtils.hpp"
@@ -117,86 +118,184 @@ void get_unique_pts (nb::ndarray<int>& ia,
 
 }
 
-void set_state (const nb::ndarray<double>& uv,
-                const nb::ndarray<double>& vthdp,
-                const nb::ndarray<double>& dp)
+void get_state_var (nb::ndarray<double>& arr, const nb::str& name)
 {
   const auto& c = Context::singleton();
   const auto& state = c.get<ElementsState> ();
+  const auto& tracers = c.get<Tracers> ();
   const auto& tl = c.get<TimeLevel> ();
 
   const int nelem = state.num_elems();
   const int n0 = tl.n0;
+  const int qn0 = tl.n0_qdp;
 
-  std::vector<int> vector3d_shape = {nelem,2,NP,NP,NUM_PHYSICAL_LEV};
-  std::vector<int> scalar3d_shape = {nelem,  NP,NP,NUM_PHYSICAL_LEV};
+  std::vector<int> vector3dm_shape = {nelem,2,NP,NP,NUM_PHYSICAL_LEV};
+  std::vector<int> scalar3dm_shape = {nelem,  NP,NP,NUM_PHYSICAL_LEV};
+  std::vector<int> scalar3di_shape = {nelem,  NP,NP,NUM_INTERFACE_LEV};
 
-  check_shape(uv,vector3d_shape);
-  check_shape(vthdp,scalar3d_shape);
-  check_shape(dp,scalar3d_shape);
-  assert ((int)uv.dtype().bits==64);
-  assert ((int)vthdp.dtype().bits==64);
-  assert ((int)dp.dtype().bits==64);
+  constexpr int flag_u   = 0;
+  constexpr int flag_v   = 1;
+  constexpr int flag_uv  = 2;
+  constexpr int flag_vth = 3;
+  constexpr int flag_dp  = 4;
+  constexpr int flag_w   = 5;
+  constexpr int flag_phi = 6;
+  constexpr int flag_qv  = 7;
+  std::map<std::string,int> which_map = {
+    {"u",  flag_u},
+    {"v",  flag_v},
+    {"uv", flag_uv},
+    {"vth",flag_vth},
+    {"dp", flag_dp},
+    {"w",  flag_w},
+    {"phi",flag_phi},
+    {"qv", flag_qv},
+  };
 
-  ExecViewUnmanaged<const double*****> uv_k (vp2cdp(uv.data()),nelem,2,NP,NP,NUM_PHYSICAL_LEV);
-  ExecViewUnmanaged<const double****>  vth_k(vp2cdp(vthdp.data()),nelem,NP,NP,NUM_PHYSICAL_LEV);
-  ExecViewUnmanaged<const double****>  dp_k (vp2cdp(dp.data()),nelem,NP,NP,NUM_PHYSICAL_LEV);
+  // nanobind has no operator== with const char[]
+  std::string n (name.c_str());
+  if (n=="u" or n=="v" or n=="dp" or n=="qv" or n=="vthetadp") {
+    check_shape(arr,scalar3dm_shape);
+  } else if (n=="uv") {
+    check_shape(arr,vector3dm_shape);
+  } else if (n=="phi" or n=="w") {
+    check_shape(arr,scalar3di_shape);
+  } else {
+    throw std::runtime_error("Unrecognized/unsupported state var '" + n + "'.\n");
+  }
+  assert ((int)arr.dtype().bits==64);
 
-  auto v_s = state.m_v;
-  auto vtheta_dp_s = state.m_vtheta_dp;
-  auto dp3d_s = state.m_dp3d;
+  // They are unmanaged, so we can create all of them, even if we don't use them
+  ExecViewUnmanaged<double*****> vec_mid_v (vp2dp(arr.data()),nelem,2,NP,NP,NUM_PHYSICAL_LEV);
+  ExecViewUnmanaged<double****>  scl_mid_v (vp2dp(arr.data()),nelem,  NP,NP,NUM_PHYSICAL_LEV);
+  ExecViewUnmanaged<double****>  scl_int_v (vp2dp(arr.data()),nelem,  NP,NP,NUM_INTERFACE_LEV);
 
+  auto uv  = state.m_v;
+  auto vth = state.m_vtheta_dp;
+  auto dp  = state.m_dp3d;
+  auto w   = state.m_w_i;
+  auto phi = state.m_phinh_i;
+  auto qv  = tracers.Q;
+
+  auto which = which_map.at(n);
+  int nlev = (which==flag_phi or which==flag_w) ? NUM_INTERFACE_LEV : NUM_PHYSICAL_LEV;
   using policy_t = Kokkos::MDRangePolicy<ExecSpace,Kokkos::Rank<4>>;
-  policy_t p ({0,0,0,0},{nelem,NP,NP,NUM_PHYSICAL_LEV});
+  policy_t p ({0,0,0,0},{nelem,NP,NP,nlev});
   auto copy = KOKKOS_LAMBDA (int ie, int ip, int jp, int k) {
     int lev = k / VECTOR_SIZE;
     int vec = k % VECTOR_SIZE;
-    v_s(ie,n0,0,ip,jp,lev)[vec] = uv_k(ie,0,ip,jp,k);
-    v_s(ie,n0,1,ip,jp,lev)[vec] = uv_k(ie,1,ip,jp,k);
-    vtheta_dp_s(ie,n0,ip,jp,lev)[vec] = vth_k(ie,ip,jp,k);
-    dp3d_s(ie,n0,ip,jp,lev)[vec] = dp_k(ie,ip,jp,k);
+    switch (which) {
+      case flag_u:
+        scl_mid_v(ie,ip,jp,k) = ADValue(uv(ie,n0,0,ip,jp,lev)[vec]); break;
+      case flag_v:
+        scl_mid_v(ie,ip,jp,k) = ADValue(uv(ie,n0,1,ip,jp,lev)[vec]); break;
+      case flag_uv:
+        vec_mid_v(ie,0,ip,jp,k) = ADValue(uv(ie,n0,0,ip,jp,lev)[vec]);
+        vec_mid_v(ie,1,ip,jp,k) = ADValue(uv(ie,n0,1,ip,jp,lev)[vec]); break;
+      case flag_vth:
+        scl_mid_v(ie,ip,jp,k) = ADValue(vth(ie,n0,ip,jp,lev)[vec]); break;
+      case flag_dp:
+        scl_mid_v(ie,ip,jp,k) = ADValue(dp(ie,n0,ip,jp,lev)[vec]); break;
+      case flag_w:
+        scl_int_v(ie,ip,jp,k) = ADValue(w(ie,n0,ip,jp,lev)[vec]); break;
+      case flag_phi:
+        scl_int_v(ie,ip,jp,k) = ADValue(phi(ie,n0,ip,jp,lev)[vec]); break;
+      case flag_qv:
+        scl_mid_v(ie,ip,jp,k) = ADValue(qv(ie,qn0,ip,jp,lev)[vec]); break;
+      default:
+        Kokkos::abort("Unsupported value for 'which' in get_state_var.\n");
+    }
   };
   Kokkos::parallel_for(p,copy);
 }
 
-void get_state (nb::ndarray<double>& uv,
-                nb::ndarray<double>& vthdp,
-                nb::ndarray<double>& dp)
+void set_state_var (const nb::ndarray<double>& arr, const nb::str& name)
 {
   const auto& c = Context::singleton();
   const auto& state = c.get<ElementsState> ();
+  const auto& tracers = c.get<Tracers> ();
   const auto& tl = c.get<TimeLevel> ();
 
   const int nelem = state.num_elems();
   const int n0 = tl.n0;
+  const int qn0 = tl.n0_qdp;
 
-  std::vector<int> vector3d_shape = {nelem,2,NP,NP,NUM_PHYSICAL_LEV};
-  std::vector<int> scalar3d_shape = {nelem,  NP,NP,NUM_PHYSICAL_LEV};
+  std::vector<int> vector3dm_shape = {nelem,2,NP,NP,NUM_PHYSICAL_LEV};
+  std::vector<int> scalar3dm_shape = {nelem,  NP,NP,NUM_PHYSICAL_LEV};
+  std::vector<int> scalar3di_shape = {nelem,  NP,NP,NUM_INTERFACE_LEV};
 
-  check_shape(uv,vector3d_shape);
-  check_shape(vthdp,scalar3d_shape);
-  check_shape(dp,scalar3d_shape);
-  assert ((int)uv.dtype().bits==64);
-  assert ((int)vthdp.dtype().bits==64);
-  assert ((int)dp.dtype().bits==64);
+  constexpr int flag_u   = 0;
+  constexpr int flag_v   = 1;
+  constexpr int flag_uv  = 2;
+  constexpr int flag_vth = 3;
+  constexpr int flag_dp  = 4;
+  constexpr int flag_w   = 5;
+  constexpr int flag_phi = 6;
+  constexpr int flag_qv  = 7;
+  std::map<std::string,int> which_map = {
+    {"u",  flag_u},
+    {"v",  flag_v},
+    {"uv", flag_uv},
+    {"vth",flag_vth},
+    {"dp", flag_dp},
+    {"w",  flag_w},
+    {"phi",flag_phi},
+    {"qv", flag_qv},
+  };
 
-  ExecViewUnmanaged<double*****> uv_k (vp2dp(uv.data()),nelem,2,NP,NP,NUM_PHYSICAL_LEV);
-  ExecViewUnmanaged<double****>  vth_k(vp2dp(vthdp.data()),nelem,NP,NP,NUM_PHYSICAL_LEV);
-  ExecViewUnmanaged<double****>  dp_k (vp2dp(dp.data()),nelem,NP,NP,NUM_PHYSICAL_LEV);
+  // nanobind has no operator== with const char[]
+  std::string n (name.c_str());
+  if (n=="u" or n=="v" or n=="dp" or n=="qv" or n=="vtheta") {
+    check_shape(arr,scalar3dm_shape);
+  } else if (n=="uv") {
+    check_shape(arr,vector3dm_shape);
+  } else if (n=="phi" or n=="w") {
+    check_shape(arr,scalar3di_shape);
+  } else {
+    throw std::runtime_error("Unrecognized/unsupported state var '" + n + "'.\n");
+  }
+  assert ((int)arr.dtype().bits==64);
 
-  auto v_s = state.m_v;
-  auto vtheta_dp_s = state.m_vtheta_dp;
-  auto dp3d_s = state.m_dp3d;
+  // They are unmanaged, so we can create all of them, even if we don't use them
+  ExecViewUnmanaged<const double*****> vec_mid_v (vp2cdp(arr.data()),nelem,2,NP,NP,NUM_PHYSICAL_LEV);
+  ExecViewUnmanaged<const double****>  scl_mid_v (vp2cdp(arr.data()),nelem,  NP,NP,NUM_PHYSICAL_LEV);
+  ExecViewUnmanaged<const double****>  scl_int_v (vp2cdp(arr.data()),nelem,  NP,NP,NUM_INTERFACE_LEV);
 
+  auto uv  = state.m_v;
+  auto vth = state.m_vtheta_dp;
+  auto dp  = state.m_dp3d;
+  auto w   = state.m_w_i;
+  auto phi = state.m_phinh_i;
+  auto qv  = tracers.Q;
+
+  auto which = which_map.at(n);
+  int nlev = (which==flag_phi or which==flag_w) ? NUM_INTERFACE_LEV : NUM_PHYSICAL_LEV;
   using policy_t = Kokkos::MDRangePolicy<ExecSpace,Kokkos::Rank<4>>;
-  policy_t p ({0,0,0,0},{nelem,NP,NP,NUM_PHYSICAL_LEV});
+  policy_t p ({0,0,0,0},{nelem,NP,NP,nlev});
   auto copy = KOKKOS_LAMBDA (int ie, int ip, int jp, int k) {
     int lev = k / VECTOR_SIZE;
     int vec = k % VECTOR_SIZE;
-    uv_k(ie,0,ip,jp,k) = ADValue(v_s(ie,n0,0,ip,jp,lev)[vec]);
-    uv_k(ie,1,ip,jp,k) = ADValue(v_s(ie,n0,1,ip,jp,lev)[vec]);
-    vth_k(ie,ip,jp,k) = ADValue(vtheta_dp_s(ie,n0,ip,jp,lev)[vec]);
-    dp_k(ie,ip,jp,k) = ADValue(dp3d_s(ie,n0,ip,jp,lev)[vec]);
+    switch (which) {
+      case flag_u:
+        uv(ie,n0,0,ip,jp,lev)[vec] = scl_mid_v(ie,ip,jp,k); break;
+      case flag_v:
+        uv(ie,n0,1,ip,jp,lev)[vec] = scl_mid_v(ie,ip,jp,k); break;
+      case flag_uv:
+        uv(ie,n0,0,ip,jp,lev)[vec] = vec_mid_v(ie,0,ip,jp,k);
+        uv(ie,n0,1,ip,jp,lev)[vec] = vec_mid_v(ie,1,ip,jp,k); break;
+      case flag_vth:
+        vth(ie,n0,ip,jp,lev)[vec] = scl_mid_v(ie,ip,jp,k); break;
+      case flag_dp:
+        dp(ie,n0,ip,jp,lev)[vec] = scl_mid_v(ie,ip,jp,k); break;
+      case flag_w:
+        w(ie,n0,ip,jp,lev)[vec] = scl_int_v(ie,ip,jp,k); break;
+      case flag_phi:
+        phi(ie,n0,ip,jp,lev)[vec] = scl_int_v(ie,ip,jp,k); break;
+      case flag_qv:
+        qv(ie,n0,ip,jp,lev)[vec] = scl_mid_v(ie,ip,jp,k); break;
+      default:
+        Kokkos::abort("Unsupported value for 'which' in get_state_var.\n");
+    }
   };
   Kokkos::parallel_for(p,copy);
 }

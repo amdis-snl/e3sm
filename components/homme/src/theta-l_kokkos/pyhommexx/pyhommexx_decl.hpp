@@ -21,13 +21,8 @@ void get_num_unique_pts (nb::ndarray<int>& n);
 void get_unique_pts (nb::ndarray<int>& ia,
                      nb::ndarray<int>& ja);
 
-void set_state (const nb::ndarray<double>& uv,
-                const nb::ndarray<double>& vthdp,
-                const nb::ndarray<double>& dp);
-
-void get_state (nb::ndarray<double>& uv,
-                nb::ndarray<double>& vthdp,
-                nb::ndarray<double>& dp);
+void get_state_var (nb::ndarray<double>& uv, const nb::str& name);
+void set_state_var (const nb::ndarray<double>& uv, const nb::str& name);
 
 void forward(const double dt);
 
