@@ -1,12 +1,9 @@
 #ifndef PYHOMMEXX_DECL_HPP
 #define PYHOMMEXX_DECL_HPP
 
-#include "Hommexx_config.h"
-
 #include <nanobind/nanobind.h>
 #include <nanobind/ndarray.h>
 
-namespace Homme {
 namespace pyhommexx {
 
 namespace nb = nanobind;
@@ -29,6 +26,5 @@ void forward(const double dt);
 void finalize();
 
 } // namespace pyhommexx
-} // namespace Homme
 
 #endif // PYHOMMEXX_UTILS_HPP

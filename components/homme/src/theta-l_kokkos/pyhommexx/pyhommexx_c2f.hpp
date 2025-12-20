@@ -1,7 +1,6 @@
 #ifndef PYHOMMEXX_C2F_HPP
 #define PYHOMMEXX_C2F_HPP
 
-namespace Homme {
 namespace pyhommexx {
 
 extern "C"
@@ -16,6 +15,5 @@ void prim_finalize_f90 ();
 } // extern "C"
 
 } // namespace pyhommexx
-} // namespace Homme
 
 #endif // PYHOMMEXX_C2F_HPP

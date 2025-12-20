@@ -19,8 +19,11 @@ extern "C" {
 void prim_run_subcycle_c (const Real& dt, int& nstep, int& nm1, int& n0, int& np1,
                           const int& next_output_step, const int& nsplit_iteration);
 }
+}
 
 namespace pyhommexx {
+
+using namespace Homme;
 
 double* vp2dp (void* p)
 {
@@ -56,7 +59,7 @@ void check_shape(const NBArrayT& arr, const std::vector<int>& shape)
 
 void init (nb::object py_comm, const nb::str& nml_filename)
 {
-  const auto& fcomm = get_f_comm(get_c_comm(py_comm));
+  const auto& fcomm = get_f_comm(py_comm);
   init_parallel_f90(fcomm);
 
   auto nml_filename_c = nml_filename.c_str();
@@ -312,4 +315,3 @@ void finalize()
 }
 
 } // namespace pyhommexx
-} // namespace Homme

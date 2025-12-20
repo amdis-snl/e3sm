@@ -2,7 +2,6 @@
 
 #include <nanobind/nanobind.h>
 
-namespace Homme {
 namespace pyhommexx {
 
 NB_MODULE (pyhommexx,m) {
@@ -19,4 +18,3 @@ NB_MODULE (pyhommexx,m) {
 }
 
 } // namespace pyhommexx
-} // namespace 
