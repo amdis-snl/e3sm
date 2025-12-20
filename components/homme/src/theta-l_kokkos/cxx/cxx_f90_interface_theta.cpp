@@ -39,7 +39,7 @@ namespace Homme
 extern "C"
 {
 
-void init_simulation_params_c (const int& remap_alg, const int& limiter_option, const int& rsplit, const int& qsplit,
+void init_simulation_params_c (const int& ne, const int& remap_alg, const int& limiter_option, const int& rsplit, const int& qsplit,
                                const int& time_step_type, const int& qsize, const int& state_frequency,
                                const Real& nu, const Real& nu_p, const Real& nu_q, const Real& nu_s, const Real& nu_div, const Real& nu_top,
                                const int& hypervis_order, const int& hypervis_subcycle, const int& hypervis_subcycle_tom,
@@ -94,6 +94,8 @@ void init_simulation_params_c (const int& remap_alg, const int& limiter_option, 
   } else {
     params.theta_adv_form = AdvectionForm::NonConservative;
   }
+
+  params.ne                            = ne;
 
   params.limiter_option                = limiter_option;
   params.rsplit                        = rsplit;

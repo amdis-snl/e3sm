@@ -32,6 +32,7 @@ struct SimulationParams
   int           rsplit, dt_remap_factor;
   int           qsplit, dt_tracer_factor;
   int           qsize;
+  int           ne;
 
 
   int       limiter_option; // TODO: convert to enum
