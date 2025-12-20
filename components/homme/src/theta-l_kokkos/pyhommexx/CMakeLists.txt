@@ -39,16 +39,11 @@ execute_process(
   COMMAND "${Python_EXECUTABLE}" -m nanobind --cmake_dir
   OUTPUT_STRIP_TRAILING_WHITESPACE OUTPUT_VARIABLE nanobind_ROOT)
 find_package(nanobind REQUIRED)
-execute_process(
-  COMMAND "${Python_EXECUTABLE}" -m mpi4py --prefix
-  OUTPUT_STRIP_TRAILING_WHITESPACE OUTPUT_VARIABLE mpi4py_ROOT)
 
 nanobind_add_module(pyhommexx
   pyhommexx.cpp
   pyhommexx_impl.cpp
-  pyhommexx_utils.cpp
   pyhommexx_mod.F90
 )
 
 target_link_libraries(pyhommexx PUBLIC ${hommeLib})
-target_include_directories(pyhommexx PUBLIC ${mpi4py_ROOT}/include)

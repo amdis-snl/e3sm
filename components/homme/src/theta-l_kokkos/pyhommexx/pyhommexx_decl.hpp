@@ -11,8 +11,12 @@ namespace nb = nanobind;
 template<int N>
 using ndarray_t = nb::ndarray<double,nb::ndim<N>>;
 
-void init (nb::object py_comm, const nb::str& nml_filename);
+void init_session ();
+void read_params (const nb::str& nml_filename);
 nb::dict get_params();
+int get_nelemd();
+
+void model_init ();
 
 void get_num_unique_pts (nb::ndarray<int>& n);
 void get_unique_pts (nb::ndarray<int>& ia,

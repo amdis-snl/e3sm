@@ -28,12 +28,13 @@ module pyhommexx_mod
 
   ! Functions callable from C, mostly to detect whether some parts were already inited
   public :: init_parallel_f90
-  public :: prim_init_f90
+  public :: model_init_f90
 
 contains
 
-  subroutine init_parallel_f90 (f_comm) bind(c)
+  subroutine init_parallel_f90 () bind(c)
     use iso_c_binding,  only: c_int
+    use mpi,            only: MPI_COMM_WORLD
     use parallel_mod,   only: initmp_from_par, abortmp
     use dimensions_mod, only: npart
     use hybrid_mod,     only: hybrid_create
@@ -47,14 +48,11 @@ contains
       end subroutine reset_cxx_comm
     end interface
 
-    ! Input(s)
-    integer (kind=c_int), intent(in) :: f_comm
-
-    ! Local(s)
     integer :: ierr
 
     ! Initialize parallel structure
-    par%comm = f_comm
+    print *, "init parallel, with comm:",MPI_COMM_WORLD
+    par%comm = MPI_COMM_WORLD
     par%root = 0
     par%dynproc = .true.
 
@@ -73,7 +71,7 @@ contains
     npart = par%nprocs
 
     ! Init the comm in Hommexx
-    call reset_cxx_comm (f_comm)
+    call reset_cxx_comm (INT(MPI_COMM_WORLD,kind=c_int))
 
     npes = par%nprocs
     iam  = par%rank
@@ -122,28 +120,37 @@ contains
 
   end subroutine get_unique_pts_f90
 
-  subroutine prim_init_f90 (nl_fname_c) bind(c)
+  subroutine read_params_f90 (nl_fname_c) bind(c)
     use iso_c_binding,   only: c_ptr, c_f_pointer, C_NULL_CHAR
-    use prim_driver_mod, only: prim_init1, prim_init2
-    use dimensions_mod,  only: nelemd
-    use control_mod,     only: vfile_mid, vfile_int, MAX_STRING_LEN
-    use parallel_mod,    only: abortmp
-    use hybvcoord_mod,   only: hvcoord_init
-    use namelist_mod,    only: use_nl_file, nml_filename
+    use namelist_mod,    only: readnl
+    use control_mod,     only: MAX_STRING_LEN
+    use prim_driver_mod, only: prim_init_simulation_params
 
     ! Inputs
     type (c_ptr), intent(in) :: nl_fname_c
 
     ! Locals
-    integer :: ierr,str_len
+    integer :: str_len
     character(len=MAX_STRING_LEN), pointer :: nl_fname_ptr
 
     ! Force namelist mod to read from file
-    use_nl_file = .true.
     call c_f_pointer(nl_fname_c,nl_fname_ptr)
     str_len = index(nl_fname_ptr, C_NULL_CHAR) - 1
-    nml_filename = trim(nl_fname_ptr(1:str_len))
+    call readnl(par,trim(nl_fname_ptr(1:str_len)))
 
+    call prim_init_simulation_params()
+  end subroutine read_params_f90
+
+  subroutine model_init_f90 () bind(c)
+    use iso_c_binding,   only: c_ptr, c_f_pointer, C_NULL_CHAR
+    use prim_driver_mod, only: prim_init1, prim_init2
+    use dimensions_mod,  only: nelemd
+    use control_mod,     only: vfile_mid, vfile_int
+    use parallel_mod,    only: abortmp
+    use hybvcoord_mod,   only: hvcoord_init
+
+    ! Locals
+    integer :: ierr
     call prim_init1(elem,  par,dom_mt,tl)
 
     ! Initialize the vertical coordinate
@@ -153,7 +160,7 @@ contains
     end if
 
     call prim_init2(elem, hybrid,1,nelemd,tl, hvcoord)
-  end subroutine prim_init_f90
+  end subroutine model_init_f90
 
   subroutine prim_finalize_f90 () bind(c)
     use prim_driver_mod, only: prim_finalize

@@ -1,5 +1,4 @@
 #include "pyhommexx_decl.hpp"
-#include "pyhommexx_utils.hpp"
 #include "pyhommexx_c2f.hpp"
 
 #include "Context.hpp"
@@ -57,24 +56,28 @@ void check_shape(const NBArrayT& arr, const std::vector<int>& shape)
   }
 }
 
-void init (nb::object py_comm, const nb::str& nml_filename)
+void init_session ()
 {
-  const auto& fcomm = get_f_comm(py_comm);
-  init_parallel_f90(fcomm);
+  init_parallel_f90();
+}
 
+void read_params (const nb::str& nml_filename)
+{
   auto nml_filename_c = nml_filename.c_str();
-  prim_init_f90(nml_filename_c);
+  read_params_f90(nml_filename_c);
+}
+void model_init ()
+{
+  model_init_f90();
 }
 
 nb::dict get_params()
 {
   const auto& c = Context::singleton();
   const auto& s = c.get<SimulationParams>();
-  const auto& e = c.get<ElementsState>();
 
   nb::dict params;
 
-  params["nelemd"] = e.num_elems();
   params["rsplit"] = s.rsplit;
   params["qsplit"] = s.qsplit;
   params["qsize"] = s.qsize;
@@ -83,13 +86,15 @@ nb::dict get_params()
   params["nlev"] = NUM_PHYSICAL_LEV;
   params["hydrostatic"] = s.theta_hydrostatic_mode;
   params["nu"] = s.nu;
-
-  int nelem = e.num_elems();
-  MPI_Allreduce(MPI_IN_PLACE, &nelem, 1, MPI_INT, MPI_SUM, c.get<Comm>().mpi_comm());
-  int ne = static_cast<int>(std::sqrt(nelem / 6));
-  params["ne"] = ne;
+  params["ne"] = s.ne;
 
   return params;
+}
+int get_nelemd ()
+{
+  const auto& c = Context::singleton();
+  const auto& e = c.get<ElementsState>();
+  return e.num_elems();
 }
 
 void get_num_unique_pts (nb::ndarray<int>& n)
