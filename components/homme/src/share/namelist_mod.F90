@@ -191,8 +191,7 @@ module namelist_mod
   private
 
   public :: readnl
-  logical, public :: use_nl_file = .false.
-  character(len=MAX_STRING_LEN), public :: nml_filename
+  logical, public :: readnl_done = .false.
 
  contains
 
@@ -417,6 +416,10 @@ module namelist_mod
       use_column_solver
 #endif
 
+    if (readnl_done) then
+      print *, "namelist already read"
+      return
+    endif
 
     ! ==========================
     ! Set the default partmethod
@@ -486,10 +489,6 @@ module namelist_mod
          print *, 'Reading namelist ctl_nl from file: '//trim(nlfilename)
          unitn=getunit()
          open( unitn, file=trim(nlfilename), status='old' )
-       else if (use_nl_file) then
-         print *, 'Reading namelist ctl_nl from file: '//trim(nml_filename)
-         unitn=getunit()
-         open( unitn, file=trim(nml_filename), status='old' )
        else
          print *, 'Reading namelist ctl_nl from standard input'
          unitn=5
@@ -1304,7 +1303,7 @@ end if
 
 !=======================================================================================================!
     endif
-
+    readnl_done = .true.
   end subroutine readnl
 
   subroutine print_clear_message()
