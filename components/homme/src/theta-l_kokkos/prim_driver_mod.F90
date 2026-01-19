@@ -20,6 +20,7 @@ module prim_driver_mod
 
   public :: prim_init2
   public :: prim_run_subcycle
+  public :: prim_init_simulation_params
   public :: prim_init_elements_views
   public :: prim_init_grid_views
   public :: prim_init_geopotential_views
@@ -34,6 +35,8 @@ module prim_driver_mod
      type (derivative_t) :: deriv
      integer :: nets, nete
   end type PrescribedWind_t
+
+  logical :: simulation_params_inited = .false.
 
   type (PrescribedWind_t), private :: prescribed_wind_args
 
@@ -76,41 +79,24 @@ contains
     end if
   end subroutine prim_init2
 
-  subroutine prim_create_c_data_structures (tl, hvcoord, mp)
-    use iso_c_binding, only : c_loc, c_ptr, C_NULL_CHAR
-    use theta_f2c_mod, only : init_reference_element_c, init_simulation_params_c, &
-                              init_time_level_c, init_hvcoord_c, init_elements_c
-    use time_mod,      only : TimeLevel_t, nsplit
-    use hybvcoord_mod, only : hvcoord_t
-    use control_mod,   only : limiter_option, rsplit, qsplit, tstep_type, statefreq,   &
-                              nu, nu_p, nu_q, nu_s, nu_div, nu_top, vert_remap_q_alg,  &
-                              hypervis_order, hypervis_subcycle, hypervis_subcycle_tom,&
-                              hypervis_scaling, rel_perturb,                           &
-                              ftype, prescribed_wind, use_moisture, disable_diagnostics,   &
-                              use_cpstar, transport_alg, theta_hydrostatic_mode,       &
-                              dcmip16_mu, theta_advect_form, test_case,                &
-                              MAX_STRING_LEN, dt_remap_factor, dt_tracer_factor,       &
-                              pgrad_correction, dp3d_thresh, vtheta_thresh,            &
+  subroutine prim_init_simulation_params ()
+    use iso_c_binding,  only: c_loc, C_NULL_CHAR
+    use theta_f2c_mod,  only: init_simulation_params_c
+    use time_mod,       only: nsplit
+    use dimensions_mod, only: ne
+    use control_mod,    only: limiter_option, rsplit, qsplit, tstep_type, statefreq,      &
+                              nu, nu_p, nu_q, nu_s, nu_div, nu_top, vert_remap_q_alg,     &
+                              hypervis_order, hypervis_subcycle, hypervis_subcycle_tom,   &
+                              hypervis_scaling, rel_perturb,                              &
+                              ftype, prescribed_wind, use_moisture, disable_diagnostics,  &
+                              use_cpstar, transport_alg, theta_hydrostatic_mode,          &
+                              dcmip16_mu, theta_advect_form, test_case,                   &
+                              MAX_STRING_LEN, dt_remap_factor, dt_tracer_factor,          &
+                              pgrad_correction, dp3d_thresh, vtheta_thresh,               &
                               internal_diagnostics_level, test_with_forcing
-    !
-    ! Input(s)
-    !
-    type (TimeLevel_t),       intent(in) :: tl
-    type (hvcoord_t), target, intent(in) :: hvcoord
-    real (kind=real_kind),    intent(in) :: mp(np,np)
-    !
-    ! Local(s)
-    !
-    real (kind=real_kind), target :: dvv (np,np), elem_mp(np,np)
-    type (c_ptr) :: hybrid_am_ptr, hybrid_ai_ptr, hybrid_bm_ptr, hybrid_bi_ptr
-    character(len=MAX_STRING_LEN), target :: test_name
 
     integer :: disable_diagnostics_int, theta_hydrostatic_mode_int, use_moisture_int, ftype_cxx
-
-    ! Initialize the C++ reference element structure (i.e., pseudo-spectral deriv matrix and ref element mass matrix)
-    dvv = deriv1%dvv
-    elem_mp = mp
-    call init_reference_element_c(c_loc(dvv),c_loc(elem_mp))
+    character(len=MAX_STRING_LEN), target :: test_name
 
     ! Fill the simulation params structures in C++
     test_name = TRIM(test_case) // C_NULL_CHAR
@@ -128,23 +114,53 @@ contains
       ftype_cxx = -1
     endif
 
-    call init_simulation_params_c (vert_remap_q_alg, limiter_option, rsplit, qsplit, tstep_type,  &
-                                   qsize, statefreq, nu, nu_p, nu_q, nu_s, nu_div, nu_top,        &
-                                   hypervis_order, hypervis_subcycle, hypervis_subcycle_tom,      &
-                                   hypervis_scaling, rel_perturb,                                 &
-                                   dcmip16_mu, ftype_cxx, theta_advect_form,                      &
-                                   prescribed_wind,                                               &
-                                   use_moisture_int,                                              &
-                                   disable_diagnostics_int,                                       &
-                                   use_cpstar,                                                    &
-                                   transport_alg,                                                 &
-                                   theta_hydrostatic_mode_int,                                    &
-                                   c_loc(test_name),                                              &
-                                   dt_remap_factor, dt_tracer_factor,                             &
-                                   scale_factor, laplacian_rigid_factor,                          &
-                                   nsplit,                                                        &
-                                   pgrad_correction,                                              &
+    call init_simulation_params_c (ne, vert_remap_q_alg, limiter_option, rsplit, qsplit, tstep_type,&
+                                   qsize, statefreq, nu, nu_p, nu_q, nu_s, nu_div, nu_top,          &
+                                   hypervis_order, hypervis_subcycle, hypervis_subcycle_tom,        &
+                                   hypervis_scaling, rel_perturb,                                   &
+                                   dcmip16_mu, ftype_cxx, theta_advect_form,                        &
+                                   prescribed_wind,                                                 &
+                                   use_moisture_int,                                                &
+                                   disable_diagnostics_int,                                         &
+                                   use_cpstar,                                                      &
+                                   transport_alg,                                                   &
+                                   theta_hydrostatic_mode_int,                                      &
+                                   c_loc(test_name),                                                &
+                                   dt_remap_factor, dt_tracer_factor,                               &
+                                   scale_factor, laplacian_rigid_factor,                            &
+                                   nsplit,                                                          &
+                                   pgrad_correction,                                                &
                                    dp3d_thresh, vtheta_thresh, internal_diagnostics_level)
+
+      simulation_params_inited = .true.
+  end subroutine prim_init_simulation_params
+
+  subroutine prim_create_c_data_structures (tl, hvcoord, mp)
+    use iso_c_binding, only : c_loc, c_ptr
+    use theta_f2c_mod, only : init_reference_element_c, init_time_level_c, &
+                              init_hvcoord_c, init_elements_c
+    use time_mod,      only : TimeLevel_t
+    use hybvcoord_mod, only : hvcoord_t
+    !
+    ! Input(s)
+    !
+    type (TimeLevel_t),       intent(in) :: tl
+    type (hvcoord_t), target, intent(in) :: hvcoord
+    real (kind=real_kind),    intent(in) :: mp(np,np)
+    !
+    ! Local(s)
+    !
+    real (kind=real_kind), target :: dvv (np,np), elem_mp(np,np)
+    type (c_ptr) :: hybrid_am_ptr, hybrid_ai_ptr, hybrid_bm_ptr, hybrid_bi_ptr
+
+    ! Initialize the C++ reference element structure (i.e., pseudo-spectral deriv matrix and ref element mass matrix)
+    dvv = deriv1%dvv
+    elem_mp = mp
+    call init_reference_element_c(c_loc(dvv),c_loc(elem_mp))
+
+    if (.not. simulation_params_inited) then
+      call prim_init_simulation_params()
+    endif
 
     ! Initialize time level structure in C++
     call init_time_level_c(tl%nm1, tl%n0, tl%np1, tl%nstep, tl%nstep0)

@@ -7,7 +7,7 @@ interface
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
   ! Copies simulation parameters to C++ structures
-  subroutine init_simulation_params_c (remap_alg, limiter_option, rsplit, qsplit, time_step_type,    &
+  subroutine init_simulation_params_c (ne, remap_alg, limiter_option, rsplit, qsplit, time_step_type,&
                                        qsize, state_frequency, nu, nu_p, nu_q, nu_s, nu_div, nu_top, &
                                        hypervis_order, hypervis_subcycle, hypervis_subcycle_tom,     &
                                        hypervis_scaling, rel_perturb,                                &
@@ -22,7 +22,7 @@ interface
     !
     ! Inputs
     !
-    integer(kind=c_int),  intent(in) :: remap_alg, limiter_option, rsplit, qsplit, time_step_type, nsplit
+    integer(kind=c_int),  intent(in) :: ne, remap_alg, limiter_option, rsplit, qsplit, time_step_type, nsplit
     integer(kind=c_int),  intent(in) :: dt_remap_factor, dt_tracer_factor, transport_alg
     integer(kind=c_int),  intent(in) :: state_frequency, qsize, internal_diagnostics_level
     real(kind=c_double),  intent(in) :: nu, nu_p, nu_q, nu_s, nu_div, nu_top, hypervis_scaling, dcmip16_mu, &

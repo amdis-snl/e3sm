@@ -17,10 +17,10 @@ module namelist_mod
 #if (defined MODEL_THETA_L && defined ARKODE)
   use arkode_mod, only: rel_tol, abs_tol, calc_nonlinear_stats, use_column_solver
 #endif
-use physical_constants, only : rearth, rrearth, DD_PI
+  use physical_constants, only : rearth, rrearth, DD_PI
 
-use physical_constants, only : scale_factor, scale_factor_inv, domain_size, laplacian_rigid_factor
-use physical_constants, only : Sx, Sy, Lx, Ly, dx, dy, dx_ref, dy_ref
+  use physical_constants, only : scale_factor, scale_factor_inv, domain_size, laplacian_rigid_factor
+  use physical_constants, only : Sx, Sy, Lx, Ly, dx, dy, dx_ref, dy_ref
 
   use control_mod, only : &
     MAX_STRING_LEN,&
@@ -191,6 +191,7 @@ use physical_constants, only : Sx, Sy, Lx, Ly, dx, dy, dx_ref, dy_ref
   private
 
   public :: readnl
+  logical, public :: readnl_done = .false.
 
  contains
 
@@ -199,25 +200,18 @@ use physical_constants, only : Sx, Sy, Lx, Ly, dx, dy, dx_ref, dy_ref
   ! read in the namelists...
   ! ============================================
 
-#if defined(CAM) || defined(SCREAM)
   subroutine readnl(par, NLFileName)
     use shr_file_mod,      only: getunit=>shr_file_getUnit, freeunit=>shr_file_freeUnit
 #ifndef HOMME_WITHOUT_PIOLIBRARY
     use mesh_mod, only : MeshOpen
 #endif
-    character(len=*), intent(in) :: NLFilename  ! namelist filename
-#else
-  subroutine readnl(par)
-#ifndef HOMME_WITHOUT_PIOLIBRARY
-    use mesh_mod, only : MeshOpen
-#endif
-#endif
+    character(len=*), intent(in), optional :: NLFilename  ! namelist filename (if absent read from stdin)
     type (parallel_t), intent(in) ::  par
     character(len=MAX_FILE_LEN) :: mesh_file
     integer :: se_ftype, se_limiter_option
     integer :: se_nsplit
     integer :: interp_nlat, interp_nlon, interp_gridtype
-    integer :: i, ii
+    integer :: i, unitn
 #if !defined(CAM) && !defined(SCREAM)
 #if !defined(HOMME_WITHOUT_PIOLIBRARY)
     integer :: j
@@ -225,7 +219,6 @@ use physical_constants, only : Sx, Sy, Lx, Ly, dx, dy, dx_ref, dy_ref
     integer :: interp_type
 #endif
     integer  :: ierr
-    character(len=80) :: errstr, arg
     real(kind=real_kind) :: dt_max, se_tstep
 #if defined(CAM) || defined(SCREAM)
     character(len=MAX_STRING_LEN) :: se_topology, se_geometry
@@ -233,7 +226,6 @@ use physical_constants, only : Sx, Sy, Lx, Ly, dx, dy, dx_ref, dy_ref
     integer :: se_ne
     integer :: se_ne_x, se_ne_y
     real(kind=real_kind) :: se_lx, se_ly
-    integer :: unitn
     character(len=*), parameter ::  subname = "homme:namelist_mod"
 #endif
     ! ============================================
@@ -424,6 +416,10 @@ use physical_constants, only : Sx, Sy, Lx, Ly, dx, dy, dx_ref, dy_ref
       use_column_solver
 #endif
 
+    if (readnl_done) then
+      print *, "namelist already read"
+      return
+    endif
 
     ! ==========================
     ! Set the default partmethod
@@ -481,7 +477,6 @@ use physical_constants, only : Sx, Sy, Lx, Ly, dx, dy, dx_ref, dy_ref
     theta_hydrostatic_mode = .false.   ! default NH
 #endif
 
-
     ! =======================
     ! Read namelist variables
     ! =======================
@@ -490,27 +485,16 @@ use physical_constants, only : Sx, Sy, Lx, Ly, dx, dy, dx_ref, dy_ref
 
     if (par%masterproc) then
        write(iulog,*)"reading ctl namelist..."
-#if defined(CAM) || defined(SCREAM)
-       unitn=getunit()
-       open( unitn, file=trim(nlfilename), status='old' )
-       ierr = 1
-       do while ( ierr /= 0 )
-          read (unitn,ctl_nl,iostat=ierr)
-          if (ierr < 0) then
-            write(6,*) 'ierr =',ierr
-             call abortmp( subname//':: namelist read returns an'// &
-                  ' end of file or end of record condition' )
-          end if
-       end do
-       close( unitn )
-       call freeunit( unitn )
-#elif defined(OSF1) || defined(_NAMELIST_FROM_FILE)
-       open(unit=7,file="input.nl",status="OLD")
-       read(unit=7,nml=ctl_nl)
-#else
-      print *, 'Reading namelist ctl_nl from standard input'
-      read(*,nml=ctl_nl)
-#endif
+       if (present(nlfilename)) then
+         print *, 'Reading namelist ctl_nl from file: '//trim(nlfilename)
+         unitn=getunit()
+         open( unitn, file=trim(nlfilename), status='old' )
+       else
+         print *, 'Reading namelist ctl_nl from standard input'
+         unitn=5
+       endif
+       read (unitn,ctl_nl,iostat=ierr)
+
 #ifndef _USEMETIS
       ! override METIS options to SFCURVE
       if (partmethod>=0 .and. partmethod<=3) partmethod=SFCURVE
@@ -601,11 +585,8 @@ use physical_constants, only : Sx, Sy, Lx, Ly, dx, dy, dx_ref, dy_ref
            test_case(1:4) == "asp_")  then
          write(iulog,*) "reading vertical namelist..."
 
-#if defined(OSF1) || defined(_NAMELIST_FROM_FILE)
-         read(unit=7,nml=vert_nl)
-#else
-         read(*,nml=vert_nl)
-#endif
+         read(unitn,nml=vert_nl)
+
          vfile_mid  = trim(adjustl(vfile_mid))
          vfile_int  = trim(adjustl(vfile_int))
 
@@ -659,11 +640,7 @@ use physical_constants, only : Sx, Sy, Lx, Ly, dx, dy, dx_ref, dy_ref
 
 #ifndef HOMME_WITHOUT_PIOLIBRARY
        write(iulog,*)"reading analysis namelist..."
-#if defined(OSF1) || defined(_NAMELIST_FROM_FILE)
-       read(unit=7,nml=analysis_nl)
-#else
-       read(*,nml=analysis_nl)
-#endif
+       read(unitn,nml=analysis_nl)
 
       if (io_stride .eq.0 .and. num_io_procs .eq.0) then
          ! user did not set anything
@@ -713,18 +690,11 @@ use physical_constants, only : Sx, Sy, Lx, Ly, dx, dy, dx_ref, dy_ref
 
 #if (defined MODEL_THETA_L && defined ARKODE)
        write(iulog,*)"reading arkode namelist..."
-#if defined(OSF1) || defined(_NAMELIST_FROM_FILE)
-       read(unit=7,nml=arkode_nl)
-#else
-       read(*,nml=arkode_nl)
-#endif
+       read(unitn,nml=arkode_nl)
 #endif
 
 !=======================================================================================================!
 
-#if defined(OSF1) || defined(_NAMELIST_FROM_FILE)
-       close(unit=7)
-#endif
 #endif
 ! ^ if !defined(CAM) && !defined(SCREAM)
        ierr = timestep_make_subcycle_parameters_consistent(par, rsplit, qsplit, &
@@ -753,6 +723,11 @@ use physical_constants, only : Sx, Sy, Lx, Ly, dx, dy, dx_ref, dy_ref
        end if
 #endif
     end if
+
+    if (present(nlfilename)) then
+      close( unitn )
+      call freeunit( unitn )
+    endif
 
 
     call MPI_barrier(par%comm,ierr)
@@ -1174,11 +1149,11 @@ end if
        write(iulog,*)"readnl: NThreads      = ",NTHREADS
 #endif
 
-if (topology == "cube") then
-       write(iulog,*)"readnl: ne,np         = ",ne,np
-else if (topology == "plane") then
-  write(iulog,*)"readnl: ne_x,ne_y,np         = ",ne_x,ne_y,np
-end if
+       if (topology == "cube") then
+              write(iulog,*)"readnl: ne,np         = ",ne,np
+       else if (topology == "plane") then
+         write(iulog,*)"readnl: ne_x,ne_y,np         = ",ne_x,ne_y,np
+       end if
        write(iulog,*)"readnl: partmethod    = ",PARTMETHOD
        write(iulog,*)"readnl: COORD_TRANSFORM_METHOD    = ",COORD_TRANSFORM_METHOD
        write(iulog,*)"readnl: Z2_MAP_METHOD    = ",Z2_MAP_METHOD
@@ -1328,7 +1303,7 @@ end if
 
 !=======================================================================================================!
     endif
-
+    readnl_done = .true.
   end subroutine readnl
 
   subroutine print_clear_message()
