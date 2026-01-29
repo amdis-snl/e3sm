@@ -2,8 +2,11 @@
 #include "pyhommexx_c2f.hpp"
 
 #include "Context.hpp"
+#include "CaarFunctor.hpp"
 #include "ElementsState.hpp"
 #include "ElementsGeometry.hpp"
+#include "Hommexx_Session.hpp"
+#include "RKStageData.hpp"
 #include "SimulationParams.hpp"
 #include "TimeLevel.hpp"
 #include "Tracers.hpp"
@@ -59,6 +62,8 @@ void check_shape(const NBArrayT& arr, const std::vector<int>& shape)
 void init_session ()
 {
   init_parallel_f90();
+  // Throw, so we can use try blocks in py
+  Session::m_throw_instead_of_abort = true;
 }
 
 void read_params (const nb::str& nml_filename)
@@ -312,6 +317,75 @@ void forward(const double dt)
 {
   int nm1, n0, np1, nstep;
   prim_run_subcycle_c(dt,nstep,nm1,n0,np1,-1,1);
+}
+
+void run_functor(const nb::str& name, const nb::dict& params)
+{
+  using namespace Errors;
+  std::string name_str (name.c_str());
+  if (name_str=="caar") {
+    auto& c = Context::singleton();
+    auto& f = c.get<CaarFunctor>();
+    auto& tl = c.get<TimeLevel>();
+
+    RKStageData data;
+
+    data.nm1 = tl.nm1;
+    data.n0  = tl.n0;
+    data.np1 = tl.np1;
+    data.n0_qdp = 0;
+    data.scale1 = 1;
+    data.scale2 = 0;
+    data.scale3 = 1;
+    data.eta_ave_w = 0;
+
+    bool update_tl = false;
+    for (const auto& [key, value] : params) {
+      runtime_check(nb::isinstance<nb::str>(key),
+                    "Error! Functor params dict keys should be strings.\n");
+
+      std::string key_str(nb::cast<nb::str>(key).c_str());
+      if (key_str=="dt") {
+        runtime_check(nb::isinstance<double>(value),
+                      "Error! Functor param 'dt' should be a double.\n");
+        data.dt = nb::cast<double>(value);
+      } else if (key_str=="eta_ave_w") {
+        runtime_check(nb::isinstance<double>(value),
+                      "Error! Functor param 'eta_ave_w' should be a double.\n");
+        data.eta_ave_w = nb::cast<double>(value);
+      } else if (key_str=="scale1") {
+        runtime_check(nb::isinstance<double>(value),
+                      "Error! Functor param 'scale1' should be a double.\n");
+        data.scale1 = nb::cast<double>(value);
+      } else if (key_str=="scale2") {
+        runtime_check(nb::isinstance<double>(value),
+                      "Error! Functor param 'scale2' should be a double.\n");
+        data.scale2 = nb::cast<double>(value);
+      } else if (key_str=="scale3") {
+        runtime_check(nb::isinstance<double>(value),
+                      "Error! Functor param 'scale3' should be a double.\n");
+        data.scale3 = nb::cast<double>(value);
+      } else if (key_str=="update_tl") {
+        runtime_check(nb::isinstance<bool>(value),
+                      "Error! Functor param 'update_tl' should be a bool.\n");
+        update_tl = nb::cast<bool>(value);
+      } else {
+        runtime_abort("[ERROR] Invalid key for caar functor params.\n"
+                      " - key: " + key_str + "\n" +
+                      " - valid keys: dt\n");
+      }
+    }
+
+    f.run(data);
+
+    if (update_tl) {
+      tl.update_dynamics_levels(UpdateType::FORWARD);
+    }
+  } else {
+    runtime_abort("[ERROR] Unrecognized/unsupported fucntor name.\n"
+                  " - input name: " + name_str + "\n"
+                  " - valid name(s): caar\n");
+  }
 }
 
 void finalize()

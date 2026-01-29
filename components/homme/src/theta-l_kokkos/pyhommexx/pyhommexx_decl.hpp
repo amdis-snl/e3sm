@@ -25,6 +25,7 @@ void get_unique_pts (nb::ndarray<int>& ia,
 void get_state_var (nb::ndarray<double>& uv, const nb::str& name);
 void set_state_var (const nb::ndarray<double>& uv, const nb::str& name);
 
+void run_functor(const nb::str& name,const nb::dict& params);
 void forward(const double dt);
 
 void finalize();
