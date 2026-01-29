@@ -372,6 +372,103 @@ void set_state_var (const nb::ndarray<double>& arr, const nb::str& name)
   Kokkos::parallel_for(p,copy);
 }
 
+void get_state_var_sens (nb::ndarray<double>& arr, const nb::str& name)
+{
+#ifdef HOMMEXX_ENABLE_FAD_TYPES
+  const auto& c = Context::singleton();
+  const auto& state = c.get<ElementsState> ();
+  const auto& tracers = c.get<Tracers> ();
+  const auto& tl = c.get<TimeLevel> ();
+
+  const int nelem = state.num_elems();
+  const int n0 = tl.n0;
+  const int qn0 = tl.n0_qdp;
+
+  std::vector<int> vector3dm_shape = {nelem,2,NP,NP,NUM_PHYSICAL_LEV,HOMMEXX_SFAD_SIZE};
+  std::vector<int> scalar3dm_shape = {nelem,  NP,NP,NUM_PHYSICAL_LEV,HOMMEXX_SFAD_SIZE};
+  std::vector<int> scalar3di_shape = {nelem,  NP,NP,NUM_INTERFACE_LEV,HOMMEXX_SFAD_SIZE};
+
+  constexpr int flag_u   = 0;
+  constexpr int flag_v   = 1;
+  constexpr int flag_uv  = 2;
+  constexpr int flag_vth = 3;
+  constexpr int flag_dp  = 4;
+  constexpr int flag_w   = 5;
+  constexpr int flag_phi = 6;
+  constexpr int flag_qv  = 7;
+  std::map<std::string,int> which_map = {
+    {"u",  flag_u},
+    {"v",  flag_v},
+    {"uv", flag_uv},
+    {"vth",flag_vth},
+    {"dp", flag_dp},
+    {"w",  flag_w},
+    {"phi",flag_phi},
+    {"qv", flag_qv},
+  };
+
+  // nanobind has no operator== with const char[]
+  std::string n (name.c_str());
+  if (n=="u" or n=="v" or n=="dp" or n=="qv" or n=="vthetadp") {
+    check_shape(arr,scalar3dm_shape);
+  } else if (n=="uv") {
+    check_shape(arr,vector3dm_shape);
+  } else if (n=="phi" or n=="w") {
+    check_shape(arr,scalar3di_shape);
+  } else {
+    throw std::runtime_error("Unrecognized/unsupported state var '" + n + "'.\n");
+  }
+  assert ((int)arr.dtype().bits==64);
+
+  // They are unmanaged, so we can create all of them, even if we don't use them
+  ExecViewUnmanaged<double******> vec_mid_v (vp2dp(arr.data()),nelem,2,NP,NP,NUM_PHYSICAL_LEV);
+  ExecViewUnmanaged<double*****>  scl_mid_v (vp2dp(arr.data()),nelem,  NP,NP,NUM_PHYSICAL_LEV);
+  ExecViewUnmanaged<double*****>  scl_int_v (vp2dp(arr.data()),nelem,  NP,NP,NUM_INTERFACE_LEV);
+
+  auto uv  = state.m_v;
+  auto vth = state.m_vtheta_dp;
+  auto dp  = state.m_dp3d;
+  auto w   = state.m_w_i;
+  auto phi = state.m_phinh_i;
+  auto qv  = tracers.Q;
+
+  auto which = which_map.at(n);
+  int nlev = (which==flag_phi or which==flag_w) ? NUM_INTERFACE_LEV : NUM_PHYSICAL_LEV;
+  using policy_t = Kokkos::MDRangePolicy<ExecSpace,Kokkos::Rank<5>>;
+  policy_t p ({0,0,0,0,0},{nelem,NP,NP,nlev,HOMMEXX_SFAD_SIZE});
+  auto copy = KOKKOS_LAMBDA (int ie, int ip, int jp, int k, int ider) {
+    int lev = k / VECTOR_SIZE;
+    int vec = k % VECTOR_SIZE;
+    switch (which) {
+      case flag_u:
+        scl_mid_v(ie,ip,jp,k,ider) = uv(ie,n0,0,ip,jp,lev)[vec].fastAccessDx(ider); break;
+      case flag_v:
+        scl_mid_v(ie,ip,jp,k,ider) = uv(ie,n0,1,ip,jp,lev)[vec].fastAccessDx(ider); break;
+      case flag_uv:
+        vec_mid_v(ie,0,ip,jp,k,ider) = uv(ie,n0,0,ip,jp,lev)[vec].fastAccessDx(ider);
+        vec_mid_v(ie,1,ip,jp,k,ider) = uv(ie,n0,1,ip,jp,lev)[vec].fastAccessDx(ider); break;
+      case flag_vth:
+        scl_mid_v(ie,ip,jp,k,ider) = vth(ie,n0,ip,jp,lev)[vec].fastAccessDx(ider); break;
+      case flag_dp:
+        scl_mid_v(ie,ip,jp,k,ider) = dp(ie,n0,ip,jp,lev)[vec].fastAccessDx(ider); break;
+      case flag_w:
+        scl_int_v(ie,ip,jp,k,ider) = w(ie,n0,ip,jp,lev)[vec].fastAccessDx(ider); break;
+      case flag_phi:
+        scl_int_v(ie,ip,jp,k,ider) = phi(ie,n0,ip,jp,lev)[vec].fastAccessDx(ider); break;
+      case flag_qv:
+        scl_mid_v(ie,ip,jp,k,ider) = qv(ie,qn0,ip,jp,lev)[vec].fastAccessDx(ider); break;
+      default:
+        Kokkos::abort("Unsupported value for 'which' in get_state_var.\n");
+    }
+  };
+  Kokkos::parallel_for(p,copy);
+#else
+  Errors::runtime_error("pyhommexx::get_state_var_sens not implemented unless HOMMEXX_ENABLE_FAD_TYPES is defined.\n");
+  (void)arr;
+  (void)name;
+#endif
+}
+
 void forward(const double dt)
 {
   int nm1, n0, np1, nstep;

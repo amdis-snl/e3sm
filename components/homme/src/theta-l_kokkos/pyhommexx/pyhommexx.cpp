@@ -19,6 +19,7 @@ NB_MODULE (pyhommexx,m) {
   m.def("get_num_unique_pts",&get_num_unique_pts);
   m.def("get_unique_pts",&get_unique_pts);
   m.def("get_state_var",&get_state_var);
+  m.def("get_state_var_sens",&get_state_var_sens);
   m.def("set_state_var",&set_state_var);
   m.def("run_functor",&run_functor);
   m.def("forward",&forward);
