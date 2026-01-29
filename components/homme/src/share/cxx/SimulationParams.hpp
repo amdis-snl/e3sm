@@ -62,6 +62,7 @@ struct SimulationParams
   double    scale_factor; // radius of Earth in sphere case; propagated then to Geometry and SphereOps
   double    laplacian_rigid_factor; // propagated to SphereOps
   bool      pgrad_correction;
+  bool      alloc_sphere_coords;
 
   double    dp3d_thresh;
   double    vtheta_thresh;

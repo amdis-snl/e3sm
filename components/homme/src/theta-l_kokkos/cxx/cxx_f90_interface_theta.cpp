@@ -130,6 +130,8 @@ void init_simulation_params_c (const int& ne, const int& remap_alg, const int& l
   params.internal_diagnostics_level    = internal_diagnostics_level;
   params.rel_perturb                   = rel_perturb;
 
+  params.alloc_sphere_coords = params.transport_alg > 0;
+
   if (time_step_type==5) {
     //5 stage, 3rd order, explicit
     params.time_step_type = TimeStepType::ttype5;
@@ -386,7 +388,7 @@ void init_elements_c (const int& num_elems)
   const bool consthv = (params.hypervis_scaling==0.0);
   e.init (num_elems, consthv, /* alloc_gradphis = */ true,
           params.scale_factor, params.laplacian_rigid_factor,
-          /* alloc_sphere_coords = */ params.transport_alg > 0);
+          params.alloc_sphere_coords);
 
   // Init also the tracers structure
   Tracers& t = c.create<Tracers> ();
