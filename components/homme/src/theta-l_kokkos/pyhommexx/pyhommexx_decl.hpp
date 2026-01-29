@@ -11,8 +11,12 @@ namespace nb = nanobind;
 template<int N>
 using ndarray_t = nb::ndarray<double,nb::ndim<N>>;
 
-void init_session ();
+void init_session (const bool do_print_to_screen = true);
+
+void print_to_screen (const bool enabled);
+
 void read_params (const nb::str& nml_filename);
+
 nb::dict get_params();
 int get_nelemd();
 

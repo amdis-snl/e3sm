@@ -16,6 +16,8 @@
 
 #include <nanobind/ndarray.h>
 
+#include <fstream>
+
 namespace Homme {
 extern "C" {
 void prim_run_subcycle_c (const Real& dt, int& nstep, int& nm1, int& n0, int& np1,
@@ -27,6 +29,32 @@ namespace pyhommexx {
 
 using namespace Homme;
 
+struct OutputRedirection {
+  void toggle (bool on) {
+    if (on) {
+      std::cout.rdbuf(cout);
+      std::cerr.rdbuf(cerr);
+    } else {
+      std::cout.rdbuf(blackhole.rdbuf());
+      std::cerr.rdbuf(blackhole.rdbuf());
+    }
+  }
+  static OutputRedirection& instance() {
+    static OutputRedirection out_red;
+    return out_red;
+  }
+protected:
+  OutputRedirection ()
+   : cout (std::cout.rdbuf())
+   , cerr (std::cerr.rdbuf())
+   , blackhole("/dev/null")
+  {}
+
+  std::streambuf* cout;
+  std::streambuf* cerr;
+
+  std::ofstream blackhole;
+};
 double* vp2dp (void* p)
 {
   return reinterpret_cast<double*>(p);
@@ -59,11 +87,18 @@ void check_shape(const NBArrayT& arr, const std::vector<int>& shape)
   }
 }
 
-void init_session ()
+void init_session (const bool do_print_to_screen)
 {
+  print_to_screen(do_print_to_screen);
   init_parallel_f90();
   // Throw, so we can use try blocks in py
   Session::m_throw_instead_of_abort = true;
+}
+
+void print_to_screen (const bool enabled)
+{
+  print_to_screen_f90 (enabled);
+  OutputRedirection::instance().toggle(enabled);
 }
 
 void read_params (const nb::str& nml_filename)
@@ -375,6 +410,8 @@ void run_functor(const nb::str& name, const nb::dict& params)
                       " - valid keys: dt\n");
       }
     }
+
+    std::cout << "running functor " << name_str << "\n";
 
     f.run(data);
 
