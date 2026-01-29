@@ -130,6 +130,30 @@ nb::dict get_params()
 
   return params;
 }
+void set_params(const nb::dict& params)
+{
+  using namespace Errors;
+
+  auto& c = Context::singleton();
+  auto& s = c.get<SimulationParams>();
+
+  for (const auto& [key,value] : params) {
+    runtime_check(nb::isinstance<nb::str>(key),
+                  "Error! Functor params dict keys should be strings.\n");
+
+    std::string key_str(nb::cast<nb::str>(key).c_str());
+    if (key_str=="alloc_sphere_coords") {
+      runtime_check(nb::isinstance<bool>(value),
+                    "Error! Functor param 'alloc_sphere_coords' should be a boolean.\n");
+      s.alloc_sphere_coords = nb::cast<bool>(value);
+    } else {
+      runtime_abort("[ERROR] Invalid key for set_params.\n"
+                    " - key: " + key_str + "\n" +
+                    " - valid keys: alloc_sphere_coords\n");
+    }
+  }
+}
+
 int get_nelemd ()
 {
   const auto& c = Context::singleton();

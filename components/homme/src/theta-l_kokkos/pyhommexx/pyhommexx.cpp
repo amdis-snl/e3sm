@@ -15,6 +15,7 @@ NB_MODULE (pyhommexx,m) {
   m.def("model_init",&model_init);
   m.def("get_nelemd",&get_nelemd);
   m.def("get_params",&get_params);
+  m.def("set_params",&set_params);
   m.def("get_num_unique_pts",&get_num_unique_pts);
   m.def("get_unique_pts",&get_unique_pts);
   m.def("get_state_var",&get_state_var);

@@ -18,6 +18,7 @@ void print_to_screen (const bool enabled);
 void read_params (const nb::str& nml_filename);
 
 nb::dict get_params();
+void set_params(const nb::dict& params);
 int get_nelemd();
 
 void model_init ();
