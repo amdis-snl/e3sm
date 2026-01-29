@@ -3,9 +3,11 @@
 
 #include "Context.hpp"
 #include "CaarFunctor.hpp"
-#include "ElementsState.hpp"
 #include "ElementsGeometry.hpp"
+#include "ElementsState.hpp"
+#include "ErrorDefs.hpp"
 #include "Hommexx_Session.hpp"
+#include "PhysicalConstants.hpp"
 #include "RKStageData.hpp"
 #include "SimulationParams.hpp"
 #include "TimeLevel.hpp"
@@ -28,6 +30,18 @@ void prim_run_subcycle_c (const Real& dt, int& nstep, int& nm1, int& n0, int& np
 namespace pyhommexx {
 
 using namespace Homme;
+
+KOKKOS_INLINE_FUNCTION
+Real distance (const Real lat, const Real lon, const Real lat0, const Real lon0)
+{
+  auto dx = lat - lat0;
+  auto dy = fmod(lon-lon0+M_PI,2*M_PI) - M_PI;
+
+  auto a = sin(dx/2)*sin(dx/2) + cos(lat)*cos(lat0)*sin(dy/2)*sin(dy/2);
+  double c = 2 * asin(sqrt(a));
+
+  return PhysicalConstants::rearth0 * c;
+}
 
 struct OutputRedirection {
   void toggle (bool on) {
@@ -469,6 +483,93 @@ void get_state_var_sens (nb::ndarray<double>& arr, const nb::str& name)
 #endif
 }
 
+void perturb_state_var (const nb::str& name,
+                        const double lat0, const double lon0,
+                        const double p_max, const double sigma)
+{
+#ifdef HOMMEXX_ENABLE_FAD_TYPES
+  const auto& c = Context::singleton();
+  const auto& state = c.get<ElementsState> ();
+  const auto& geo = c.get<ElementsGeometry> ();
+  const auto& tracers = c.get<Tracers> ();
+  const auto& tl = c.get<TimeLevel> ();
+
+  const int nelem = state.num_elems();
+  const int n0 = tl.n0;
+  const int qn0 = tl.n0_qdp;
+
+  constexpr int flag_u   = 0;
+  constexpr int flag_v   = 1;
+  constexpr int flag_uv  = 2;
+  constexpr int flag_vth = 3;
+  constexpr int flag_dp  = 4;
+  constexpr int flag_w   = 5;
+  constexpr int flag_phi = 6;
+  constexpr int flag_qv  = 7;
+  std::map<std::string,int> which_map = {
+    {"u",  flag_u},
+    {"v",  flag_v},
+    {"uv", flag_uv},
+    {"vth",flag_vth},
+    {"dp", flag_dp},
+    {"w",  flag_w},
+    {"phi",flag_phi},
+    {"qv", flag_qv},
+  };
+
+  auto uv  = state.m_v;
+  auto vth = state.m_vtheta_dp;
+  auto dp  = state.m_dp3d;
+  auto w   = state.m_w_i;
+  auto phi = state.m_phinh_i;
+  auto qv  = tracers.Q;
+  auto latlon = geo.m_sphere_latlon;
+
+  std::string n (name.c_str());
+  auto which = which_map.at(n);
+  int nlev = (which==flag_phi or which==flag_w) ? NUM_INTERFACE_LEV : NUM_PHYSICAL_LEV;
+  using policy_t = Kokkos::MDRangePolicy<ExecSpace,Kokkos::Rank<4>>;
+
+  FadType max_p;
+  max_p.val() = p_max;
+  max_p.fastAccessDx(0) = 1;
+  policy_t p ({0,0,0,0},{nelem,NP,NP,nlev});
+  auto copy = KOKKOS_LAMBDA (int ie, int ip, int jp, int k) {
+    int lev = k / VECTOR_SIZE;
+    int vec = k % VECTOR_SIZE;
+    auto d = distance(latlon(ie,ip,jp,0),latlon(ie,ip,jp,1),lat0,lon0);
+    FadType factor = 1 + max_p*std::exp(-std::pow(d,2)/(2*std::pow(sigma,2)));
+
+    switch (which) {
+      case flag_u:
+        uv(ie,n0,0,ip,jp,lev)[vec] *= factor; break;
+      case flag_v:
+        uv(ie,n0,1,ip,jp,lev)[vec] *= factor; break;
+      case flag_uv:
+        uv(ie,n0,0,ip,jp,lev)[vec] *= factor; break;
+        uv(ie,n0,1,ip,jp,lev)[vec] *= factor; break;
+      case flag_vth:
+        vth(ie,n0,ip,jp,lev)[vec] *= factor;  break;
+      case flag_dp:
+        dp(ie,n0,ip,jp,lev)[vec] *= factor;   break;
+      case flag_w:
+        w(ie,n0,ip,jp,lev)[vec] *= factor;    break;
+      case flag_phi:
+        phi(ie,n0,ip,jp,lev)[vec] *= factor;  break;
+      case flag_qv:
+        qv(ie,n0,ip,jp,lev)[vec] *= factor;   break;
+      default:
+        Kokkos::abort("Unsupported value for 'which' in get_state_var.\n");
+    }
+  };
+  Kokkos::parallel_for(p,copy);
+#else
+  Errors::runtime_error("pyhommexx::set_state_var_sens not implemented unless HOMMEXX_ENABLE_FAD_TYPES is defined.\n");
+  (void)arr;
+  (void)name;
+#endif
+}
+
 void forward(const double dt)
 {
   int nm1, n0, np1, nstep;
@@ -528,7 +629,7 @@ void run_functor(const nb::str& name, const nb::dict& params)
       } else {
         runtime_abort("[ERROR] Invalid key for caar functor params.\n"
                       " - key: " + key_str + "\n" +
-                      " - valid keys: dt\n");
+                      " - valid keys: dt, eta_ave_w, scale1, scale2, scale3\n");
       }
     }
 
