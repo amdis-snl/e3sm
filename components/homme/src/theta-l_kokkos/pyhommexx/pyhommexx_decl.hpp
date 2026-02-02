@@ -30,6 +30,7 @@ void get_unique_pts (nb::ndarray<int>& ia,
 void get_state_var (nb::ndarray<double>& arr, const nb::str& name);
 void get_state_var_sens (nb::ndarray<double>& arr, const nb::str& name);
 void set_state_var (const nb::ndarray<double>& arr, const nb::str& name);
+void init_dp3d_from_ps ();
 
 // Perturbs state array as arr *= (1+C(lat,lon)*eps), where eps~N(0,1),
 // and C(lat,lon) = p_max*exp(-d/2*sigma^2), where d is the distance
