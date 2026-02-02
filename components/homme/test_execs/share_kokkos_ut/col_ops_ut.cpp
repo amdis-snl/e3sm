@@ -148,7 +148,7 @@ TEST_CASE("col_ops_interpolation", "interpolation") {
 
   SECTION("update_with_product") {
 
-    Kokkos::deep_copy (d_midpoints_field_out,1.0);
+    Kokkos::deep_copy (d_midpoints_field_out,ScalarValue(1));
 
     // Interpolate
     Kokkos::parallel_for(Homme::get_default_team_policy<ExecSpace>(num_elems),
@@ -637,7 +637,7 @@ TEST_CASE("col_ops_scan_sum", "scan_sum") {
     using Info = ColInfo<NUM_INTERFACE_LEV>;
     constexpr int LAST_PACK     = Info::LastPack;
     constexpr int LAST_PACK_END = Info::LastPackEnd;
-    Kokkos::deep_copy(d_interface_field_out,0.0);
+    Kokkos::deep_copy(d_interface_field_out,ScalarValue(0));
     Kokkos::parallel_for(Homme::get_default_team_policy<ExecSpace>(num_elems),
                          KOKKOS_LAMBDA(const TeamMember& team) {
       KernelVariables kv(team);

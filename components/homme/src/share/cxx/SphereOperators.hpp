@@ -595,7 +595,7 @@ public:
           dudx += dvv(jgp, kgp) * gv(0, igp, kgp, ilev);
           dvdy += dvv(igp, kgp) * gv(1, kgp, jgp, ilev);
         }
-        const Scalar qtensijk0 = add_hyperviscosity ? qtens(igp,jgp,ilev) : 0;
+        const Scalar qtensijk0 = add_hyperviscosity ? qtens(igp,jgp,ilev) : ScalarValue(0);
         qtens(igp,jgp,ilev) = (qdp(igp,jgp,ilev) +
                                alpha*((dudx + dvdy) * (1.0 / metdet(igp,jgp) * m_scale_factor_inv)) +
                                qtensijk0);

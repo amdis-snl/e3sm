@@ -508,6 +508,7 @@ ENDIF ()
 IF (HOMME_USE_KOKKOS)
   # Build ekat
   option(EKAT_ENABLE_KOKKOS "Enable EKAT kokkos utilities" ON)
+  option(EKAT_ENABLE_PACK   "Enable EKAT packs utilities"  ON)
   option(EKAT_ENABLE_TESTS  "Whether tests should be built." OFF)
 
   add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../externals/ekat

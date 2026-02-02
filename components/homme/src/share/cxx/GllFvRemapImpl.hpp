@@ -260,7 +260,7 @@ struct GllFvRemapImpl {
     assert(dp .extent_int(0) >= n && dp .extent_int(1) >= nlev);
     assert(wrk.extent_int(0) >= n && wrk.extent_int(1) >= nlev);
     assert(q  .extent_int(0) >= n && q  .extent_int(1) >= nlev);
-    static_assert(Scalar::vector_length == packn, "vector_length == packn");
+    static_assert(Scalar::n == static_cast<int>(packn), "vector_length == packn");
     const auto f = [&] (const int k) {
       auto& c = wrk;
       { // In the case of an infeasible problem, prefer to conserve mass and
@@ -372,9 +372,9 @@ struct GllFvRemapImpl {
   }
 
   template <typename View> static KOKKOS_INLINE_FUNCTION
-  typename View::value_type::value_type* pack2real (const View& v) { return &(*v.data())[0]; }
+  auto pack2real (const View& v) { return &(*v.data())[0]; }
   template <typename View> static KOKKOS_INLINE_FUNCTION
-  const typename View::value_type::value_type* cpack2real (const View& v) { return &(*v.data())[0]; }
+  auto cpack2real (const View& v) { return &(*v.data())[0]; }
   template <typename View> static KOKKOS_INLINE_FUNCTION
   Scalar* real2pack (const View& v) { return reinterpret_cast<Scalar*>(v.data()); }
   template <typename View> static KOKKOS_INLINE_FUNCTION

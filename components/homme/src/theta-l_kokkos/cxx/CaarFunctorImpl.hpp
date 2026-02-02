@@ -898,7 +898,7 @@ struct CaarFunctorImpl {
         }
         w_tens(ilev) *= -m_data.scale1;
         w_tens(ilev) += (m_buffers.dpnh_dp_i(kv.team_idx,igp,jgp,ilev)-1) *
-                        (ilev==(NUM_LEV_P-1) ? m_scale2g_last_int_pack : m_data.scale2*g);
+                        (ilev==(NUM_LEV_P-1) ? m_scale2g_last_int_pack : Scalar(m_data.scale2*g));
 
         // Compute phi_tens.
         v_grad = v_i(0,igp,jgp,ilev)*grad_phinh_i(0,igp,jgp,ilev)
@@ -910,7 +910,7 @@ struct CaarFunctorImpl {
         }
         phi_tens(ilev) *= -m_data.scale1;
         phi_tens(ilev) += m_state.m_w_i(kv.ie,m_data.n0,igp,jgp,ilev) *
-                          (ilev==NUM_LEV_P ? m_scale2g_last_int_pack : m_data.scale2*g);
+                          (ilev==NUM_LEV_P ? m_scale2g_last_int_pack : Scalar(m_data.scale2*g));
 
         if (m_data.scale1!=m_data.scale2) {
            // add imex phi_h splitting

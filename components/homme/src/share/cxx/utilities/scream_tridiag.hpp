@@ -584,8 +584,8 @@ void cr (const TeamMember& team,
         im = im_ok ? im : i;
         ip = ip_ok ? ip : i;
         for (int j = team_tid; j < nrhs; j += team_size) {
-          const auto f1 = im_ok ? -dl(i,j)/d(im,j) : 0;
-          const auto f2 = ip_ok ? -du(i,j)/d(ip,j) : 0;
+          const auto f1 = im_ok ? -dl(i,j)/d(im,j) : Scalar(0);
+          const auto f2 = ip_ok ? -du(i,j)/d(ip,j) : Scalar(0);
           dl(i,j)  = f1*dl(im,j);
           du(i,j)  = f2*du(ip,j);
           d (i,j) += f1*du(im,j) + f2*dl(ip,j);
@@ -624,9 +624,9 @@ void cr (const TeamMember& team,
         const bool im_ok = im >= 0;
         const bool ip_ok = ip < nrow;
         for (int j = team_tid; j < nrhs; j += team_size) {
-          Scalar f = 0;
-          f += im_ok ? dl(i,j)*X(im,j) : 0;
-          f += ip_ok ? du(i,j)*X(ip,j) : 0;
+          Scalar f(0);
+          f += im_ok ? dl(i,j)*X(im,j) : Scalar(0);
+          f += ip_ok ? du(i,j)*X(ip,j) : Scalar(0);
           X(i,j) = (X(i,j) - f)/d(i,j);
         }
       }

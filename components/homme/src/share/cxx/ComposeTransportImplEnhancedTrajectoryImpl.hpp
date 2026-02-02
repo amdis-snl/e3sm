@@ -14,6 +14,8 @@
 
 #include "compose_hommexx.hpp"
 
+#include <ekat_math_utils.hpp>
+
 namespace Homme {
 namespace { // anon
 
@@ -132,7 +134,7 @@ int find_support (const int n, const ConstRealArray& x, const int x_idx,
   if (x_idx < n-1 and xi >= x[x_idx  ] and xi <= x[x_idx+1]) return x_idx;
   if (x_idx > 0   and xi >= x[x_idx-1] and xi <= x[x_idx  ]) return x_idx-1;
   // Move on to less common ones.
-  const int max_step = max(x_idx, n-1 - x_idx);
+  const int max_step = ekat::impl::max(x_idx, n-1 - x_idx);
   for (int step = 1; step <= max_step; ++step) {
     if (x_idx < n-1-step and xi >= x[x_idx+step  ] and xi <= x[x_idx+step+1])
       return x_idx+step;

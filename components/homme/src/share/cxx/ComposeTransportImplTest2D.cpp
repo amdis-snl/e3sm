@@ -10,6 +10,7 @@
 #include "ComposeTransportImpl.hpp"
 #include "compose_test.hpp"
 #include "profiling.hpp"
+#include "utilities/MathUtils.hpp"
 #include "mpi/Comm.hpp"
 
 namespace Homme {

@@ -128,6 +128,8 @@
 
 #include "ComposeTransportImplEnhancedTrajectoryImpl.hpp"
 
+#include <utilities/MathUtils.hpp>
+
 namespace Homme {
 namespace {
 

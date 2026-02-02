@@ -24,7 +24,6 @@
 #include "mpi/MpiBuffersManager.hpp"
 #include "mpi/Connectivity.hpp"
 #include "utilities/SubviewUtils.hpp"
-#include "utilities/VectorUtils.hpp"
 #include "vector/vector_pragmas.hpp"
 
 namespace Homme {

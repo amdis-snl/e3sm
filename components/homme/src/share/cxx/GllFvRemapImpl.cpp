@@ -12,6 +12,7 @@
 # include "EquationOfState.hpp"
 # include "ElementOps.hpp"
 #endif
+#include <utilities/MathUtils.hpp>
 
 namespace Homme {
 
@@ -226,7 +227,7 @@ calc_extrema (const KernelVariables& kv, const int n, const int nlev,
         VECTOR_SIMD_LOOP for (int s = 0; s < packn; ++s)
           qmink[s] = min(qmink[s], qik[s]);
         VECTOR_SIMD_LOOP for (int s = 0; s < packn; ++s)
-          qmaxk[s] = max(qmaxk[s], qik[s]);
+          qmaxk[s] = ekat::impl::max(qmaxk[s], qik[s]);
       }
     });  
 }
