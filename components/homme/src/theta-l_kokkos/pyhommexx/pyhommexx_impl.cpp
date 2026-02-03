@@ -2,8 +2,13 @@
 #include "pyhommexx_c2f.hpp"
 
 #include "Context.hpp"
-#include "ElementsState.hpp"
+#include "CaarFunctor.hpp"
 #include "ElementsGeometry.hpp"
+#include "ElementsState.hpp"
+#include "ErrorDefs.hpp"
+#include "Hommexx_Session.hpp"
+#include "PhysicalConstants.hpp"
+#include "RKStageData.hpp"
 #include "SimulationParams.hpp"
 #include "TimeLevel.hpp"
 #include "Tracers.hpp"
@@ -13,10 +18,13 @@
 
 #include <nanobind/ndarray.h>
 
+#include <fstream>
+
 namespace Homme {
 extern "C" {
 void prim_run_subcycle_c (const Real& dt, int& nstep, int& nm1, int& n0, int& np1,
                           const int& next_output_step, const int& nsplit_iteration);
+void initialize_dp3d_from_ps_c ();
 }
 }
 
@@ -24,6 +32,44 @@ namespace pyhommexx {
 
 using namespace Homme;
 
+KOKKOS_INLINE_FUNCTION
+Real distance (const Real lat, const Real lon, const Real lat0, const Real lon0)
+{
+  auto dx = lat - lat0;
+  auto dy = fmod(lon-lon0+M_PI,2*M_PI) - M_PI;
+
+  auto a = sin(dx/2)*sin(dx/2) + cos(lat)*cos(lat0)*sin(dy/2)*sin(dy/2);
+  double c = 2 * asin(sqrt(a));
+
+  return PhysicalConstants::rearth0 * c;
+}
+
+struct OutputRedirection {
+  void toggle (bool on) {
+    if (on) {
+      std::cout.rdbuf(cout);
+      std::cerr.rdbuf(cerr);
+    } else {
+      std::cout.rdbuf(blackhole.rdbuf());
+      std::cerr.rdbuf(blackhole.rdbuf());
+    }
+  }
+  static OutputRedirection& instance() {
+    static OutputRedirection out_red;
+    return out_red;
+  }
+protected:
+  OutputRedirection ()
+   : cout (std::cout.rdbuf())
+   , cerr (std::cerr.rdbuf())
+   , blackhole("/dev/null")
+  {}
+
+  std::streambuf* cout;
+  std::streambuf* cerr;
+
+  std::ofstream blackhole;
+};
 double* vp2dp (void* p)
 {
   return reinterpret_cast<double*>(p);
@@ -56,9 +102,18 @@ void check_shape(const NBArrayT& arr, const std::vector<int>& shape)
   }
 }
 
-void init_session ()
+void init_session (const bool do_print_to_screen)
 {
+  print_to_screen(do_print_to_screen);
   init_parallel_f90();
+  // Throw, so we can use try blocks in py
+  Session::m_throw_instead_of_abort = true;
+}
+
+void print_to_screen (const bool enabled)
+{
+  print_to_screen_f90 (enabled);
+  OutputRedirection::instance().toggle(enabled);
 }
 
 void read_params (const nb::str& nml_filename)
@@ -90,6 +145,30 @@ nb::dict get_params()
 
   return params;
 }
+void set_params(const nb::dict& params)
+{
+  using namespace Errors;
+
+  auto& c = Context::singleton();
+  auto& s = c.get<SimulationParams>();
+
+  for (const auto& [key,value] : params) {
+    runtime_check(nb::isinstance<nb::str>(key),
+                  "Error! Functor params dict keys should be strings.\n");
+
+    std::string key_str(nb::cast<nb::str>(key).c_str());
+    if (key_str=="alloc_sphere_coords") {
+      runtime_check(nb::isinstance<bool>(value),
+                    "Error! Functor param 'alloc_sphere_coords' should be a boolean.\n");
+      s.alloc_sphere_coords = nb::cast<bool>(value);
+    } else {
+      runtime_abort("[ERROR] Invalid key for set_params.\n"
+                    " - key: " + key_str + "\n" +
+                    " - valid keys: alloc_sphere_coords\n");
+    }
+  }
+}
+
 int get_nelemd ()
 {
   const auto& c = Context::singleton();
@@ -308,10 +387,270 @@ void set_state_var (const nb::ndarray<double>& arr, const nb::str& name)
   Kokkos::parallel_for(p,copy);
 }
 
+void get_state_var_sens (nb::ndarray<double>& arr, const nb::str& name)
+{
+#ifdef HOMMEXX_ENABLE_FAD_TYPES
+  const auto& c = Context::singleton();
+  const auto& state = c.get<ElementsState> ();
+  const auto& tracers = c.get<Tracers> ();
+  const auto& tl = c.get<TimeLevel> ();
+
+  const int nelem = state.num_elems();
+  const int n0 = tl.n0;
+  const int qn0 = tl.n0_qdp;
+
+  std::vector<int> vector3dm_shape = {nelem,2,NP,NP,NUM_PHYSICAL_LEV,HOMMEXX_SFAD_SIZE};
+  std::vector<int> scalar3dm_shape = {nelem,  NP,NP,NUM_PHYSICAL_LEV,HOMMEXX_SFAD_SIZE};
+  std::vector<int> scalar3di_shape = {nelem,  NP,NP,NUM_INTERFACE_LEV,HOMMEXX_SFAD_SIZE};
+
+  constexpr int flag_u   = 0;
+  constexpr int flag_v   = 1;
+  constexpr int flag_uv  = 2;
+  constexpr int flag_vth = 3;
+  constexpr int flag_dp  = 4;
+  constexpr int flag_w   = 5;
+  constexpr int flag_phi = 6;
+  constexpr int flag_qv  = 7;
+  std::map<std::string,int> which_map = {
+    {"u",  flag_u},
+    {"v",  flag_v},
+    {"uv", flag_uv},
+    {"vth",flag_vth},
+    {"dp", flag_dp},
+    {"w",  flag_w},
+    {"phi",flag_phi},
+    {"qv", flag_qv},
+  };
+
+  // nanobind has no operator== with const char[]
+  std::string n (name.c_str());
+  if (n=="u" or n=="v" or n=="dp" or n=="qv" or n=="vthetadp") {
+    check_shape(arr,scalar3dm_shape);
+  } else if (n=="uv") {
+    check_shape(arr,vector3dm_shape);
+  } else if (n=="phi" or n=="w") {
+    check_shape(arr,scalar3di_shape);
+  } else {
+    throw std::runtime_error("Unrecognized/unsupported state var '" + n + "'.\n");
+  }
+  assert ((int)arr.dtype().bits==64);
+
+  // They are unmanaged, so we can create all of them, even if we don't use them
+  ExecViewUnmanaged<double******> vec_mid_v (vp2dp(arr.data()),nelem,2,NP,NP,NUM_PHYSICAL_LEV);
+  ExecViewUnmanaged<double*****>  scl_mid_v (vp2dp(arr.data()),nelem,  NP,NP,NUM_PHYSICAL_LEV);
+  ExecViewUnmanaged<double*****>  scl_int_v (vp2dp(arr.data()),nelem,  NP,NP,NUM_INTERFACE_LEV);
+
+  auto uv  = state.m_v;
+  auto vth = state.m_vtheta_dp;
+  auto dp  = state.m_dp3d;
+  auto w   = state.m_w_i;
+  auto phi = state.m_phinh_i;
+  auto qv  = tracers.Q;
+
+  auto which = which_map.at(n);
+  int nlev = (which==flag_phi or which==flag_w) ? NUM_INTERFACE_LEV : NUM_PHYSICAL_LEV;
+  using policy_t = Kokkos::MDRangePolicy<ExecSpace,Kokkos::Rank<5>>;
+  policy_t p ({0,0,0,0,0},{nelem,NP,NP,nlev,HOMMEXX_SFAD_SIZE});
+  auto copy = KOKKOS_LAMBDA (int ie, int ip, int jp, int k, int ider) {
+    int lev = k / VECTOR_SIZE;
+    int vec = k % VECTOR_SIZE;
+    switch (which) {
+      case flag_u:
+        scl_mid_v(ie,ip,jp,k,ider) = uv(ie,n0,0,ip,jp,lev)[vec].fastAccessDx(ider); break;
+      case flag_v:
+        scl_mid_v(ie,ip,jp,k,ider) = uv(ie,n0,1,ip,jp,lev)[vec].fastAccessDx(ider); break;
+      case flag_uv:
+        vec_mid_v(ie,0,ip,jp,k,ider) = uv(ie,n0,0,ip,jp,lev)[vec].fastAccessDx(ider);
+        vec_mid_v(ie,1,ip,jp,k,ider) = uv(ie,n0,1,ip,jp,lev)[vec].fastAccessDx(ider); break;
+      case flag_vth:
+        scl_mid_v(ie,ip,jp,k,ider) = vth(ie,n0,ip,jp,lev)[vec].fastAccessDx(ider); break;
+      case flag_dp:
+        scl_mid_v(ie,ip,jp,k,ider) = dp(ie,n0,ip,jp,lev)[vec].fastAccessDx(ider); break;
+      case flag_w:
+        scl_int_v(ie,ip,jp,k,ider) = w(ie,n0,ip,jp,lev)[vec].fastAccessDx(ider); break;
+      case flag_phi:
+        scl_int_v(ie,ip,jp,k,ider) = phi(ie,n0,ip,jp,lev)[vec].fastAccessDx(ider); break;
+      case flag_qv:
+        scl_mid_v(ie,ip,jp,k,ider) = qv(ie,qn0,ip,jp,lev)[vec].fastAccessDx(ider); break;
+      default:
+        Kokkos::abort("Unsupported value for 'which' in get_state_var.\n");
+    }
+  };
+  Kokkos::parallel_for(p,copy);
+#else
+  Errors::runtime_error("pyhommexx::get_state_var_sens not implemented unless HOMMEXX_ENABLE_FAD_TYPES is defined.\n");
+  (void)arr;
+  (void)name;
+#endif
+}
+
+void perturb_state_var (const nb::str& name,
+                        const double lat0, const double lon0,
+                        const double p_max, const double sigma)
+{
+#ifdef HOMMEXX_ENABLE_FAD_TYPES
+  const auto& c = Context::singleton();
+  const auto& state = c.get<ElementsState> ();
+  const auto& geo = c.get<ElementsGeometry> ();
+  const auto& tracers = c.get<Tracers> ();
+  const auto& tl = c.get<TimeLevel> ();
+
+  const int nelem = state.num_elems();
+  const int n0 = tl.n0;
+  const int qn0 = tl.n0_qdp;
+
+  constexpr int flag_u   = 0;
+  constexpr int flag_v   = 1;
+  constexpr int flag_uv  = 2;
+  constexpr int flag_vth = 3;
+  constexpr int flag_dp  = 4;
+  constexpr int flag_w   = 5;
+  constexpr int flag_phi = 6;
+  constexpr int flag_qv  = 7;
+  std::map<std::string,int> which_map = {
+    {"u",  flag_u},
+    {"v",  flag_v},
+    {"uv", flag_uv},
+    {"vth",flag_vth},
+    {"dp", flag_dp},
+    {"w",  flag_w},
+    {"phi",flag_phi},
+    {"qv", flag_qv},
+  };
+
+  auto uv  = state.m_v;
+  auto vth = state.m_vtheta_dp;
+  auto dp  = state.m_dp3d;
+  auto w   = state.m_w_i;
+  auto phi = state.m_phinh_i;
+  auto qv  = tracers.Q;
+  auto latlon = geo.m_sphere_latlon;
+
+  std::string n (name.c_str());
+  auto which = which_map.at(n);
+  int nlev = (which==flag_phi or which==flag_w) ? NUM_INTERFACE_LEV : NUM_PHYSICAL_LEV;
+  using policy_t = Kokkos::MDRangePolicy<ExecSpace,Kokkos::Rank<4>>;
+
+  FadType max_p;
+  max_p.val() = p_max;
+  max_p.fastAccessDx(0) = 1;
+  policy_t p ({0,0,0,0},{nelem,NP,NP,nlev});
+  auto copy = KOKKOS_LAMBDA (int ie, int ip, int jp, int k) {
+    int lev = k / VECTOR_SIZE;
+    int vec = k % VECTOR_SIZE;
+    auto d = distance(latlon(ie,ip,jp,0),latlon(ie,ip,jp,1),lat0,lon0);
+    FadType factor = 1 + max_p*std::exp(-std::pow(d,2)/(2*std::pow(sigma,2)));
+
+    switch (which) {
+      case flag_u:
+        uv(ie,n0,0,ip,jp,lev)[vec] *= factor; break;
+      case flag_v:
+        uv(ie,n0,1,ip,jp,lev)[vec] *= factor; break;
+      case flag_uv:
+        uv(ie,n0,0,ip,jp,lev)[vec] *= factor; break;
+        uv(ie,n0,1,ip,jp,lev)[vec] *= factor; break;
+      case flag_vth:
+        vth(ie,n0,ip,jp,lev)[vec] *= factor;  break;
+      case flag_dp:
+        dp(ie,n0,ip,jp,lev)[vec] *= factor;   break;
+      case flag_w:
+        w(ie,n0,ip,jp,lev)[vec] *= factor;    break;
+      case flag_phi:
+        phi(ie,n0,ip,jp,lev)[vec] *= factor;  break;
+      case flag_qv:
+        qv(ie,n0,ip,jp,lev)[vec] *= factor;   break;
+      default:
+        Kokkos::abort("Unsupported value for 'which' in get_state_var.\n");
+    }
+  };
+  Kokkos::parallel_for(p,copy);
+#else
+  Errors::runtime_error("pyhommexx::set_state_var_sens not implemented unless HOMMEXX_ENABLE_FAD_TYPES is defined.\n");
+  (void)arr;
+  (void)name;
+#endif
+}
+
+void init_dp3d_from_ps ()
+{
+  initialize_dp3d_from_ps_c();
+}
+
 void forward(const double dt)
 {
   int nm1, n0, np1, nstep;
   prim_run_subcycle_c(dt,nstep,nm1,n0,np1,-1,1);
+}
+
+void run_functor(const nb::str& name, const nb::dict& params)
+{
+  using namespace Errors;
+  std::string name_str (name.c_str());
+  if (name_str=="caar") {
+    auto& c = Context::singleton();
+    auto& f = c.get<CaarFunctor>();
+    auto& tl = c.get<TimeLevel>();
+
+    RKStageData data;
+
+    data.nm1 = tl.nm1;
+    data.n0  = tl.n0;
+    data.np1 = tl.np1;
+    data.n0_qdp = 0;
+    data.scale1 = 1;
+    data.scale2 = 0;
+    data.scale3 = 1;
+    data.eta_ave_w = 0;
+
+    bool update_tl = false;
+    for (const auto& [key, value] : params) {
+      runtime_check(nb::isinstance<nb::str>(key),
+                    "Error! Functor params dict keys should be strings.\n");
+
+      std::string key_str(nb::cast<nb::str>(key).c_str());
+      if (key_str=="dt") {
+        runtime_check(nb::isinstance<double>(value),
+                      "Error! Functor param 'dt' should be a double.\n");
+        data.dt = nb::cast<double>(value);
+      } else if (key_str=="eta_ave_w") {
+        runtime_check(nb::isinstance<double>(value),
+                      "Error! Functor param 'eta_ave_w' should be a double.\n");
+        data.eta_ave_w = nb::cast<double>(value);
+      } else if (key_str=="scale1") {
+        runtime_check(nb::isinstance<double>(value),
+                      "Error! Functor param 'scale1' should be a double.\n");
+        data.scale1 = nb::cast<double>(value);
+      } else if (key_str=="scale2") {
+        runtime_check(nb::isinstance<double>(value),
+                      "Error! Functor param 'scale2' should be a double.\n");
+        data.scale2 = nb::cast<double>(value);
+      } else if (key_str=="scale3") {
+        runtime_check(nb::isinstance<double>(value),
+                      "Error! Functor param 'scale3' should be a double.\n");
+        data.scale3 = nb::cast<double>(value);
+      } else if (key_str=="update_tl") {
+        runtime_check(nb::isinstance<bool>(value),
+                      "Error! Functor param 'update_tl' should be a bool.\n");
+        update_tl = nb::cast<bool>(value);
+      } else {
+        runtime_abort("[ERROR] Invalid key for caar functor params.\n"
+                      " - key: " + key_str + "\n" +
+                      " - valid keys: dt, eta_ave_w, scale1, scale2, scale3\n");
+      }
+    }
+
+    std::cout << "running functor " << name_str << "\n";
+
+    f.run(data);
+
+    if (update_tl) {
+      tl.update_dynamics_levels(UpdateType::FORWARD);
+    }
+  } else {
+    runtime_abort("[ERROR] Unrecognized/unsupported fucntor name.\n"
+                  " - input name: " + name_str + "\n"
+                  " - valid name(s): caar\n");
+  }
 }
 
 void finalize()

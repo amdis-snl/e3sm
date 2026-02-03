@@ -25,9 +25,11 @@ module pyhommexx_mod
   integer, public :: npes        = 1
   integer, public :: iam         = 0
   logical, public :: masterproc  = .false.
+  logical, public :: output_to_screen = .true.
 
   ! Functions callable from C, mostly to detect whether some parts were already inited
   public :: init_parallel_f90
+  public :: print_to_screen_f90
   public :: model_init_f90
 
 contains
@@ -77,6 +79,35 @@ contains
     iam  = par%rank
     masterproc = par%masterproc
   end subroutine init_parallel_f90
+
+  subroutine print_to_screen_f90(enabled) bind(c)
+    use iso_c_binding, only: c_bool
+    use iso_fortran_env, only: output_unit, error_unit
+
+    ! Inputs
+    logical(kind=c_bool), intent(in), value :: enabled
+
+    if (enabled) then
+      print *, "enable output requested..."
+      if (.not. output_to_screen) then
+        print *, "must enable output..."
+        open(unit=output_unit,file='/dev/tty',status='replace')
+        open(unit=error_unit,file='/dev/tty',status='replace')
+        print *, "output disabled"
+      else
+        print *, "output was already enabled..."
+      endif
+    else
+      print *, "disable output requested..."
+      if (output_to_screen) then
+        print *, "must disable output..."
+        open(unit=output_unit,file='/dev/null',status='replace')
+        open(unit=error_unit,file='/dev/null',status='replace')
+      else
+        print *, "output was already disabled..."
+      endif
+    endif
+  end subroutine print_to_screen_f90
 
   subroutine get_num_unique_pts_f90 (num_ptr) bind(c)
     use iso_c_binding,  only: c_ptr, c_f_pointer, c_int
