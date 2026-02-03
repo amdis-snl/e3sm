@@ -6,7 +6,6 @@
 #include "CombineOps.hpp"
 #include "HommexxEnums.hpp"
 #include "utilities/SubviewUtils.hpp"
-#include "utilities/VectorUtils.hpp"
 
 namespace Homme {
 
@@ -78,18 +77,14 @@ public:
 
       // Try to use SIMD operations as much as possible.
       for (int ilev=0; ilev<LAST_MID_PACK; ++ilev) {
-        Scalar tmp = x_i(ilev);
-        tmp.shift_left(1);
-        tmp[VECTOR_END] = x_i(ilev+1)[0];
+        Scalar tmp = ekat::shift_left(x_i(ilev+1)[0],x_i(ilev));
         tmp += x_i(ilev);
         tmp /= 2.0;
         combine<CM>(tmp, x_m(ilev), alpha, beta);
       }
 
       // Last level pack treated separately, since ilev+1 may throw depending if NUM_LEV=NUM_LEV_P
-      Scalar tmp = x_i(LAST_MID_PACK);
-      tmp.shift_left(1);
-      tmp[LAST_MID_PACK_END] = x_i(LAST_INT_PACK)[LAST_INT_PACK_END];
+      Scalar tmp = ekat::shift_left(x_i(LAST_INT_PACK)[LAST_INT_PACK_END],x_i(LAST_MID_PACK));
       tmp += x_i(LAST_MID_PACK);
       tmp /= 2.0;
       combine<CM>(tmp, x_m(LAST_MID_PACK), alpha, beta);
@@ -123,18 +118,15 @@ public:
 
       // Try to use SIMD operations as much as possible: the last NUM_LEV-1 packs are treated uniformly, and can be vectorized
       for (int ilev=1; ilev<NUM_LEV; ++ilev) {
-        Scalar tmp = x_m(ilev);
-        tmp.shift_right(1);
-        tmp[0] = x_m(ilev-1)[VECTOR_END];
+        Scalar tmp = ekat::shift_right(x_m(ilev-1)[VECTOR_END], x_m(ilev));
         tmp += x_m(ilev);
         tmp /= 2.0;
         combine<CM>(tmp, x_i(ilev), alpha, beta);
       }
 
       // First pack does not have a previous pack, and the extrapolation of the 1st interface is x_i = x_m.
-      // Luckily, shift_right inserts leading 0's, so the formula is almost the same
-      Scalar tmp = x_m(0);
-      tmp.shift_right(1);
+      // Insert 0 in leading term
+      Scalar tmp = ekat::shift_right(0,x_m(0));
       tmp += x_m(0);
       tmp /= 2.0;
       combine<CM>(tmp, x_i(0), alpha, beta);
@@ -178,18 +170,15 @@ public:
 
       // Try to use SIMD operations as much as possible: the last NUM_LEV-1 packs are treated uniformly, and can be vectorized
       for (int ilev=1; ilev<NUM_LEV; ++ilev) {
-        Scalar tmp = x_m(ilev)*weights_m(ilev);
-        tmp.shift_right(1);
-        tmp[0] = x_m(ilev-1)[VECTOR_END]*weights_m(ilev-1)[VECTOR_END];
+        Scalar tmp = ekat::shift_right(x_m(ilev-1)[VECTOR_END]*weights_m(ilev-1)[VECTOR_END],x_m(ilev)*weights_m(ilev));
         tmp += x_m(ilev)*weights_m(ilev);
         tmp /= 2.0*weights_i(ilev);
         combine<CM>(tmp,x_i(ilev),alpha,beta);
       }
 
       // First pack does not have a previous pack, and the extrapolation of the 1st interface is x_i = x_m.
-      // Luckily, dp_i(0) = dp_m(0), and shift_right inserts leading 0's, so the formula is almost the same
-      Scalar tmp = x_m(0)*weights_m(0);
-      tmp.shift_right(1);
+      // Insert 0 as leading term.
+      Scalar tmp = ekat::shift_right(0,x_m(0)*weights_m(0));
       tmp += x_m(0)*weights_m(0);
       tmp /= 2.0*weights_i(0);
       combine<CM>(tmp, x_i(0), alpha, beta);
@@ -223,16 +212,12 @@ public:
 
       // Try to use SIMD operations as much as possible. First NUM_LEV-1 packs can be treated the same
       for (int ilev=0; ilev<LAST_MID_PACK; ++ilev) {
-        Scalar tmp = x_i(ilev);
-        tmp.shift_left(1);
-        tmp[VECTOR_END] = x_i(ilev+1)[0];
+        Scalar tmp = ekat::shift_left(x_i(ilev+1)[0],x_i(ilev));
         combine<CM>(tmp - x_i(ilev),dx_m(ilev),alpha,beta);
       }
 
       // Last pack does not necessarily have a next pack, so needs to be treated a part.
-      Scalar tmp = x_i(LAST_MID_PACK);
-      tmp.shift_left(1);
-      tmp[LAST_MID_PACK_END] = x_i(LAST_INT_PACK)[LAST_INT_PACK_END];
+      Scalar tmp = ekat::shift_left(x_i(LAST_INT_PACK)[LAST_INT_PACK_END],x_i(LAST_MID_PACK));
       combine<CM>(tmp - x_i(LAST_MID_PACK),dx_m(LAST_MID_PACK),alpha,beta);
     }
   }
@@ -269,22 +254,17 @@ public:
       //       be present in LAST_MID_PACK_END+1, which would pollute
       //       values in the last pack of dx_i at LAST_INT_PACK_END
       for (int ilev=1; ilev<LAST_MID_PACK; ++ilev) {
-        Scalar tmp = x_m(ilev);
-        tmp.shift_right(1);
-        tmp[0] = x_m(ilev-1)[VECTOR_END];
+        Scalar tmp = ekat::shift_right(x_m(ilev-1)[VECTOR_END],x_m(ilev));
         combine<CM>(x_m(ilev) - tmp, dx_i(ilev), alpha, beta);
       }
 
       // First and last pack need to be treated separately, due the bc.
-      Scalar tmp = x_m(0);
-      tmp.shift_right(1);
+      Scalar tmp = ekat::shift_right(0,x_m(0));
       tmp = x_m(0)-tmp;
       tmp[0] = bcVal;
       combine<CM>(tmp, dx_i(0), alpha, beta);
 
-      tmp = x_m(LAST_MID_PACK);
-      tmp.shift_right(1);
-      tmp[0] = x_m(LAST_MID_PACK-1)[VECTOR_END];
+      tmp = ekat::shift_right(x_m(LAST_MID_PACK-1)[VECTOR_END],x_m(LAST_MID_PACK));
       tmp = x_m(LAST_MID_PACK)-tmp;
       if (LAST_INT_PACK==LAST_MID_PACK) {
         // Be careful not to pollute the last interface with garbage
@@ -510,7 +490,8 @@ public:
           packed_sum[k] += input(LAST_PACK)[k];
         }
       }
-      sum = packed_sum.reduce_add();
+      sum = 0;
+      ekat::reduce_sum(packed_sum,sum);
     } else {
       Dispatch<>::parallel_reduce(kv.team,Kokkos::ThreadVectorRange(kv.team,LENGTH),
                                   [&](const int k, ScalarValue& accumulator) {

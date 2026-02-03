@@ -1,8 +1,9 @@
 #ifndef HOMME_BFB_UTILS_HPP
 #define HOMME_BFB_UTILS_HPP
 
-#include "PackTraits.hpp"
 #include <Kokkos_Core.hpp>
+
+#include <ekat_pack.hpp>
 
 namespace Homme
 {
@@ -53,8 +54,10 @@ double zeroulpn (double a, const int n, double replace) {
 
 template <typename PackType>
 KOKKOS_INLINE_FUNCTION
-void zero_ulp_n (PackType& a, const int n, const PackType& replace) {
-  for (int s = 0; s < PackTraits<PackType>::pack_length; ++s) {
+std::enable_if_t<PackType::packtag>
+zero_ulp_n (PackType& a, const int n, const PackType& replace)
+{
+  for (int s = 0; s < PackType::n; ++s) {
     a[s] = zeroulpn(a[s], n, replace[s]);
   }
 }
@@ -181,17 +184,18 @@ bfb_pow_impl (ScalarType val, ExpType e) {
 
 template <typename PackType, typename ExpType>
 KOKKOS_INLINE_FUNCTION
-PackType bfb_pow (const PackType& a, const ExpType e) {
+std::enable_if_t<PackType::packtag,PackType>
+bfb_pow (const PackType& a, const ExpType e)
+{
   PackType b;
-  for (int s = 0; s < PackTraits<PackType>::pack_length; ++s) {
+  for (int s = 0; s < PackType::n; ++s) {
     b[s] = bfb_pow_impl(a[s], e);
   }
   return b;
 }
 
-template <>
 KOKKOS_INLINE_FUNCTION
-double bfb_pow<double,double> (const double& a, const double e) {
+double bfb_pow (const double& a, const double e) {
   return bfb_pow_impl(a,e);
 }
 

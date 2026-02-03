@@ -392,7 +392,7 @@ void ComposeTransportImpl::calc_trajectory (const int np1, const Real dt) {
                                  vec_sphere2cart(1,d,i,j)*vstar(1,i,j,k));
           dp[d] = sphere_cart(i,j,d) - dt*vel_cart/scale_factor;
         }
-        const auto r2 = is_sphere ? square(dp[0]) + square(dp[1]) + square(dp[2]) : 1;
+        const auto r2 = is_sphere ? square(dp[0]) + square(dp[1]) + square(dp[2]) : Scalar(1);
         // Pack -> scalar storage.
         const auto os = packn*k;
         for (int s = 0; s < packn; ++s) {

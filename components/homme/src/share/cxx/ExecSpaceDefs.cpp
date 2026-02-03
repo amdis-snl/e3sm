@@ -15,16 +15,6 @@
 
 namespace Homme {
 
-// Since we're initializing from inside a Fortran code and don't have access to
-// char** args to pass to Kokkos::initialize, we need to create and set the kokkos
-// initialization settings manually.
-void initialize_kokkos () {
-  auto const settings = Kokkos::InitializationSettings()
-    .set_map_device_id_by("mpi_rank")
-    .set_disable_warnings(true);
-  Kokkos::initialize(settings);
-}
-
 ThreadPreferences::ThreadPreferences ()
   : max_threads_usable(NP*NP),
     max_vectors_usable(NUM_PHYSICAL_LEV),

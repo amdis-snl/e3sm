@@ -17,6 +17,7 @@
 #include "ElementOps.hpp"
 #include "profiling.hpp"
 #include "ErrorDefs.hpp"
+#include "utilities/MathUtils.hpp"
 #include "utilities/scream_tridiag.hpp"
 
 #include <cassert>
@@ -24,22 +25,21 @@
 namespace Homme {
 
 struct DirkFunctorImpl {
-  enum : int { packn = VECTOR_SIZE };
-  enum : int { scaln = NP*NP };
-  enum : int { npack = (scaln + packn - 1)/packn };
-  enum : int { max_num_lev_pack = NUM_LEV_P };
-  enum : int { num_lev_aligned = max_num_lev_pack*packn };
-  enum : int { num_phys_lev = NUM_PHYSICAL_LEV };
-  enum : int { num_work = 12 };
-  enum : bool { calc_initial_guess_in_newton_kernel = false };
+  static constexpr int  packn = VECTOR_SIZE;
+  static constexpr int  scaln = NP*NP;
+  static constexpr int  npack = (scaln + packn - 1)/packn;
+  static constexpr int  max_num_lev_pack = NUM_LEV_P;
+  static constexpr int  num_lev_aligned = max_num_lev_pack*packn;
+  static constexpr int  num_phys_lev = NUM_PHYSICAL_LEV;
+  static constexpr int  num_work = 12;
+  static constexpr bool calc_initial_guess_in_newton_kernel = false;
 
-  enum : int {
+  static constexpr int
 #ifdef HOMMEXX_BFB_TESTING
-    default_bfb_solver = true
+    default_bfb_solver = 1;
 #else
-    default_bfb_solver = false
+    default_bfb_solver = 0;
 #endif
-  };
 
   static_assert(num_lev_aligned >= 3,
                 "We use wrk(0:2,:) and so need num_lev_aligned >= 3");

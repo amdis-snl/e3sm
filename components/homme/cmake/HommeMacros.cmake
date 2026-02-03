@@ -162,7 +162,7 @@ macro(createTestExec execName execType macroNP macroNC
   ENDIF ()
 
   IF (HOMME_USE_KOKKOS)
-    TARGET_LINK_LIBRARIES(${execName} Kokkos::kokkos)
+    TARGET_LINK_LIBRARIES(${execName} ekat::AllLibs)
   ENDIF ()
 
   if (HOMMEXX_ENABLE_FAD_TYPES)
@@ -277,7 +277,7 @@ macro(createExecLib libName execType libSrcs inclDirs macroNP
   TARGET_LINK_LIBRARIES(${libName} PUBLIC timing ${COMPOSE_LIBRARY} ${BLAS_LIBRARIES} ${LAPACK_LIBRARIES})
 
   IF (HOMME_USE_KOKKOS)
-    TARGET_LINK_LIBRARIES(${libName} PUBLIC Kokkos::kokkos)
+    TARGET_LINK_LIBRARIES(${libName} PUBLIC ekat::AllLibs)
   ENDIF ()
 
   IF (HOMME_USE_MKL)

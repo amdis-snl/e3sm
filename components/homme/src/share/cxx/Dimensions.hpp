@@ -36,8 +36,6 @@ namespace Homme {
     static constexpr const int QSIZE_D = PCNST;
   #endif
 
-  // Vector<VectorTag<SIMD<T, SpT>, l> > can use this for good results
-  // on, e.g., Power9, where AVX doesn't exist.
   static constexpr int VECTOR_SIZE = HOMMEXX_VECTOR_SIZE;
   static constexpr int VECTOR_END  = VECTOR_SIZE-1;
 

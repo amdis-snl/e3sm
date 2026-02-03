@@ -18,8 +18,6 @@
 #include "SimulationParams.hpp"
 #include "SphereOperators.hpp"
 
-#include "utilities/VectorUtils.hpp"
-
 #include <memory>
 
 #include "profiling.hpp"

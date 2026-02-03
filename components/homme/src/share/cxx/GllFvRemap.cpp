@@ -9,6 +9,7 @@
 #include "Context.hpp"
 #include "ErrorDefs.hpp"
 #include "profiling.hpp"
+#include <utilities/MathUtils.hpp>
 
 #include <assert.h>
 #include <type_traits>

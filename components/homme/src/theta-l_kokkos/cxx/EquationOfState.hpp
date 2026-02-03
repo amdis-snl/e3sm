@@ -7,7 +7,6 @@
 #include "KernelVariables.hpp"
 #include "PhysicalConstants.hpp"
 
-#include "utilities/VectorUtils.hpp"
 #include "utilities/ViewUtils.hpp"
 #include "utilities/BfbUtils.hpp"
 

@@ -223,7 +223,7 @@ struct PpmVertRemap : public VertRemapAlg {
 
       Dispatch<ExecSpace>::parallel_scan(
           kv.team, NUM_PHYSICAL_LEV,
-          [=](const int &k, ScalarValue &accumulator, const bool last) {
+          [&](const int &k, ScalarValue &accumulator, const bool last) {
             // Accumulate the old mass up to old grid cell interface locations
             // to simplify integration during remapping. Also, divide out the
             // grid spacing so we're working with actual tracer values and can
