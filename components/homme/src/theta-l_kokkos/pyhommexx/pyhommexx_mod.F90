@@ -88,23 +88,14 @@ contains
     logical(kind=c_bool), intent(in), value :: enabled
 
     if (enabled) then
-      print *, "enable output requested..."
       if (.not. output_to_screen) then
-        print *, "must enable output..."
         open(unit=output_unit,file='/dev/tty',status='replace')
         open(unit=error_unit,file='/dev/tty',status='replace')
-        print *, "output disabled"
-      else
-        print *, "output was already enabled..."
       endif
     else
-      print *, "disable output requested..."
       if (output_to_screen) then
-        print *, "must disable output..."
         open(unit=output_unit,file='/dev/null',status='replace')
         open(unit=error_unit,file='/dev/null',status='replace')
-      else
-        print *, "output was already disabled..."
       endif
     endif
   end subroutine print_to_screen_f90
