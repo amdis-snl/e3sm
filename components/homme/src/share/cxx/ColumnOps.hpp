@@ -54,11 +54,11 @@ public:
   static_assert(MIDPOINTS::NumPacks>1,
                 "Error! Some logic may be wrong with only one column pack.\n");
 
-  template<CombineMode CM = CombineMode::Replace, typename InputProvider, typename ST>
+  template<CombineMode CM = CombineMode::Replace, typename InputProvider, typename ST, typename... Props>
   KOKKOS_INLINE_FUNCTION
   static void compute_midpoint_values (const KernelVariables& kv,
                                 const InputProvider& x_i,
-                                const ExecViewUnmanaged<ST [NUM_LEV]>& x_m,
+                                const ExecView<ST [NUM_LEV],Props...>& x_m,
                                 const Real alpha = 1.0, const Real beta = 0.0)
   {
     // Compute midpoint quanitiy.
@@ -284,22 +284,23 @@ public:
   //       assumed to be VALID. In other words, the boundary condition of the integral must
   //       be set from OUTSIDE this kernel
   // Note: InputProvider could be a lambda or a 1d view.
-  template<bool Forward, bool Inclusive, int LENGTH, typename InputProvider, typename ST>
+  template<bool Forward, bool Inclusive, int LENGTH, typename InputProvider, typename ST, typename... Props>
   KOKKOS_INLINE_FUNCTION
   static void column_scan (const KernelVariables& kv,
                     const InputProvider& input_provider,
-                    const ExecViewUnmanaged<ST [ColInfo<LENGTH>::NumPacks]>& sum,
+                    const ExecView<ST [ColInfo<LENGTH>::NumPacks],Props...>& sum,
                     const typename ekat::ScalarTraits<ST>::scalar_type s0 = 0.0)
   {
     column_scan_impl<VECTOR_SIZE,Forward,Inclusive,LENGTH>(kv,input_provider,sum,s0);
   }
 
-  template<int PackLength, bool Forward,bool Inclusive,int LENGTH,typename InputProvider,typename ST>
+  template<int PackLength, bool Forward,bool Inclusive,int LENGTH,
+           typename InputProvider,typename ST,typename... Props>
   KOKKOS_INLINE_FUNCTION
   static typename std::enable_if<(PackLength>1)>::type
   column_scan_impl (const KernelVariables& /* kv */,
                     const InputProvider& input_provider,
-                    const ExecViewUnmanaged<ST [ColInfo<LENGTH>::NumPacks]>& sum,
+                    const ExecView<ST [ColInfo<LENGTH>::NumPacks],Props...>& sum,
                     const typename ekat::ScalarTraits<ST>::scalar_type s0 = 0.0)
   {
     constexpr int OFFSET             = Inclusive ? 0 : 1;
@@ -340,6 +341,7 @@ public:
     } else {
       // Running integral
       typename ekat::ScalarTraits<ST>::scalar_type integration = s0;
+      typename ekat::ScalarTraits<ST>::scalar_type zero(0);
 
       // In an exclusive sum, the procedure below would fail to add 
       // the input's last level to the output's second-to-last level
@@ -356,13 +358,13 @@ public:
         auto input = input_provider(ilev);
         // Integrate
         auto& sum_val = sum(ilev);
-        sum_val[vec_start] = integration + (Inclusive ? input[vec_start] : 0.0);
+        sum_val[vec_start] = integration + (Inclusive ? input[vec_start] : zero);
         for (int iv = vec_start - 1; iv >= 0; --iv) {
           sum_val[iv] = sum_val[iv + 1] + (Inclusive ? input[iv] : input[iv+1]);
         }
 
         // Update running integral
-        integration = sum_val[0] + (Inclusive ? 0.0 : input[0]);
+        integration = sum_val[0] + (Inclusive ? zero : input[0]);
       }
     }
   }
@@ -421,11 +423,11 @@ public:
   // initial value. Similarly for backward sum
   // Note: we are *assuming* that the first (or last, for bwd) entry of  sum
   //       contains the desired initial value
-  template<bool Forward,typename InputProvider,typename ST>
+  template<bool Forward,typename InputProvider,typename ST,typename... Props>
   KOKKOS_INLINE_FUNCTION
   static void column_scan_mid_to_int (const KernelVariables& kv,
                                const InputProvider& input_provider,
-                               const ExecViewUnmanaged<ST [NUM_LEV_P]>& sum)
+                               const ExecView<ST [NUM_LEV_P],Props...>& sum)
   {
     if (Forward) {
       // It's safe to pass the output as it is, and claim is Exclusive over NUM_INTERFACE_LEV
@@ -475,7 +477,7 @@ public:
       constexpr int  NUM_PACKS_M1  = NUM_PACKS>0 ? NUM_PACKS-1 : 0;
       constexpr int  LOOP_LENGTH   = HAS_GARBAGE ? NUM_PACKS_M1 : NUM_PACKS;
 
-      PackType<ST> packed_sum(0);
+      PackType<ST> packed_sum(ST(0));
       Dispatch<>::parallel_reduce(kv.team,Kokkos::ThreadVectorRange(kv.team,LOOP_LENGTH),
                                   [&](const int ilev, PackType<ST>& accumulator){
         accumulator += input(ilev);
