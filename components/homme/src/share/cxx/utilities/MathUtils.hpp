@@ -78,58 +78,6 @@ KOKKOS_INLINE_FUNCTION constexpr int lcm(const int a, const int b, int_pack... p
 static_assert(lcm(16, 24, 28) == 336, "lcm is broken");
 static_assert(lcm(24, 16, 28) == 336, "lcm is broken");
 
-template <typename ViewType>
-typename std::enable_if<
-    !std::is_same<typename ViewType::non_const_value_type, Scalar>::value, Real>::type
-frobenius_norm(const ViewType view, bool ignore_nans = false) {
-  typename ViewType::pointer_type data = view.data();
-
-  size_t length = view.size();
-
-  // Note: use Kahan algorithm to increase accuracy
-  Real norm = 0;
-  Real c = 0;
-  Real temp, y;
-  for (size_t i = 0; i < length; ++i) {
-    if (std::isnan(data[i]) && ignore_nans) {
-      continue;
-    }
-    y = data[i] * data[i] - c;
-    temp = norm + y;
-    c = (temp - norm) - y;
-    norm = temp;
-  }
-
-  return std::sqrt(norm);
-}
-
-template <typename ViewType>
-typename std::enable_if<
-    std::is_same<typename ViewType::non_const_value_type, Scalar>::value, Real>::type
-frobenius_norm(const ViewType view, bool ignore_nans = false) {
-  typename ViewType::pointer_type data = view.data();
-
-  size_t length = view.size();
-
-  // Note: use Kahan algorithm to increase accuracy
-  Real norm = 0;
-  Real c = 0;
-  Real temp, y;
-  for (size_t i = 0; i < length; ++i) {
-    for (int v = 0; v < VECTOR_SIZE; ++v) {
-      if (std::isnan(data[i][v]) && ignore_nans) {
-        continue;
-      }
-      y = data[i][v] * data[i][v] - c;
-      temp = norm + y;
-      c = (temp - norm) - y;
-      norm = temp;
-    }
-  }
-
-  return std::sqrt(norm);
-}
-
 template<typename T, int N, typename... Properties>
 KOKKOS_INLINE_FUNCTION
 void binary_search (ViewType<T[N],Properties...> array,
