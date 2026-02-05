@@ -262,20 +262,20 @@ void cxx_push_sensitivities_to_f90(F90Ptr &elem_sens_v_ptr,     F90Ptr &elem_sen
 
   // Uncomment this when the state views are indeed views of FAD types
   int nelems = state.num_elems();
-  HostViewUnmanaged<Real****>   sens_ps_f90 (elem_sens_ps_ptr,nelems,HOMMEXX_SFAD_SIZE,NP,NP);
-  HostViewUnmanaged<Real*****>  sens_vthdp_f90 (elem_sens_vthdp_ptr,nelems,HOMMEXX_SFAD_SIZE,NUM_PHYSICAL_LEV,NP,NP);
-  HostViewUnmanaged<Real******> sens_v_f90 (elem_sens_v_ptr,nelems,HOMMEXX_SFAD_SIZE,NUM_PHYSICAL_LEV,2,NP,NP);
-  HostViewUnmanaged<Real*****>  sens_wi_f90 (elem_sens_w_i_ptr,nelems,HOMMEXX_SFAD_SIZE,NUM_INTERFACE_LEV,NP,NP);
-  HostViewUnmanaged<Real*****>  sens_dp_f90 (elem_sens_dp3d_ptr,nelems,HOMMEXX_SFAD_SIZE,NUM_PHYSICAL_LEV,NP,NP);
-  HostViewUnmanaged<Real*****>  sens_phi_f90 (elem_sens_phinh_i_ptr,nelems,HOMMEXX_SFAD_SIZE,NUM_INTERFACE_LEV,NP,NP);
-  HostViewUnmanaged<Real******> sens_Qdp_f90 (elem_sens_Qdp_ptr,nelems,HOMMEXX_SFAD_SIZE,QSIZE_D,NUM_PHYSICAL_LEV,NP,NP);
+  HostViewUnmanaged<Real****>   sens_ps_f90 (elem_sens_ps_ptr,nelems,HOMMEXX_DP_SFAD_SIZE,NP,NP);
+  HostViewUnmanaged<Real*****>  sens_vthdp_f90 (elem_sens_vthdp_ptr,nelems,HOMMEXX_DP_SFAD_SIZE,NUM_PHYSICAL_LEV,NP,NP);
+  HostViewUnmanaged<Real******> sens_v_f90 (elem_sens_v_ptr,nelems,HOMMEXX_DP_SFAD_SIZE,NUM_PHYSICAL_LEV,2,NP,NP);
+  HostViewUnmanaged<Real*****>  sens_wi_f90 (elem_sens_w_i_ptr,nelems,HOMMEXX_DP_SFAD_SIZE,NUM_INTERFACE_LEV,NP,NP);
+  HostViewUnmanaged<Real*****>  sens_dp_f90 (elem_sens_dp3d_ptr,nelems,HOMMEXX_DP_SFAD_SIZE,NUM_PHYSICAL_LEV,NP,NP);
+  HostViewUnmanaged<Real*****>  sens_phi_f90 (elem_sens_phinh_i_ptr,nelems,HOMMEXX_DP_SFAD_SIZE,NUM_INTERFACE_LEV,NP,NP);
+  HostViewUnmanaged<Real******> sens_Qdp_f90 (elem_sens_Qdp_ptr,nelems,HOMMEXX_DP_SFAD_SIZE,QSIZE_D,NUM_PHYSICAL_LEV,NP,NP);
 
   int n0 = tl.n0;
   int qn0 = tl.n0_qdp;
   for (int ie=0; ie<state.num_elems(); ++ie) {
     for (int ip=0; ip<NP; ++ip) {
       for (int jp=0; jp<NP; ++jp) {
-        for (int ider=0; ider<HOMMEXX_SFAD_SIZE; ++ider) {
+        for (int ider=0; ider<HOMMEXX_DP_SFAD_SIZE; ++ider) {
           sens_ps_f90 (ie,ider,ip,jp) = ps_h(ie,n0,ip,jp).fastAccessDx(ider);
         }
         for (int ilev=0; ilev<NUM_PHYSICAL_LEV; ++ilev) {
@@ -289,7 +289,7 @@ void cxx_push_sensitivities_to_f90(F90Ptr &elem_sens_v_ptr,     F90Ptr &elem_sen
           auto phi = phi_h(ie,n0,ip,jp,ipack)[ivec];
           auto vthdp = vthdp_h(ie,n0,ip,jp,ipack)[ivec];
 
-          for (int ider=0; ider<HOMMEXX_SFAD_SIZE; ++ider) {
+          for (int ider=0; ider<HOMMEXX_DP_SFAD_SIZE; ++ider) {
             sens_vthdp_f90 (ie,ider,ilev,ip,jp) = vthdp.fastAccessDx(ider);
             sens_v_f90 (ie,ider,ilev,0,ip,jp) = u.fastAccessDx(ider);
             sens_v_f90 (ie,ider,ilev,1,ip,jp) = v.fastAccessDx(ider);
@@ -306,7 +306,7 @@ void cxx_push_sensitivities_to_f90(F90Ptr &elem_sens_v_ptr,     F90Ptr &elem_sen
         int ivec  = ilev % VECTOR_SIZE;
         auto w = w_h(ie,n0,ip,jp,ipack)[ivec];
         auto phi = phi_h(ie,n0,ip,jp,ipack)[ivec];
-        for (int ider=0; ider<HOMMEXX_SFAD_SIZE; ++ider) {
+        for (int ider=0; ider<HOMMEXX_DP_SFAD_SIZE; ++ider) {
           sens_wi_f90 (ie,ider,ilev,ip,jp) = w.fastAccessDx(ider);
           sens_phi_f90 (ie,ider,ilev,ip,jp) = phi.fastAccessDx(ider);
         }

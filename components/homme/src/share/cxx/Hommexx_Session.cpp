@@ -53,7 +53,7 @@ void print_homme_config_settings () {
 #endif
 #ifdef HOMMEXX_ENABLE_FAD_TYPES
   std::cout << "HOMMEXX has Sacado's FAD type support. " << Sacado_Version() << "\n";
-  std::cout << "HOMMEXX SFAD length: " << HOMMEXX_SFAD_SIZE << "\n";
+  std::cout << "HOMMEXX DP_SFAD length: " << HOMMEXX_DP_SFAD_SIZE << "\n";
 #else
   std::cout << "HOMME does NOT have Sacado's FAD type support\n";
 #endif
@@ -92,9 +92,13 @@ void initialize_hommexx_session ()
   }
 }
 
-int get_hommexx_sfad_size ()
+int get_hommexx_dp_sfad_size ()
 {
-  return HOMMEXX_SFAD_SIZE;
+#ifdef HOMMEXX_ENABLE_FAD_TYPES
+  return HOMMEXX_DP_SFAD_SIZE;
+#else
+  return 0;
+#endif
 }
 
 void finalize_hommexx_session ()

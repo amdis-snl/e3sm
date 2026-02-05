@@ -80,7 +80,11 @@ struct LimiterFunctor {
     const int nslots = m_tu.get_num_ws_slots();
 
     int num_scalar_mid_buf = Buffers::num_3d_scalar_mid_buf;
-    int scl_sz = 1+HOMMEXX_SFAD_SIZE;
+#ifdef HOMMEXX_ENABLE_FWD_SENS
+    int scl_sz = 1+HOMMEXX_DP_SFAD_SIZE;
+#else
+    int scl_sz = 1;
+#endif
 
     return num_scalar_mid_buf  *NP*NP*NUM_LEV  *VECTOR_SIZE*nslots * scl_sz;
   }

@@ -16,7 +16,7 @@
 #ifdef HOMMEXX_ENABLE_FAD_TYPES
 namespace homme {
   namespace islmpi {
-    inline Homme::Real Compose_ADValue(const Homme::FadType& x) {return x.val();}
+    inline Homme::Real Compose_ADValue(const Homme::DpFadType& x) {return x.val();}
   } // namespace islmpi
 } // namespace homme
 #endif

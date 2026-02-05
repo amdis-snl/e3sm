@@ -36,8 +36,9 @@
 /* Whether Sacado's Fad types are available */
 #cmakedefine HOMMEXX_ENABLE_FAD_TYPES
 
-// If HOMMEXX_ENABLE_FAD_TYPES is defined, this sets the Sacado SFad type length
-#define HOMMEXX_SFAD_SIZE ${HOMMEXX_SFAD_SIZE}
+// If HOMMEXX_ENABLE_FAD_TYPES is defined, this sets the length
+// of the Sacado SFad type for derivs w.r.t. parameters
+#cmakedefine HOMMEXX_DP_SFAD_SIZE ${HOMMEXX_DP_SFAD_SIZE}
 
 /* Whether forward sensitivities are enabled */
 #cmakedefine HOMMEXX_ENABLE_FWD_SENS

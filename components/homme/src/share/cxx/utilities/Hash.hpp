@@ -34,7 +34,7 @@ KOKKOS_INLINE_FUNCTION void hash (const double v_, HashType& accum) {
 }
 
 #ifdef HOMMEXX_ENABLE_FAD_TYPES
-KOKKOS_INLINE_FUNCTION void hash (const FadType v_, HashType& accum) {
+KOKKOS_INLINE_FUNCTION void hash (const DpFadType v_, HashType& accum) {
   hash(v_.val(), accum);
 }
 #endif
@@ -48,8 +48,8 @@ void hash(const int tl,                           // time level
 void hash(const int tl, const ExecViewManaged<Scalar*****>& v, int n4, HashType& accum);
 void hash(const ExecViewManaged<Scalar*****>& v, int n4, HashType& accum);
 void hash(const int tl, const ExecViewManaged<Real****>& v, HashType& accum);
-#ifdef HOMMEXX_ENABLE_FWD_SENS
-void hash(const int tl, const ExecViewManaged<FadType****>& v, HashType& accum);
+#ifdef HOMMEXX_ENABLE_FAD_TYPES
+void hash(const int tl, const ExecViewManaged<DpFadType****>& v, HashType& accum);
 #endif
 
 // No time level slot.

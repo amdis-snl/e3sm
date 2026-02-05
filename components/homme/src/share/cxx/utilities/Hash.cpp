@@ -64,7 +64,7 @@ void hash (const int tl, const ExecViewManaged<Real****>& v,
 }
 
 #ifdef HOMMEXX_ENABLE_FAD_TYPES
-void hash (const int tl, const ExecViewManaged<FadType****>& v,
+void hash (const int tl, const ExecViewManaged<DpFadType****>& v,
            HashType& accum_out) {
   HashType accum;
   Kokkos::parallel_reduce(

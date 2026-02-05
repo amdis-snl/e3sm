@@ -154,8 +154,12 @@ public:
     constexpr int int_size = NP*NP*NUM_LEV_P*VECTOR_SIZE;
 
     // 3 persistent midlayers, 2 non-persistent midlayer, and 1 non-persistent interface
-    // Multiply by (1+HOMMEXX_SFAD_SIZE)
-    return (1+HOMMEXX_SFAD_SIZE)*(mid_size*(nelems*4+nslots) + int_size*nslots);
+#ifdef HOMMEXX_ENABLE_FWD_SENS
+    // Multiply by (1+HOMMEXX_DP_SFAD_SIZE)
+    return (1+HOMMEXX_DP_SFAD_SIZE)*(mid_size*(nelems*4+nslots) + int_size*nslots);
+#else
+    return 1*(mid_size*(nelems*4+nslots) + int_size*nslots);
+#endif
   }
 
   void init_buffers (const FunctorsBuffersManager& fbm) {

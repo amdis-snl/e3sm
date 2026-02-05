@@ -206,7 +206,11 @@ struct CaarFunctorImpl {
       }
     }
 
-    int scl_sz = 1+HOMMEXX_SFAD_SIZE;
+#ifdef HOMMEXX_ENABLE_FWD_SENS
+    int scl_sz = 1+HOMMEXX_DP_SFAD_SIZE;
+#else
+    int scl_sz = 1;
+#endif
 
     return (num_scalar_mid_buf  *NP*NP*NUM_LEV  *VECTOR_SIZE*nslots +
             num_scalar_int_buf  *NP*NP*NUM_LEV_P*VECTOR_SIZE*nslots +

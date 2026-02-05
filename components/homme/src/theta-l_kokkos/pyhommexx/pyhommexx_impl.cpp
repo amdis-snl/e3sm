@@ -387,7 +387,7 @@ void set_state_var (const nb::ndarray<double>& arr, const nb::str& name)
   Kokkos::parallel_for(p,copy);
 }
 
-void get_state_var_sens (nb::ndarray<double>& arr, const nb::str& name)
+void get_state_var_dp_sens (nb::ndarray<double>& arr, const nb::str& name)
 {
 #ifdef HOMMEXX_ENABLE_FAD_TYPES
   const auto& c = Context::singleton();
@@ -399,9 +399,9 @@ void get_state_var_sens (nb::ndarray<double>& arr, const nb::str& name)
   const int n0 = tl.n0;
   const int qn0 = tl.n0_qdp;
 
-  std::vector<int> vector3dm_shape = {nelem,2,NP,NP,NUM_PHYSICAL_LEV,HOMMEXX_SFAD_SIZE};
-  std::vector<int> scalar3dm_shape = {nelem,  NP,NP,NUM_PHYSICAL_LEV,HOMMEXX_SFAD_SIZE};
-  std::vector<int> scalar3di_shape = {nelem,  NP,NP,NUM_INTERFACE_LEV,HOMMEXX_SFAD_SIZE};
+  std::vector<int> vector3dm_shape = {nelem,2,NP,NP,NUM_PHYSICAL_LEV,HOMMEXX_DP_SFAD_SIZE};
+  std::vector<int> scalar3dm_shape = {nelem,  NP,NP,NUM_PHYSICAL_LEV,HOMMEXX_DP_SFAD_SIZE};
+  std::vector<int> scalar3di_shape = {nelem,  NP,NP,NUM_INTERFACE_LEV,HOMMEXX_DP_SFAD_SIZE};
 
   constexpr int flag_u   = 0;
   constexpr int flag_v   = 1;
@@ -450,7 +450,7 @@ void get_state_var_sens (nb::ndarray<double>& arr, const nb::str& name)
   auto which = which_map.at(n);
   int nlev = (which==flag_phi or which==flag_w) ? NUM_INTERFACE_LEV : NUM_PHYSICAL_LEV;
   using policy_t = Kokkos::MDRangePolicy<ExecSpace,Kokkos::Rank<5>>;
-  policy_t p ({0,0,0,0,0},{nelem,NP,NP,nlev,HOMMEXX_SFAD_SIZE});
+  policy_t p ({0,0,0,0,0},{nelem,NP,NP,nlev,HOMMEXX_DP_SFAD_SIZE});
   auto copy = KOKKOS_LAMBDA (int ie, int ip, int jp, int k, int ider) {
     int lev = k / VECTOR_SIZE;
     int vec = k % VECTOR_SIZE;
@@ -531,7 +531,7 @@ void perturb_state_var (const nb::str& name,
   int nlev = (which==flag_phi or which==flag_w) ? NUM_INTERFACE_LEV : NUM_PHYSICAL_LEV;
   using policy_t = Kokkos::MDRangePolicy<ExecSpace,Kokkos::Rank<4>>;
 
-  FadType max_p;
+  DpFadType max_p;
   max_p.val() = p_max;
   max_p.fastAccessDx(0) = 1;
   policy_t p ({0,0,0,0},{nelem,NP,NP,nlev});
@@ -539,7 +539,7 @@ void perturb_state_var (const nb::str& name,
     int lev = k / VECTOR_SIZE;
     int vec = k % VECTOR_SIZE;
     auto d = distance(latlon(ie,ip,jp,0),latlon(ie,ip,jp,1),lat0,lon0);
-    FadType factor = 1 + max_p*std::exp(-std::pow(d,2)/(2*std::pow(sigma,2)));
+    DpFadType factor = 1 + max_p*std::exp(-std::pow(d,2)/(2*std::pow(sigma,2)));
 
     switch (which) {
       case flag_u:

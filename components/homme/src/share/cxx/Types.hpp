@@ -33,7 +33,7 @@ using CF90Ptr = const Real *const; // Using this in a function signature
                                    // emphasizes that the ordering is Fortran
 
 #ifdef HOMMEXX_ENABLE_FWD_SENS
-using ScalarValue = FadType;
+using ScalarValue = DpFadType;
 #else
 using ScalarValue = Real;
 #endif
@@ -210,22 +210,14 @@ using ScalarValue2 = TwoT<ScalarValue>;
 
 namespace Kokkos {
 #ifdef HOMMEXX_ENABLE_FAD_TYPES
-template<>
-struct reduction_identity<Homme::FadType> {
+template<typename T,int N>
+struct reduction_identity<Homme::SFadN<T,N>> {
   KOKKOS_FORCEINLINE_FUNCTION
-  static Homme::FadType sum()  {return Homme::FadType(reduction_identity<Homme::Real>::sum());}
-  static Homme::FadType min()  {return Homme::FadType(reduction_identity<Homme::Real>::min());}
-  static Homme::FadType max()  {return Homme::FadType(reduction_identity<Homme::Real>::max());}
+  static Homme::SFadN<T,N> sum()  {return Homme::SFadN<T,N>(reduction_identity<T>::sum());}
+  static Homme::SFadN<T,N> min()  {return Homme::SFadN<T,N>(reduction_identity<T>::min());}
+  static Homme::SFadN<T,N> max()  {return Homme::SFadN<T,N>(reduction_identity<T>::max());}
 };
 #endif
-
-template<>
-struct reduction_identity<Homme::Scalar> {
-  KOKKOS_FORCEINLINE_FUNCTION
-  static Homme::Scalar sum()  {return Homme::Scalar(reduction_identity<Homme::ScalarValue>::sum());}
-  static Homme::Scalar min()  {return Homme::Scalar(reduction_identity<Homme::ScalarValue>::min());}
-  static Homme::Scalar max()  {return Homme::Scalar(reduction_identity<Homme::ScalarValue>::max());}
-};
 
 // Specialization of a Kokkos structure, needed in the initialization of reduction operations.
 template<typename T> struct reduction_identity<Homme::TwoT<T>> {

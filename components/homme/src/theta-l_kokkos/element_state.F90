@@ -189,10 +189,10 @@ contains
   subroutine allocate_element_arrays (nelemd)
     use control_mod, only: num_sensitivities
     interface
-      function get_hommexx_sfad_size() result(sz) bind(c)
+      function get_hommexx_dp_sfad_size() result(sz) bind(c)
         use iso_c_binding, only: c_int
         integer (kind=c_int) :: sz
-      end function get_hommexx_sfad_size
+      end function get_hommexx_dp_sfad_size
 
     end interface
     !
@@ -239,7 +239,7 @@ contains
     allocate(elem_phi_ref   (np,np,nlevp,nelemd) )
 
     ! Sensitivities
-    num_sensitivities = get_hommexx_sfad_size()
+    num_sensitivities = get_hommexx_dp_sfad_size()
     if (num_sensitivities > 0) then
       allocate(elem_sens_v      (np,np,2,nlev,  num_sensitivities, nelemd) )
       allocate(elem_sens_w_i    (np,np,  nlevp, num_sensitivities, nelemd) )
