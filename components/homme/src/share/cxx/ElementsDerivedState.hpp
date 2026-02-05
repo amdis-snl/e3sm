@@ -12,25 +12,27 @@
 namespace Homme {
 
 // Per element derived data
-class ElementsDerivedState {
+template<typename ST>
+class ElementsDerivedStateST {
 public:
+  using PT = PackType<ST>;
 
-  ExecViewManaged<Scalar * [NP][NP][NUM_LEV]>     m_omega_p;  // Scaled 'pressure vertical velocity' (omega=(1/p)*Dp/Dt)
-  ExecViewManaged<Scalar * [2][NP][NP][NUM_LEV]>  m_vn0;      // weighted velocity flux for consistency
-  ExecViewManaged<Scalar * [2][NP][NP][NUM_LEV]>  m_vstar;    // velocity at start of tracer time step
+  ExecViewManaged<PT * [NP][NP][NUM_LEV]>     m_omega_p;  // Scaled 'pressure vertical velocity' (omega=(1/p)*Dp/Dt)
+  ExecViewManaged<PT * [2][NP][NP][NUM_LEV]>  m_vn0;      // weighted velocity flux for consistency
+  ExecViewManaged<PT * [2][NP][NP][NUM_LEV]>  m_vstar;    // velocity at start of tracer time step
 
   // eta=$\eta$ is the vertical coordinate
   // eta_dot_dpdn = $\dot{eta}\frac{dp}{d\eta}$
   // Note: the last level (surface) is always 0.
-  ExecViewManaged<Scalar * [NP][NP][NUM_LEV_P]>   m_eta_dot_dpdn;
+  ExecViewManaged<PT * [NP][NP][NUM_LEV_P]>   m_eta_dot_dpdn;
 
-  ExecViewManaged<Scalar * [NP][NP][NUM_LEV]>     m_dp;                // for dp_tracers at physics timestep
-  ExecViewManaged<Scalar * [NP][NP][NUM_LEV]>     m_divdp;             // divergence of dp
-  ExecViewManaged<Scalar * [NP][NP][NUM_LEV]>     m_divdp_proj;        // DSSed divdp
-  ExecViewManaged<Scalar * [NP][NP][NUM_LEV]>     m_dpdiss_biharmonic; // mean dp dissipation tendency, if nu_p>0
-  ExecViewManaged<Scalar * [NP][NP][NUM_LEV]>     m_dpdiss_ave;        // mean dp used to compute psdiss_tens
+  ExecViewManaged<PT * [NP][NP][NUM_LEV]>     m_dp;                // for dp_tracers at physics timestep
+  ExecViewManaged<PT * [NP][NP][NUM_LEV]>     m_divdp;             // divergence of dp
+  ExecViewManaged<PT * [NP][NP][NUM_LEV]>     m_divdp_proj;        // DSSed divdp
+  ExecViewManaged<PT * [NP][NP][NUM_LEV]>     m_dpdiss_biharmonic; // mean dp dissipation tendency, if nu_p>0
+  ExecViewManaged<PT * [NP][NP][NUM_LEV]>     m_dpdiss_ave;        // mean dp used to compute psdiss_tens
 
-  ElementsDerivedState() : m_num_elems(0) {}
+  ElementsDerivedStateST() : m_num_elems(0) {}
 
   void init (const int num_elems);
 
@@ -42,6 +44,8 @@ public:
 private:
   int m_num_elems;
 };
+
+using ElementsDerivedState = ElementsDerivedStateST<ScalarValue>;
 
 } // Homme
 

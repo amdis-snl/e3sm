@@ -20,6 +20,7 @@
 #include "RKStageData.hpp"
 #include "SimulationParams.hpp"
 #include "SphereOperators.hpp"
+#include "Tracers.hpp"
 #include "kokkos_utils.hpp"
 
 #include "mpi/BoundaryExchange.hpp"
@@ -33,9 +34,6 @@
 #include <assert.h>
 
 namespace Homme {
-
-// Theta does not use tracers in caar. A fwd decl is enough here
-struct Tracers;
 
 struct CaarFunctorImpl {
 

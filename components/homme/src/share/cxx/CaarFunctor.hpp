@@ -7,6 +7,8 @@
 #ifndef HOMMEXX_CAAR_FUNCTOR_HPP
 #define HOMMEXX_CAAR_FUNCTOR_HPP
 
+#include "Elements.hpp"
+#include "Tracers.hpp"
 #include "Types.hpp"
 #include "RKStageData.hpp"
 #include <memory>
@@ -15,8 +17,6 @@ namespace Homme {
 
 struct CaarFunctorImpl;
 
-class Elements;
-class Tracers;
 class ReferenceElement;
 class SphereOperators;
 class SimulationParams;
