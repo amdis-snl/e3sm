@@ -30,9 +30,9 @@ public:
   }
 
   // On input, pe is pressure; on output, the Exner function.
-  template<typename Scalar>
+  template<typename ST>
   KOKKOS_INLINE_FUNCTION
-  static void pressure_to_exner (Scalar& pe) {
+  static void pressure_to_exner (ST& pe) {
     pe /= PhysicalConstants::p0;
 #ifdef HOMMEXX_BFB_TESTING
     pe = bfb_pow(pe,PhysicalConstants::kappa);
@@ -42,9 +42,9 @@ public:
   }
 
   // On input, pe is pressure; on output, the reciprocal of the Exner function.
-  template<typename Scalar>
+  template<typename ST>
   KOKKOS_INLINE_FUNCTION
-  static void pressure_to_recip_exner (Scalar& pe) {
+  static void pressure_to_recip_exner (ST& pe) {
     pe = PhysicalConstants::p0 / pe;
 #ifdef HOMMEXX_BFB_TESTING
     pe = bfb_pow(pe,PhysicalConstants::kappa);
@@ -53,10 +53,11 @@ public:
 #endif
   }
 
+  template<typename PiProvider, typename ST, typename... Props>
   KOKKOS_INLINE_FUNCTION
   void compute_exner (const KernelVariables& kv,
-                      const ExecViewUnmanaged<const Scalar[NUM_LEV]>& pi,
-                      const ExecViewUnmanaged<      Scalar[NUM_LEV]>& exner) const
+                      const PiProvider& pi,
+                      const ExecView<ST[NUM_LEV], Props...>& exner) const
   {
     Kokkos::parallel_for(Kokkos::ThreadVectorRange(kv.team,NUM_LEV),
                          [&](const int ilev) {
@@ -66,13 +67,13 @@ public:
     });
   }
 
-  template<typename VThetaProvider, typename PhiProvider>
+  template<typename VThetaProvider, typename PhiProvider, typename ST>
   KOKKOS_INLINE_FUNCTION
   bool compute_pnh_and_exner (const KernelVariables& kv,
                               const VThetaProvider& vtheta_dp,
                               const PhiProvider&    phi_i,
-                              const ExecViewUnmanaged<Scalar[NUM_LEV]>& pnh,
-                              const ExecViewUnmanaged<Scalar[NUM_LEV]>& exner) const
+                              const ExecViewUnmanaged<ST[NUM_LEV]>& pnh,
+                              const ExecViewUnmanaged<ST[NUM_LEV]>& exner) const
   {
     // If you're hydrostatic, check outside the function
     assert (!m_theta_hydrostatic_mode);
@@ -99,10 +100,10 @@ public:
   //  1) p_over_exner = -Rgas*vtheta_dp/delta(phi_i)
   //  2) pnh = p0 (p_over_exner/p0)^(1/(1-kappa))
   //  3) exner = pnh/p_over_exner
-  template<typename Scalar>
+  template<typename ST>
   KOKKOS_INLINE_FUNCTION
-  static void compute_pnh_and_exner (const Scalar& vtheta_dp, const Scalar& dphi,
-                                     Scalar& pnh, Scalar& exner) {
+  static void compute_pnh_and_exner (const ST& vtheta_dp, const ST& dphi,
+                                     ST& pnh, ST& exner) {
     exner = (-PhysicalConstants::Rgas)*vtheta_dp / dphi;
     pnh = exner/PhysicalConstants::p0;
 #ifndef HOMMEXX_BFB_TESTING
@@ -114,11 +115,12 @@ public:
     exner = pnh/exner;    
   }
 
+  template<typename PnhProvider, typename DpiProvider, typename ST>
   KOKKOS_INLINE_FUNCTION
   void compute_dpnh_dp_i (const KernelVariables& kv,
-                          const ExecViewUnmanaged<const Scalar[NUM_LEV  ]>& pnh,
-                          const ExecViewUnmanaged<const Scalar[NUM_LEV_P]>& dp_i,
-                          const ExecViewUnmanaged<      Scalar[NUM_LEV_P]>& dpnh_dp_i) const
+                          const PnhProvider& pnh,
+                          const DpiProvider& dp_i,
+                          const ExecViewUnmanaged<PackType<ST>[NUM_LEV_P]>& dpnh_dp_i) const
   {
     if (m_theta_hydrostatic_mode) {
       // Set dpnh_dp_i to 1.0
@@ -142,11 +144,12 @@ public:
       // Boundaries: delta(x) = 2*(x_m(last)-x_i(last)).
       // Top: pnh_i = pi_i = hyai(0)*ps0.
       // Bottom: approximate with hydrostatic, so that dpnh_dp_i=1
+      // NOTE: we could just do dphn_dp_i(nlevp)=1 (exact arith), but f90 spells out the math,
+      //       which is not bfb the same in finite precision
       dpnh_dp_i(0)[0] = 2*(pnh(0)[0] - m_hvcoord.hybrid_ai(0)*m_hvcoord.ps0)/dp_i(0)[0];
-      const ScalarValue pnh_last = pnh(LAST_MID_PACK)[LAST_MID_PACK_END];
-      const ScalarValue dp_last = dp_i(LAST_INT_PACK)[LAST_INT_PACK_END];
-      const ScalarValue pnh_i_last = pnh_last + dp_last/2;
-
+      const auto pnh_last = pnh(LAST_MID_PACK)[LAST_MID_PACK_END];
+      const auto dp_last = dp_i(LAST_INT_PACK)[LAST_INT_PACK_END];
+      const ST pnh_i_last = pnh_last + dp_last/2;
       dpnh_dp_i(LAST_INT_PACK)[LAST_INT_PACK_END] = 2*(pnh_i_last - pnh_last)/dp_last;
     }
   }
@@ -155,12 +158,13 @@ public:
   //       otherwise it will be the non-hydrostatic. In particular, if the pressure
   //       p is computed using dp from pnh, this will be the discrete inverse of
   //       the compute_pnh_and_exner method.
+  template<typename VThetaProvider, typename PProvider, typename ST>
   KOKKOS_INLINE_FUNCTION static
   void compute_phi_i (const KernelVariables& kv,
-                      const ExecViewUnmanaged<const Real   [NP][NP]           >& phis,
-                      const ExecViewUnmanaged<const Scalar [NP][NP][NUM_LEV]  >& vtheta_dp,
-                      const ExecViewUnmanaged<const Scalar [NP][NP][NUM_LEV]  >& p,
-                      const ExecViewUnmanaged<      Scalar [NP][NP][NUM_LEV_P]>& phi_i) {
+                      const ExecViewUnmanaged<const Real [NP][NP]>& phis,
+                      const VThetaProvider& vtheta_dp,
+                      const PProvider&      p,
+                      const ExecViewUnmanaged<PackType<ST>[NP][NP][NUM_LEV_P]>& phi_i) {
     Kokkos::parallel_for(Kokkos::TeamThreadRange(kv.team,NP*NP),
                          [&](const int idx) {
       const int igp = idx / NP;
@@ -174,27 +178,27 @@ public:
 
   // VThetaProvider can be either a 1d view or a lambda,
   // as long as vtheta_dp(ilev) returns vtheta_dp at pack ilev
-  template<typename VThetaProvider>
+  template<typename VThetaProvider, typename PProvider, typename ST>
   KOKKOS_INLINE_FUNCTION static
   void compute_phi_i (const KernelVariables& kv, const Real phis,
                       const VThetaProvider& vtheta_dp,
-                      const ExecViewUnmanaged<const Scalar [NUM_LEV]  >& p,
-                      const ExecViewUnmanaged<      Scalar [NUM_LEV_P]>& phi_i)
+                      const PProvider& p,
+                      const ExecViewUnmanaged<PackType<ST> [NUM_LEV_P]>& phi_i)
   {
     // Init phi on surface with phis
     phi_i(LAST_INT_PACK)[LAST_INT_PACK_END] = phis;
 
     // Use ColumnOps to do the scan sum
-    auto integrand_provider = [&](const int ilev)->Scalar {
+    auto integrand_provider = [&](const int ilev) {
       return compute_dphi(vtheta_dp(ilev), p(ilev));
     };
 
     ColumnOps::column_scan_mid_to_int<false>(kv,integrand_provider,phi_i);
   }
 
-  template<typename Scalar>
+  template<typename ST>
   KOKKOS_INLINE_FUNCTION static
-  Scalar compute_dphi (const Scalar& vtheta_dp, const Scalar& p) {
+  ST compute_dphi (const ST& vtheta_dp, const ST& p) {
     constexpr Real p0    = PhysicalConstants::p0;
     constexpr Real kappa = PhysicalConstants::kappa;
     constexpr Real Rgas  = PhysicalConstants::Rgas;
@@ -209,13 +213,14 @@ public:
   // If exner is available, then use exner/p instead of (p/p0)^(k-1)/p0, to avoid dealing with exponentials
   // VThetaProvider can be either a 1d view or a lambda,
   // as long as vtheta_dp(ilev) returns vtheta_dp at pack ilev
+  template<typename VThetaProvider, typename ExnerProvider, typename PProvider, typename ST>
   KOKKOS_INLINE_FUNCTION
   void compute_phi_i (const KernelVariables& kv,
-                      const ExecViewUnmanaged<const Real   [NP][NP]           >& phis,
-                      const ExecViewUnmanaged<const Scalar [NP][NP][NUM_LEV]  >& vtheta_dp,
-                      const ExecViewUnmanaged<const Scalar [NP][NP][NUM_LEV]  >& exner,
-                      const ExecViewUnmanaged<const Scalar [NP][NP][NUM_LEV]  >& p,
-                      const ExecViewUnmanaged<      Scalar [NP][NP][NUM_LEV_P]>& phi_i) const {
+                      const ExecViewUnmanaged<const Real [NP][NP]           >& phis,
+                      const VThetaProvider& vtheta_dp,
+                      const ExnerProvider& exner,
+                      const PProvider& p,
+                      const ExecViewUnmanaged<PackType<ST>[NP][NP][NUM_LEV_P]>& phi_i) const {
     Kokkos::parallel_for(Kokkos::TeamThreadRange(kv.team,NP*NP),
                          [&](const int idx) {
       const int igp = idx / NP;
@@ -228,18 +233,19 @@ public:
     });
   }
 
+  template<typename VThetaProvider, typename ExnerProvider, typename PProvider, typename ST>
   KOKKOS_INLINE_FUNCTION
   void compute_phi_i (const KernelVariables& kv, const Real phis,
-                      const ExecViewUnmanaged<const Scalar [NUM_LEV]  >& vtheta_dp,
-                      const ExecViewUnmanaged<const Scalar [NUM_LEV]  >& exner,
-                      const ExecViewUnmanaged<const Scalar [NUM_LEV]  >& p,
-                      const ExecViewUnmanaged<      Scalar [NUM_LEV_P]>& phi_i) const
+                      const VThetaProvider& vtheta_dp,
+                      const ExnerProvider& exner,
+                      const PProvider& p,
+                      const ExecViewUnmanaged<PackType<ST>[NUM_LEV_P]>& phi_i) const
   {
     // Init phi on surface with phis
     phi_i(LAST_INT_PACK)[LAST_INT_PACK_END] = phis;
 
     // Use ColumnOps to do the scan sum
-    auto integrand_provider = [&](const int ilev)->Scalar {
+    auto integrand_provider = [&](const int ilev) {
       constexpr Real Rgas  = PhysicalConstants::Rgas;
       return Rgas*vtheta_dp(ilev)*exner(ilev)/p(ilev);
     };
