@@ -9,6 +9,7 @@
 
 #include "Elements.hpp"
 #include "Tracers.hpp"
+#include "SphereOperators.hpp"
 #include "Types.hpp"
 #include "RKStageData.hpp"
 #include <memory>
@@ -18,7 +19,6 @@ namespace Homme {
 struct CaarFunctorImpl;
 
 class ReferenceElement;
-class SphereOperators;
 class SimulationParams;
 class HybridVCoord;
 
