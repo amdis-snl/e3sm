@@ -31,11 +31,15 @@
 #include "profiling.hpp"
 #include "ErrorDefs.hpp"
 
+#include <ekat_pack_kokkos.hpp>
+
 #include <assert.h>
 
 namespace Homme {
 
-struct CaarFunctorImpl {
+template<typename ST>
+struct CaarFunctorImplST {
+  using PT = PackType<ST>;
 
   struct Buffers {
     static constexpr int num_3d_scalar_mid_buf = 10;
@@ -43,35 +47,35 @@ struct CaarFunctorImpl {
     static constexpr int num_3d_scalar_int_buf =  6;
     static constexpr int num_3d_vector_int_buf =  3;
 
-    ExecViewUnmanaged<Scalar*    [NP][NP][NUM_LEV]  >   temp;
+    ExecViewUnmanaged<PT*    [NP][NP][NUM_LEV]  >   temp;
 
-    ExecViewUnmanaged<Scalar*    [NP][NP][NUM_LEV]  >   pnh;
-    ExecViewUnmanaged<Scalar*    [NP][NP][NUM_LEV]  >   pi;
-    ExecViewUnmanaged<Scalar*    [NP][NP][NUM_LEV]  >   exner;
-    ExecViewUnmanaged<Scalar*    [NP][NP][NUM_LEV]  >   div_vdp;
-    ExecViewUnmanaged<Scalar*    [NP][NP][NUM_LEV]  >   phi;
-    ExecViewUnmanaged<Scalar*    [NP][NP][NUM_LEV]  >   omega_p;
-    ExecViewUnmanaged<Scalar*    [NP][NP][NUM_LEV]  >   vort;
+    ExecViewUnmanaged<PT*    [NP][NP][NUM_LEV]  >   pnh;
+    ExecViewUnmanaged<PT*    [NP][NP][NUM_LEV]  >   pi;
+    ExecViewUnmanaged<PT*    [NP][NP][NUM_LEV]  >   exner;
+    ExecViewUnmanaged<PT*    [NP][NP][NUM_LEV]  >   div_vdp;
+    ExecViewUnmanaged<PT*    [NP][NP][NUM_LEV]  >   phi;
+    ExecViewUnmanaged<PT*    [NP][NP][NUM_LEV]  >   omega_p;
+    ExecViewUnmanaged<PT*    [NP][NP][NUM_LEV]  >   vort;
 
-    ExecViewUnmanaged<Scalar* [2][NP][NP][NUM_LEV]  >   grad_exner;
-    ExecViewUnmanaged<Scalar* [2][NP][NP][NUM_LEV]  >   mgrad;
-    ExecViewUnmanaged<Scalar* [2][NP][NP][NUM_LEV]  >   grad_tmp;
-    ExecViewUnmanaged<Scalar* [2][NP][NP][NUM_LEV]  >   vdp;
+    ExecViewUnmanaged<PT* [2][NP][NP][NUM_LEV]  >   grad_exner;
+    ExecViewUnmanaged<PT* [2][NP][NP][NUM_LEV]  >   mgrad;
+    ExecViewUnmanaged<PT* [2][NP][NP][NUM_LEV]  >   grad_tmp;
+    ExecViewUnmanaged<PT* [2][NP][NP][NUM_LEV]  >   vdp;
 
-    ExecViewUnmanaged<Scalar*    [NP][NP][NUM_LEV_P]>   dp_i;
-    ExecViewUnmanaged<Scalar*    [NP][NP][NUM_LEV_P]>   vtheta_i;
-    ExecViewUnmanaged<Scalar*    [NP][NP][NUM_LEV_P]>   dpnh_dp_i;
-    ExecViewUnmanaged<Scalar*    [NP][NP][NUM_LEV_P]>   eta_dot_dpdn;
+    ExecViewUnmanaged<PT*    [NP][NP][NUM_LEV_P]>   dp_i;
+    ExecViewUnmanaged<PT*    [NP][NP][NUM_LEV_P]>   vtheta_i;
+    ExecViewUnmanaged<PT*    [NP][NP][NUM_LEV_P]>   dpnh_dp_i;
+    ExecViewUnmanaged<PT*    [NP][NP][NUM_LEV_P]>   eta_dot_dpdn;
 
-    ExecViewUnmanaged<Scalar* [2][NP][NP][NUM_LEV_P]>   v_i;
-    ExecViewUnmanaged<Scalar* [2][NP][NP][NUM_LEV_P]>   grad_phinh_i;
-    ExecViewUnmanaged<Scalar* [2][NP][NP][NUM_LEV_P]>   grad_w_i;
+    ExecViewUnmanaged<PT* [2][NP][NP][NUM_LEV_P]>   v_i;
+    ExecViewUnmanaged<PT* [2][NP][NP][NUM_LEV_P]>   grad_phinh_i;
+    ExecViewUnmanaged<PT* [2][NP][NP][NUM_LEV_P]>   grad_w_i;
 
-    ExecViewUnmanaged<Scalar* [2][NP][NP][NUM_LEV]  >   v_tens;
-    ExecViewUnmanaged<Scalar*    [NP][NP][NUM_LEV]  >   theta_tens;
-    ExecViewUnmanaged<Scalar*    [NP][NP][NUM_LEV]  >   dp_tens;
-    ExecViewUnmanaged<Scalar*    [NP][NP][NUM_LEV_P]>   w_tens;
-    ExecViewUnmanaged<Scalar*    [NP][NP][NUM_LEV_P]>   phi_tens;
+    ExecViewUnmanaged<PT* [2][NP][NP][NUM_LEV]  >   v_tens;
+    ExecViewUnmanaged<PT*    [NP][NP][NUM_LEV]  >   theta_tens;
+    ExecViewUnmanaged<PT*    [NP][NP][NUM_LEV]  >   dp_tens;
+    ExecViewUnmanaged<PT*    [NP][NP][NUM_LEV_P]>   w_tens;
+    ExecViewUnmanaged<PT*    [NP][NP][NUM_LEV_P]>   phi_tens;
   };
 
   using deriv_type = ReferenceElement::deriv_type;
@@ -83,7 +87,7 @@ struct CaarFunctorImpl {
   // in the code, we store a pack containing [[scale2 scale2 ...]  scale1 [garbage] ], to be used
   // at pack NUM_LEV_P
 
-  Scalar                      m_scale2g_last_int_pack;
+  PT                      m_scale2g_last_int_pack;
 
   const int           m_num_elems;
   const int           m_rsplit;
@@ -91,15 +95,15 @@ struct CaarFunctorImpl {
   const AdvectionForm m_theta_advection_form;
   const bool          m_pgrad_correction;
 
-  HybridVCoord          m_hvcoord;
-  ElementsState         m_state;
-  ElementsDerivedState  m_derived;
-  ElementsGeometry      m_geometry;
-  EquationOfState       m_eos;
-  Buffers               m_buffers;
-  deriv_type            m_deriv;
+  HybridVCoord                m_hvcoord;
+  ElementsStateST<ST>         m_state;
+  ElementsDerivedStateST<ST>  m_derived;
+  ElementsGeometry            m_geometry;
+  EquationOfState             m_eos;
+  Buffers                     m_buffers;
+  deriv_type                  m_deriv;
 
-  SphereOperators       m_sphere_ops;
+  SphereOperatorsST<ST>       m_sphere_ops;
 
   struct TagPreExchange {};
   struct TagPostExchange {};
@@ -121,9 +125,9 @@ struct CaarFunctorImpl {
 
   Kokkos::Array<std::shared_ptr<BoundaryExchange>, NUM_TIME_LEVELS> m_bes;
 
-  CaarFunctorImpl(const Elements &elements, const Tracers &/* tracers */,
-                  const ReferenceElement &ref_FE, const HybridVCoord &hvcoord,
-                  const SphereOperators &sphere_ops, const SimulationParams& params)
+  CaarFunctorImplST(const ElementsST<ST> &elements, const TracersST<ST>&/* tracers */,
+                    const ReferenceElement &ref_FE, const HybridVCoord &hvcoord,
+                    const SphereOperatorsST<ST> &sphere_ops, const SimulationParams& params)
       : m_num_elems(elements.num_elems())
       , m_rsplit(params.rsplit)
       , m_theta_hydrostatic_mode(params.theta_hydrostatic_mode)
@@ -146,7 +150,7 @@ struct CaarFunctorImpl {
     m_sphere_ops.allocate_buffers(m_tu);
   }
 
-  CaarFunctorImpl(const int num_elems, const SimulationParams& params)
+  CaarFunctorImplST(const int num_elems, const SimulationParams& params)
       : m_num_elems(num_elems)
       , m_rsplit(params.rsplit)
       , m_theta_hydrostatic_mode(params.theta_hydrostatic_mode)
@@ -157,9 +161,9 @@ struct CaarFunctorImpl {
       , m_tu(m_policy_pre)
   {}
 
-  void setup (const Elements &elements, const Tracers &/*tracers*/,
+  void setup (const ElementsST<ST> &elements, const TracersST<ST> &/*tracers*/,
               const ReferenceElement &ref_FE, const HybridVCoord &hvcoord,
-              const SphereOperators &sphere_ops)
+              const SphereOperatorsST<ST> &sphere_ops)
   {
     assert(m_num_elems == elements.num_elems()); // Sanity check
     m_hvcoord = hvcoord;
@@ -219,7 +223,7 @@ struct CaarFunctorImpl {
   void init_buffers (const FunctorsBuffersManager& fbm) {
     Errors::runtime_check(fbm.allocated_size()>=requested_buffer_size(), "Error! Buffers size not sufficient.\n");
 
-    Scalar* mem = reinterpret_cast<Scalar*>(fbm.get_memory());
+    PT* mem = reinterpret_cast<PT*>(fbm.get_memory());
     const int nslots = m_tu.get_num_ws_slots();
 
     // Midpoints scalars
@@ -435,6 +439,7 @@ struct CaarFunctorImpl {
 
     using InfoM = ColInfo<NUM_PHYSICAL_LEV>;
     using InfoI = ColInfo<NUM_INTERFACE_LEV>;
+
     constexpr int LAST_MID_PACK     = InfoM::LastPack;
     constexpr int LAST_MID_PACK_END = InfoM::LastPackEnd;
     constexpr int LAST_INT_PACK     = InfoI::LastPack;
@@ -453,8 +458,8 @@ struct CaarFunctorImpl {
     const auto& phis_y = m_geometry.m_gradphis(ie,1,igp,jgp);
 
     // Compute dpnh_dp_i on surface
-    ScalarValue dpnh_dp_i = 1 + ( ( (u*phis_x + v*phis_y)/g - w) /
-                                (g + (phis_x*phis_x+phis_y*phis_y)/(2*g) ) ) / m_data.dt;
+    auto dpnh_dp_i = 1 + ( ( (u*phis_x + v*phis_y)/g - w) /
+                           (g + (phis_x*phis_x+phis_y*phis_y)/(2*g) ) ) / m_data.dt;
 
     // Update w_i on bottom interface
     // Update v on bottom level
@@ -705,12 +710,13 @@ struct CaarFunctorImpl {
 
   KOKKOS_INLINE_FUNCTION
   void compute_eta_dot_dpn (KernelVariables& kv, const int& igp, const int& jgp) const {
-    auto div_vdp = unpackView(Homme::subview(m_buffers.div_vdp,kv.team_idx,igp,jgp));
-    auto eta_dot_dpdn = unpackView(Homme::subview(m_buffers.eta_dot_dpdn,kv.team_idx,igp,jgp));
+
+    auto div_vdp = ekat::scalarize(Homme::subview(m_buffers.div_vdp,kv.team_idx,igp,jgp));
+    auto eta_dot_dpdn = ekat::scalarize(Homme::subview(m_buffers.eta_dot_dpdn,kv.team_idx,igp,jgp));
 
     // Integrate -vdp
     Dispatch<ExecSpace>::parallel_scan(kv.team,NUM_PHYSICAL_LEV,
-                          [&](const int ilev, ScalarValue& accumulator, const bool last) {
+                          [&](const int ilev, ST& accumulator, const bool last) {
       accumulator += div_vdp(ilev);
       if (last) {
         eta_dot_dpdn(ilev+1) = -accumulator;
@@ -718,7 +724,7 @@ struct CaarFunctorImpl {
     });
 
     // Get the last entry, which is the sum over the whole column
-    const ScalarValue eta_dot_dpdn_last = -eta_dot_dpdn(NUM_INTERFACE_LEV-1);
+    auto eta_dot_dpdn_last = -eta_dot_dpdn(NUM_INTERFACE_LEV-1);
 
     Kokkos::parallel_for(Kokkos::ThreadVectorRange(kv.team,1,NUM_PHYSICAL_LEV),
                          [&](const int ilev) {
@@ -743,20 +749,20 @@ struct CaarFunctorImpl {
     auto v_vadv = unpackView(Homme::subview(m_buffers.v_tens,kv.team_idx,1,igp,jgp));
 
     // TODO: vectorize this code.
-    const ScalarValue facp_1 = 0.5*eta_dot_dpdn(1)/dp(0);
+    const ST facp_1 = 0.5*eta_dot_dpdn(1)/dp(0);
     u_vadv(0) = facp_1*(u(1)-u(0));
     v_vadv(0) = facp_1*(v(1)-v(0));
 
     Kokkos::parallel_for(Kokkos::ThreadVectorRange(kv.team,1,NUM_PHYSICAL_LEV-1),
                          [&](const int k) {
-      const ScalarValue facp = 0.5*eta_dot_dpdn(k+1)/dp(k);
-      const ScalarValue facm = 0.5*eta_dot_dpdn(k)/dp(k);
+      const ST facp = 0.5*eta_dot_dpdn(k+1)/dp(k);
+      const ST facm = 0.5*eta_dot_dpdn(k)/dp(k);
       u_vadv(k) = facp*(u(k+1)-u(k)) + facm*(u(k)-u(k-1));
       v_vadv(k) = facp*(v(k+1)-v(k)) + facm*(v(k)-v(k-1));
     });
 
     constexpr int last = NUM_PHYSICAL_LEV-1;
-    const ScalarValue facm_N = 0.5*eta_dot_dpdn(last)/dp(last);
+    const ST facm_N = 0.5*eta_dot_dpdn(last)/dp(last);
     u_vadv(last) = facm_N*(u(last)-u(last-1));
     v_vadv(last) = facm_N*(v(last)-v(last-1));
   }
@@ -768,7 +774,7 @@ struct CaarFunctorImpl {
     // No point in going till NUM_LEV_P, since vtheta_i=0 at the bottom
     // Also, this is the last time we need vtheta_i, so we can overwrite it.
 
-    auto provider = [&](const int ilev)->Scalar{
+    auto provider = [&](const int ilev)->PT{
       return eta_dot_dpdn(ilev)*vtheta_i(ilev);
     };
 
@@ -884,7 +890,7 @@ struct CaarFunctorImpl {
         //       otherwise, just garbage from previous team
 
         // Compute w_tens
-        Scalar v_grad = v_i(0,igp,jgp,ilev)*grad_w_i(0,igp,jgp,ilev)
+        PT v_grad = v_i(0,igp,jgp,ilev)*grad_w_i(0,igp,jgp,ilev)
                       + v_i(1,igp,jgp,ilev)*grad_w_i(1,igp,jgp,ilev);
         if (m_rsplit==0) {
           w_tens(ilev) += v_grad;
@@ -893,7 +899,7 @@ struct CaarFunctorImpl {
         }
         w_tens(ilev) *= -m_data.scale1;
         w_tens(ilev) += (m_buffers.dpnh_dp_i(kv.team_idx,igp,jgp,ilev)-1) *
-                        (ilev==(NUM_LEV_P-1) ? m_scale2g_last_int_pack : Scalar(m_data.scale2*g));
+                        (ilev==(NUM_LEV_P-1) ? m_scale2g_last_int_pack : PT(m_data.scale2*g));
 
         // Compute phi_tens.
         v_grad = v_i(0,igp,jgp,ilev)*grad_phinh_i(0,igp,jgp,ilev)
@@ -905,7 +911,7 @@ struct CaarFunctorImpl {
         }
         phi_tens(ilev) *= -m_data.scale1;
         phi_tens(ilev) += m_state.m_w_i(kv.ie,m_data.n0,igp,jgp,ilev) *
-                          (ilev==NUM_LEV_P ? m_scale2g_last_int_pack : Scalar(m_data.scale2*g));
+                          (ilev==NUM_LEV_P ? m_scale2g_last_int_pack : PT(m_data.scale2*g));
 
         if (m_data.scale1!=m_data.scale2) {
            // add imex phi_h splitting
@@ -988,11 +994,11 @@ struct CaarFunctorImpl {
     auto vtheta_dp = Homme::subview(m_state.m_vtheta_dp,kv.ie,m_data.n0);
     auto dp        = Homme::subview(m_state.m_dp3d,kv.ie,m_data.n0);
 
-    auto vtheta = [&](const int igp,const int jgp,const int ilev)->Scalar {
+    auto vtheta = [&](const int igp,const int jgp,const int ilev)->PT {
       return vtheta_dp(igp,jgp,ilev) / dp(igp,jgp,ilev);
     };
 
-    auto v_vtheta_dp = [&](const int icomp, const int igp, const int jgp, const int ilev)->Scalar {
+    auto v_vtheta_dp = [&](const int icomp, const int igp, const int jgp, const int ilev)->PT {
       return v(icomp,igp,jgp,ilev) * vtheta_dp(igp,jgp,ilev);
     };
 
@@ -1001,7 +1007,7 @@ struct CaarFunctorImpl {
         using CM = CombineMode;
         // If you want a CombineMode different than Replace, unfortunately you have to specify
         // all the template args, since the CombineMode is the last one...
-        m_sphere_ops.divergence_sphere_cm<CM::Add>(kv,v_vtheta_dp,
+        m_sphere_ops.template divergence_sphere_cm<CM::Add>(kv,v_vtheta_dp,
                                           Homme::subview(m_buffers.theta_tens,kv.team_idx));
       } else {
         m_sphere_ops.divergence_sphere(kv,v_vtheta_dp,
@@ -1042,7 +1048,7 @@ struct CaarFunctorImpl {
         if (m_theta_advection_form==AdvectionForm::NonConservative) {
           // We need a temp, since, if rsplit=0, theta_tens is already storing theta_vadv
 
-          Scalar temp = div_vdp(ilev)*vtheta(igp,jgp,ilev);
+          PT temp = div_vdp(ilev)*vtheta(igp,jgp,ilev);
           temp += m_buffers.grad_tmp(kv.team_idx,0,igp,jgp,ilev)*m_buffers.vdp(kv.team_idx,0,igp,jgp,ilev);
           temp += m_buffers.grad_tmp(kv.team_idx,1,igp,jgp,ilev)*m_buffers.vdp(kv.team_idx,1,igp,jgp,ilev);
           if (m_rsplit>0) {
@@ -1127,7 +1133,7 @@ struct CaarFunctorImpl {
         auto w_i = Homme::subview(m_state.m_w_i,kv.ie,m_data.n0,igp,jgp);
 
         // Use lambda as a provider for w_i*w_i
-        const auto w_sq = [&w_i] (const int ilev) -> Scalar{
+        const auto w_sq = [&w_i] (const int ilev) {
           return w_i(ilev)*w_i(ilev);
         };
 
@@ -1156,7 +1162,7 @@ struct CaarFunctorImpl {
     // for log(exner) below. Store into m_buffers.grad_tmp.
     if (m_pgrad_correction) {
       const auto exner = Homme::subview(m_buffers.exner,kv.team_idx);
-      const auto log_exner = [&exner](const int igp, const int jgp, const int ilev)->Scalar {
+      const auto log_exner = [&exner](const int igp, const int jgp, const int ilev)->PT {
         return log(exner(igp, jgp, ilev));
       };
       m_sphere_ops.gradient_sphere(kv, log_exner,
@@ -1164,7 +1170,6 @@ struct CaarFunctorImpl {
     }
     kv.team_barrier();
 
-    // Scalar w_vor,mgrad,w_gradw,gradw2;
     Kokkos::parallel_for(Kokkos::TeamThreadRange(kv.team,NP*NP),
                          [&](const int idx) {
       const int igp = idx / NP;
@@ -1180,10 +1185,10 @@ struct CaarFunctorImpl {
         auto gradw_y = Homme::subview(m_buffers.v_i,kv.team_idx,1,igp,jgp);
         auto w_i = Homme::subview(m_state.m_w_i,kv.ie,m_data.n0,igp,jgp);
 
-        const auto w_gradw_x = [&gradw_x,&w_i] (const int ilev) -> Scalar {
+        const auto w_gradw_x = [&gradw_x,&w_i] (const int ilev) {
           return gradw_x(ilev)*w_i(ilev);
         };
-        const auto w_gradw_y = [&gradw_y,&w_i] (const int ilev) -> Scalar {
+        const auto w_gradw_y = [&gradw_y,&w_i] (const int ilev) {
           return gradw_y(ilev)*w_i(ilev);
         };
 
@@ -1212,10 +1217,10 @@ struct CaarFunctorImpl {
         ColumnOps::compute_midpoint_values(kv,phinh_i_y,mgrad_y);
       } else {
         const auto dpnh_dp_i = Homme::subview(m_buffers.dpnh_dp_i,kv.team_idx,igp,jgp);
-        const auto prod_x = [&phinh_i_x,&dpnh_dp_i](const int ilev)->Scalar {
+        const auto prod_x = [&phinh_i_x,&dpnh_dp_i](const int ilev)->PT {
           return phinh_i_x(ilev)*dpnh_dp_i(ilev);
         };
-        const auto prod_y = [&phinh_i_y,&dpnh_dp_i](const int ilev)->Scalar {
+        const auto prod_y = [&phinh_i_y,&dpnh_dp_i](const int ilev)->PT {
           return phinh_i_y(ilev)*dpnh_dp_i(ilev);
         };
 
@@ -1283,7 +1288,7 @@ struct CaarFunctorImpl {
       Kokkos::parallel_for(Kokkos::ThreadVectorRange(kv.team,NUM_LEV),
                            [&](const int ilev) {
         // grad(exner)*vtheta*cp
-        Scalar cp_vtheta = PhysicalConstants::cp *
+        PT cp_vtheta = PhysicalConstants::cp *
                            (m_state.m_vtheta_dp(kv.ie,m_data.n0,igp,jgp,ilev) /
                             m_state.m_dp3d(kv.ie,m_data.n0,igp,jgp,ilev));
 
@@ -1340,6 +1345,8 @@ struct CaarFunctorImpl {
   }
 
 };
+
+using CaarFunctorImpl = CaarFunctorImplST<ScalarValue>;
 
 } // Namespace Homme
 
