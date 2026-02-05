@@ -46,6 +46,11 @@ struct TracersST
 
   HashType hash(const int qdp_time_level) const;
 
+  // Copy values from one ElementStateST struct to another. All derivs get set to 0.
+  // NOTE: only imports Q and qdp (for now)
+  template<typename RST>
+  void import_values (const TracersST<RST>& rhs, int tl);
+
 private:
   int nt;
   int ne;
@@ -53,6 +58,33 @@ private:
 };
 
 using Tracers = TracersST<ScalarValue>;
+
+// Copy values from one ElementStateST struct to another. All derivs get set to 0.
+template<typename ST>
+template<typename RST>
+void TracersST<ST>::import_values (const TracersST<RST>& rhs, int tl)
+{
+  if constexpr (std::is_same_v<ST,RST>) {
+    const void* lhs_ptr = this;
+    const void* rhs_ptr = &rhs;
+    if (lhs_ptr==rhs_ptr)
+      return;
+  }
+  auto lhs_q = ekat::scalarize(Q);
+  auto lhs_qdp = ekat::scalarize(qdp);
+
+  auto rhs_q = ekat::scalarize(rhs.Q);
+  auto rhs_qdp = ekat::scalarize(rhs.qdp);
+
+  int nlev = NUM_PHYSICAL_LEV;
+  auto copy = KOKKOS_LAMBDA(int ie, int iq, int ip, int jp, int k) {
+    lhs_qdp(ie,tl,iq,ip,jp,k) = ADValue(rhs_qdp(ie,tl,iq,ip,jp,k));
+
+    lhs_q(ie,iq,ip,jp,k) = ADValue(rhs_q(ie,iq,ip,jp,k));
+  };
+  Kokkos::MDRangePolicy<ExecSpace,Kokkos::Rank<5>> p({0,0,0,0,0},{ne,nt,NP,NP,nlev});
+  Kokkos::parallel_for(p,copy);
+}
 
 } // namespace Homme
 
