@@ -18,24 +18,27 @@
 namespace Homme
 {
 
-class HyperviscosityFunctorImpl;
+template<typename ST>
+class HyperviscosityFunctorImplST;
+
 struct FunctorsBuffersManager;
 class SimulationParams;
 
-class HyperviscosityFunctor
+template<typename ST>
+class HyperviscosityFunctorST
 {
 public:
 
-  HyperviscosityFunctor ();
+  HyperviscosityFunctorST ();
 
-  HyperviscosityFunctor (const int num_elems, const SimulationParams& params);
+  HyperviscosityFunctorST (const int num_elems, const SimulationParams& params);
 
-  ~HyperviscosityFunctor ();
+  ~HyperviscosityFunctorST ();
 
   bool setup_needed() { return !is_setup; }
-  void setup(const ElementsGeometry&     geometry,
-             const ElementsState&        state,
-             const ElementsDerivedState& derived);
+  void setup(const ElementsGeometry&           geometry,
+             const ElementsStateST<ST>&        state,
+             const ElementsDerivedStateST<ST>& derived);
 
   int requested_buffer_size () const;
   void init_buffers    (const FunctorsBuffersManager& fbm);
@@ -46,9 +49,11 @@ public:
 
 private:
 
-  std::unique_ptr<HyperviscosityFunctorImpl>  m_hvf_impl;
+  std::unique_ptr<HyperviscosityFunctorImplST<ST>>  m_hvf_impl;
   bool is_setup;
 };
+
+using HyperviscosityFunctor = HyperviscosityFunctorST<ScalarValue>;
 
 } // namespace Homme
 

@@ -21,8 +21,11 @@ namespace Homme
 class BoundaryExchange;
 struct FunctorsBuffersManager;
 
-class HyperviscosityFunctorImpl
+template<typename ST>
+class HyperviscosityFunctorImplST
 {
+  using PT = PackType<ST>;
+
   struct HyperviscosityData {
     HyperviscosityData(const int hypervis_subcycle_in, const Real nu_ratio1_in, const Real nu_ratio2_in, const Real nu_top_in,
                        const Real nu_in, const Real nu_p_in, const Real nu_s_in,
@@ -63,15 +66,15 @@ class HyperviscosityFunctorImpl
 
     // These are temporary buffers, thrown away at the end of an outer pfor iteration
     // They are minimally sized so to not waste memory.
-    ExecViewUnmanaged<Scalar*   [NP][NP][NUM_BIHARMONIC_LEV]>  laplace_t;
-    ExecViewUnmanaged<Scalar*   [NP][NP][NUM_BIHARMONIC_LEV]>  laplace_dp;
-    ExecViewUnmanaged<Scalar*[2][NP][NP][NUM_BIHARMONIC_LEV]>  laplace_v;
+    ExecViewUnmanaged<PT*   [NP][NP][NUM_BIHARMONIC_LEV]>  laplace_t;
+    ExecViewUnmanaged<PT*   [NP][NP][NUM_BIHARMONIC_LEV]>  laplace_dp;
+    ExecViewUnmanaged<PT*[2][NP][NP][NUM_BIHARMONIC_LEV]>  laplace_v;
 
     // These are persistent buffers, meaning they survive between different parallel regions.
     // They need to be sized to the number of elements, so they can store data for all elements.
-    ExecViewUnmanaged<Scalar*   [NP][NP][NUM_LEV]>  ttens;
-    ExecViewUnmanaged<Scalar*   [NP][NP][NUM_LEV]>  dptens;
-    ExecViewUnmanaged<Scalar*[2][NP][NP][NUM_LEV]>  vtens;
+    ExecViewUnmanaged<PT*   [NP][NP][NUM_LEV]>  ttens;
+    ExecViewUnmanaged<PT*   [NP][NP][NUM_LEV]>  dptens;
+    ExecViewUnmanaged<PT*[2][NP][NP][NUM_LEV]>  vtens;
   };
 
 public:
@@ -83,18 +86,18 @@ public:
   struct TagApplyInvMass {};
   struct TagHyperPreExchange {};
 
-  HyperviscosityFunctorImpl (const SimulationParams&     params,
-                             const ElementsGeometry&     geometry,
-                             const ElementsState&        state,
-                             const ElementsDerivedState& elements);
+  HyperviscosityFunctorImplST (const SimulationParams&           params,
+                               const ElementsGeometry&           geometry,
+                               const ElementsStateST<ST>&        state,
+                               const ElementsDerivedStateST<ST>& elements);
 
-  HyperviscosityFunctorImpl (const int num_elems, const SimulationParams& params);
+  HyperviscosityFunctorImplST (const int num_elems, const SimulationParams& params);
 
   void init_params(const SimulationParams& params);
 
-  void setup(const ElementsGeometry&     geometry,
-             const ElementsState&        state,
-             const ElementsDerivedState& derived);
+  void setup(const ElementsGeometry&           geometry,
+             const ElementsStateST<ST>&        state,
+             const ElementsDerivedStateST<ST>& derived);
 
 
   int requested_buffer_size () const;
@@ -287,14 +290,14 @@ public:
   }
 
 private:
-  const int             m_num_elems;
+  const int                   m_num_elems;
 
-  HyperviscosityData    m_data;
-  ElementsState         m_state;
-  ElementsDerivedState  m_derived;
-  ElementsGeometry      m_geometry;
-  Buffers               m_buffers;
-  SphereOperators       m_sphere_ops;
+  HyperviscosityData          m_data;
+  ElementsStateST<ST>         m_state;
+  ElementsDerivedStateST<ST>  m_derived;
+  ElementsGeometry            m_geometry;
+  Buffers                     m_buffers;
+  SphereOperatorsST<ST>       m_sphere_ops;
 
   // Policies
 #ifndef NDEBUG
@@ -310,8 +313,10 @@ private:
 
   std::shared_ptr<BoundaryExchange> m_be;
 
-  ExecViewManaged<Scalar[NUM_LEV]> m_nu_scale_top;
+  ExecViewManaged<PT[NUM_LEV]> m_nu_scale_top;
 };
+
+using HyperviscosityFunctorImpl = HyperviscosityFunctorImplST<ScalarValue>;
 
 } // namespace Homme
 

@@ -28,8 +28,11 @@ namespace Homme
 class BoundaryExchange;
 struct FunctorsBuffersManager;
 
-class HyperviscosityFunctorImpl
+template<typename ST>
+class HyperviscosityFunctorImplST
 {
+  using PT = PackType<ST>;
+
   // TODO: don't pass nu_ratio1/2. Instead, do like in F90: compute them from
   //       nu, nu_div, and hv_scaling
   struct HyperviscosityData {
@@ -51,8 +54,8 @@ class HyperviscosityFunctorImpl
     Real  nu_ratio2;
 
 #ifdef HOMMEXX_TEST_HYPERVIS_FAD
-    DpFadType rel_perturb;
-    DpFadType nu;
+    ST rel_perturb;
+    ST nu;
 #else
     const Real  nu;
 #endif
@@ -71,11 +74,11 @@ class HyperviscosityFunctorImpl
   };//hyperviscosityData
 
   struct Buffers {
-    ExecViewManaged<Scalar * [NP][NP][NUM_LEV]>    dptens;
-    ExecViewManaged<Scalar * [NP][NP][NUM_LEV]>    ttens;
-    ExecViewManaged<Scalar * [NP][NP][NUM_LEV]>    wtens;
-    ExecViewManaged<Scalar * [NP][NP][NUM_LEV]>    phitens;
-    ExecViewManaged<Scalar * [2][NP][NP][NUM_LEV]> vtens;
+    ExecViewManaged<PT * [NP][NP][NUM_LEV]>    dptens;
+    ExecViewManaged<PT * [NP][NP][NUM_LEV]>    ttens;
+    ExecViewManaged<PT * [NP][NP][NUM_LEV]>    wtens;
+    ExecViewManaged<PT * [NP][NP][NUM_LEV]>    phitens;
+    ExecViewManaged<PT * [2][NP][NP][NUM_LEV]> vtens;
   };//buffers
 
 public:
@@ -89,18 +92,18 @@ public:
   struct TagNutopUpdateStates {};
   struct TagNutopLaplace {};
 
-  HyperviscosityFunctorImpl (const SimulationParams&     params,
-                             const ElementsGeometry&     geometry,
-                             const ElementsState&        state,
-                             const ElementsDerivedState& derived);
+  HyperviscosityFunctorImplST (const SimulationParams&           params,
+                               const ElementsGeometry&           geometry,
+                               const ElementsStateST<ST>&        state,
+                               const ElementsDerivedStateST<ST>& derived);
 
-  HyperviscosityFunctorImpl (const int num_elems, const SimulationParams& params);
+  HyperviscosityFunctorImplST (const int num_elems, const SimulationParams& params);
 
   void init_params(const SimulationParams& params);
 
-  void setup(const ElementsGeometry&     geometry,
-             const ElementsState&        state,
-             const ElementsDerivedState& derived);
+  void setup(const ElementsGeometry&           geometry,
+             const ElementsStateST<ST>&        state,
+             const ElementsDerivedStateST<ST>& derived);
 
   int requested_buffer_size () const;
   void init_buffers (const FunctorsBuffersManager& fbm);
@@ -113,7 +116,8 @@ public:
   // first iter of laplace, const hv
   KOKKOS_INLINE_FUNCTION
   void operator() (const TagFirstLaplaceHV&, const TeamMember& team) const {
-     using IntColumn = decltype(Homme::subview(m_state.m_w_i,0,0,0,0));
+    using Column = decltype(Homme::subview(m_state.m_phinh_i,0,0,0,0));
+    using RefColumn = decltype(Homme::subview(m_state.m_ref_states.phi_i_ref,0,0,0));
 
     KernelVariables kv(team, m_tu);
     // Subtract the reference states from the states
@@ -128,7 +132,8 @@ public:
       auto theta_ref = Homme::subview(m_state.m_ref_states.theta_ref,kv.ie,igp,jgp);
       auto dp_ref    = Homme::subview(m_state.m_ref_states.dp_ref,kv.ie,igp,jgp);
 
-      IntColumn phi_i, phi_i_ref;
+      Column phi_i;
+      RefColumn phi_i_ref;
 
       if (m_process_nh_vars) {
         phi_i = Homme::subview(m_state.m_phinh_i,kv.ie,m_data.np1,igp,jgp);
@@ -171,11 +176,11 @@ public:
 
     if (m_process_nh_vars) {
       // Laplacian of vertical velocity (do not compute last interface)
-      m_sphere_ops.laplace_simple<NUM_LEV,NUM_LEV_P>(kv,
+      m_sphere_ops.template laplace_simple<NUM_LEV,NUM_LEV_P>(kv,
                      Homme::subview(m_state.m_w_i,kv.ie,m_data.np1),
                      Homme::subview(m_buffers.wtens,kv.ie));
       // Laplacian of geopotential (do not compute last interface)
-      m_sphere_ops.laplace_simple<NUM_LEV,NUM_LEV_P>(kv,
+      m_sphere_ops.template laplace_simple<NUM_LEV,NUM_LEV_P>(kv,
                      Homme::subview(m_state.m_phinh_i,kv.ie,m_data.np1),
                      Homme::subview(m_buffers.phitens,kv.ie));
     }//if
@@ -316,7 +321,8 @@ public:
 
   KOKKOS_INLINE_FUNCTION
   void operator()(const TagHyperPreExchange, const TeamMember &team) const {
-    using IntColumn = decltype(Homme::subview(m_state.m_w_i,0,0,0,0));
+    using Column = decltype(Homme::subview(m_state.m_phinh_i,0,0,0,0));
+    using RefColumn = decltype(Homme::subview(m_state.m_ref_states.phi_i_ref,0,0,0));
 
     KernelVariables kv(team, m_tu);
     Kokkos::parallel_for(Kokkos::TeamThreadRange(kv.team, NP * NP),
@@ -332,7 +338,8 @@ public:
       const auto theta_ref = Homme::subview(m_state.m_ref_states.theta_ref,kv.ie, igp, jgp);
       const auto dptens = Homme::subview(m_buffers.dptens,kv.ie, igp, jgp);
 
-      IntColumn phi, phi_ref;
+      Column phi;
+      RefColumn phi_ref;
 
       if (m_process_nh_vars) {
         phi = Homme::subview(m_state.m_phinh_i,kv.ie, m_data.np1, igp, jgp);
@@ -389,16 +396,16 @@ public:
 
 protected:
 
-  const int             m_num_elems;
-  HyperviscosityData    m_data;
-  ElementsState         m_state;
-  ElementsDerivedState  m_derived;
-  ElementsGeometry      m_geometry;
-  SphereOperators       m_sphere_ops;
-  ElementOps            m_elem_ops;
-  EquationOfState       m_eos;
-  Buffers               m_buffers;
-  HybridVCoord          m_hvcoord;
+  const int                   m_num_elems;
+  HyperviscosityData          m_data;
+  ElementsStateST<ST>         m_state;
+  ElementsDerivedStateST<ST>  m_derived;
+  ElementsGeometry            m_geometry;
+  SphereOperatorsST<ST>       m_sphere_ops;
+  ElementOps                  m_elem_ops;
+  EquationOfState             m_eos;
+  Buffers                     m_buffers;
+  HybridVCoord                m_hvcoord;
 
   bool m_process_nh_vars;
 
@@ -414,9 +421,11 @@ protected:
 
   std::shared_ptr<BoundaryExchange> m_be, m_be_tom;
 
-  ExecViewManaged<Scalar[NUM_LEV]> m_nu_scale_top;
+  ExecViewManaged<PT[NUM_LEV]> m_nu_scale_top;
   int m_nu_scale_top_ilev_pack_lim;
-}; //HVfunctorImpl
+}; //HVfunctorImplST
+
+using HyperviscosityFunctorImpl = HyperviscosityFunctorImplST<ScalarValue>;
 
 } // namespace Homme
 
