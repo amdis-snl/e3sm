@@ -14,27 +14,32 @@
 namespace Homme {
 
 class FunctorsBuffersManager;
-class DirkFunctorImpl;
+template<typename ST>
+class DirkFunctorImplST;
+
 class HybridVCoord;
 
-class DirkFunctor {
+template<typename ST>
+class DirkFunctorST {
 public:
-  DirkFunctor(const int nelem);
-  DirkFunctor(const DirkFunctor &) = delete;
-  DirkFunctor &operator=(const DirkFunctor &) = delete;
+  DirkFunctorST(const int nelem);
+  DirkFunctorST(const DirkFunctorST &) = delete;
+  DirkFunctorST &operator=(const DirkFunctorST &) = delete;
 
-  ~DirkFunctor();
+  ~DirkFunctorST();
 
   int requested_buffer_size() const;
   void init_buffers(const FunctorsBuffersManager& fbm);
 
   // Top-level interface, equivalent to compute_stage_value_dirk.
   void run(int nm1, Real alphadt_nm1, int n0, Real alphadt_n0, int np1, Real dt2,
-           const Elements& elements, const HybridVCoord& hvcoord);
+           const ElementsST<ST>& elements, const HybridVCoord& hvcoord);
 
 private:
-  std::unique_ptr<DirkFunctorImpl> m_dirk_impl;
+  std::unique_ptr<DirkFunctorImplST<ST>> m_dirk_impl;
 };
+
+using DirkFunctor = DirkFunctorST<ScalarValue>;
 
 } // Namespace Homme
 
