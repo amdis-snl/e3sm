@@ -56,7 +56,10 @@ struct SerialLimiter<HommexxGPU> {
 #endif
 
 
-class EulerStepFunctorImpl {
+template<typename ST>
+class EulerStepFunctorImplST {
+  using PT = PackType<ST>;
+
   struct EulerStepData {
     EulerStepData ()
       : qsize(-1), limiter_option(0), nu_p(0), nu_q(0), consthv(1)
@@ -83,22 +86,22 @@ class EulerStepFunctorImpl {
     static constexpr int num_3d_scalar_mid_buf = 2;
     static constexpr int num_3d_vector_mid_buf = 1;
 
-    ExecViewUnmanaged<Scalar*   [NP][NP][NUM_LEV]> dp;
-    ExecViewUnmanaged<Scalar*   [NP][NP][NUM_LEV]> dpdissk;
-    ExecViewUnmanaged<Scalar*[2][NP][NP][NUM_LEV]> vstar;
+    ExecViewUnmanaged<PT*   [NP][NP][NUM_LEV]> dp;
+    ExecViewUnmanaged<PT*   [NP][NP][NUM_LEV]> dpdissk;
+    ExecViewUnmanaged<PT*[2][NP][NP][NUM_LEV]> vstar;
   };
 
   using deriv_type = ReferenceElement::deriv_type;
 
-  ElementsGeometry      m_geometry;
-  const int             m_num_elems;
-  Buffers               m_buffers;
-  ElementsDerivedState  m_derived_state;
-  Tracers               m_tracers;
-  deriv_type            m_deriv;
-  HybridVCoord          m_hvcoord;
-  EulerStepData         m_data;
-  SphereOperators       m_sphere_ops;
+  ElementsGeometry            m_geometry;
+  const int                   m_num_elems;
+  Buffers                     m_buffers;
+  ElementsDerivedStateST<ST>  m_derived_state;
+  TracersST<ST>               m_tracers;
+  deriv_type                  m_deriv;
+  HybridVCoord                m_hvcoord;
+  EulerStepData               m_data;
+  SphereOperatorsST<ST>       m_sphere_ops;
 
   Kokkos::TeamPolicy<ExecSpace> m_tv_policy;
   TeamUtils<ExecSpace> m_tu_ne, m_tu_ne_qsize;
@@ -112,18 +115,18 @@ class EulerStepFunctorImpl {
   std::shared_ptr<BoundaryExchange> m_mm_be, m_mmqb_be;
   Kokkos::Array<std::shared_ptr<BoundaryExchange>, 3*Q_NUM_TIME_LEVELS> m_bes;
 
-  enum { m_mem_per_team = 2 * NP * NP * sizeof(Real) };
+  enum { m_mem_per_team = 2 * NP * NP * sizeof(ST) };
 
 public:
 
-  EulerStepFunctorImpl ()
+  EulerStepFunctorImplST ()
    : m_geometry      (Context::singleton().get<ElementsGeometry>())
    , m_num_elems     (m_geometry.num_elems())
-   , m_derived_state (Context::singleton().get<ElementsDerivedState>())
-   , m_tracers       (Context::singleton().get<Tracers>())
+   , m_derived_state (Context::singleton().get<ElementsDerivedStateST<ST>>())
+   , m_tracers       (Context::singleton().get<TracersST<ST>>())
    , m_deriv         (Context::singleton().get<ReferenceElement>().get_deriv())
    , m_hvcoord       (Context::singleton().get<HybridVCoord>())
-   , m_sphere_ops    (Context::singleton().get<SphereOperators>())
+   , m_sphere_ops    (Context::singleton().get<SphereOperatorsST<ST>>())
    , m_tv_policy     (Homme::get_default_team_policy<ExecSpace>(1))
    , m_tu_ne         (Homme::get_default_team_policy<ExecSpace>(1))
    , m_tu_ne_qsize   (Homme::get_default_team_policy<ExecSpace>(1))
@@ -134,7 +137,7 @@ public:
     m_tpref.prefer_larger_team = true;
   }
 
-  EulerStepFunctorImpl (const int num_elems)
+  EulerStepFunctorImplST (const int num_elems)
     : m_num_elems     (num_elems)
     , m_tv_policy     (Homme::get_default_team_policy<ExecSpace>(1))
     , m_tu_ne         (Homme::get_default_team_policy<ExecSpace>(1))
@@ -147,11 +150,11 @@ public:
   {
     m_geometry      = Context::singleton().get<ElementsGeometry>();
     assert(m_num_elems == m_geometry.num_elems()); // Sanity check
-    m_derived_state = Context::singleton().get<ElementsDerivedState>();
-    m_tracers       = Context::singleton().get<Tracers>();
+    m_derived_state = Context::singleton().get<ElementsDerivedStateST<ST>>();
+    m_tracers       = Context::singleton().get<TracersST<ST>>();
     m_deriv         = Context::singleton().get<ReferenceElement>().get_deriv();
     m_hvcoord       = Context::singleton().get<HybridVCoord>();
-    m_sphere_ops    = Context::singleton().get<SphereOperators>();
+    m_sphere_ops    = Context::singleton().get<SphereOperatorsST<ST>>();
 
     m_kernel_will_run_limiters = false;
     m_tpref.prefer_larger_team = true;
@@ -166,7 +169,7 @@ public:
     m_data.consthv = (params.hypervis_scaling == 0);
 
     if (m_data.limiter_option == 4) {
-      std::string msg = "[EulerStepFunctorImpl::reset]:";
+      std::string msg = "[EulerStepFunctorImplST::reset]:";
       msg += "limiter_option=4 is not yet supported in C++. ";
       msg += "The program should have errored out earlier though. Please, investigate.";
       Errors::runtime_abort(msg,Errors::err_not_implemented);
@@ -212,7 +215,7 @@ public:
     constexpr int size_scalar =   NP*NP*NUM_LEV;
     const int ne = m_geometry.num_elems();
 
-    Scalar* mem = reinterpret_cast<Scalar*>(fbm.get_memory());
+    PT* mem = reinterpret_cast<PT*>(fbm.get_memory());
 
     m_buffers.dp      = decltype(m_buffers.dp)(mem,ne);
     mem += size_scalar*ne;
@@ -702,7 +705,7 @@ private:
                            : (c.DSSopt==DSSOption::OMEGA
                                  ? &omega.impl_map().reference(kv.ie,i,j,0)
                                  : &divdp.impl_map().reference(kv.ie,i,j,0));
-        ExecViewUnmanaged<Scalar[NUM_LEV]> f_dss (f_dss_ptr);
+        ExecViewUnmanaged<PT[NUM_LEV]> f_dss (f_dss_ptr);
         Kokkos::parallel_for(
           Kokkos::ThreadVectorRange(kv.team, NUM_LEV),
           [&] (const int& k) {
@@ -803,15 +806,15 @@ private:
 
     // Size doesn't matter; just need to get a pointer to the start of the
     // shared memory.
-    ScalarValue* const team_data = Memory<ExecSpace>::get_shmem<ScalarValue>(team);
+    ST* const team_data = Memory<ExecSpace>::get_shmem<ST>(team);
 
     const auto f = [&] (const int ilev) {
       const int vpi = ilev / VECTOR_SIZE, vsi = ilev % VECTOR_SIZE;
 
-      ScalarValue* const data = team_data ?
+      ST* const data = team_data ?
       team_data + 2 * NP2 * team.team_rank() :
       nullptr;
-      Memory<ExecSpace>::AutoArray<ScalarValue, NP2> x(data), c(data + NP2);
+      Memory<ExecSpace>::AutoArray<ST, NP2> x(data), c(data + NP2);
 
       Dispatch<>::parallel_for_NP2(team, [&] (const int& k) {
           const int i = k / NP, j = k % NP;
@@ -820,14 +823,14 @@ private:
           x[k] = ptens(i,j,vpi)[vsi]/dpm;
         });
 
-      ScalarValue2 sums;
-      Dispatch<>::parallel_reduce_NP2(team, [&] (const int& k, ScalarValue2& sums) {
+      TwoT<ST> sums;
+      Dispatch<>::parallel_reduce_NP2(team, [&] (const int& k, TwoT<ST>& sums) {
           sums.v[0] += x[k]*c[k];
           sums.v[1] += c[k];
         }, sums);
       if (sums.v[1] <= 0) return; //! this should never happen, but if it does, dont limit
 
-      ScalarValue minp = qlim(0,vpi)[vsi], maxp = qlim(1,vpi)[vsi];
+      ST minp = qlim(0,vpi)[vsi], maxp = qlim(1,vpi)[vsi];
       // This is a slightly different spot than where this comment came from,
       // but it's logically equivalent to do it here.
       //! IMPOSE ZERO THRESHOLD.  do this here so it can be turned off for
@@ -876,17 +879,17 @@ public: // Expose for unit testing.
                            const Array2Lvl& qlim, const ArrayGllLvl& ptens) {
     struct Limit {
       KOKKOS_INLINE_FUNCTION bool
-      operator() (const TeamMember& team, const ScalarValue& mass,
-                  const ScalarValue& minp, const ScalarValue& maxp,
-                  ScalarValue* KOKKOS_RESTRICT const x,
-                  ScalarValue const* KOKKOS_RESTRICT const c) const {
+      operator() (const TeamMember& team, const ST& mass,
+                  const ST& minp, const ST& maxp,
+                  ST* KOKKOS_RESTRICT const x,
+                  ST const* KOKKOS_RESTRICT const c) const {
         const int maxiter = NP*NP - 1;
         const Real tol_limiter = 5e-14;
 
         for (int iter = 0; iter < maxiter; ++iter) {
-         ScalarValue addmass = 0;
-          Dispatch<>::parallel_reduce_NP2(team, [&] (const int& k, ScalarValue& addmass) {
-              ScalarValue delta = 0;
+         ST addmass = 0;
+          Dispatch<>::parallel_reduce_NP2(team, [&] (const int& k, ST& addmass) {
+              ST delta = 0;
               if (x[k] > maxp) {
                 delta = x[k] - maxp;
                 x[k] = maxp;
@@ -901,24 +904,24 @@ public: // Expose for unit testing.
             break;
 
           if (addmass > 0) {
-            ScalarValue weightssum = 0;
-            Dispatch<>::parallel_reduce_NP2(team, [&] (const int& k, ScalarValue& weightssum) {
+            ST weightssum = 0;
+            Dispatch<>::parallel_reduce_NP2(team, [&] (const int& k, ST& weightssum) {
                 if (x[k] < maxp)
                   weightssum += c[k];
               }, weightssum);
             const auto adw = addmass/weightssum;
             Dispatch<>::parallel_for_NP2(team, [&] (const int& k) {
-                x[k] += (x[k] < maxp) ? adw : ScalarValue(0);
+                x[k] += (x[k] < maxp) ? adw : ST(0);
               });
           } else {
-            ScalarValue weightssum = 0;
-            Dispatch<>::parallel_reduce_NP2(team, [&] (const int& k, ScalarValue& weightssum) {
+            ST weightssum = 0;
+            Dispatch<>::parallel_reduce_NP2(team, [&] (const int& k, ST& weightssum) {
                 if (x[k] > minp)
                   weightssum += c[k];
               }, weightssum);
             const auto adw = addmass/weightssum;
             Dispatch<>::parallel_for_NP2(team, [&] (const int& k) {
-                x[k] += (x[k] > minp) ? adw : ScalarValue(0);
+                x[k] += (x[k] > minp) ? adw : ST(0);
               });
           }
         }
@@ -937,14 +940,14 @@ public: // Expose for unit testing.
                         const Array2Lvl& qlim, const ArrayGllLvl& ptens) {
     struct Limit {
       KOKKOS_INLINE_FUNCTION bool
-      operator() (const TeamMember& team, const ScalarValue& /* mass */,
-                  const ScalarValue& minp, const ScalarValue& maxp,
-                  ScalarValue* KOKKOS_RESTRICT const x,
-                  ScalarValue const* KOKKOS_RESTRICT const c) const {
+      operator() (const TeamMember& team, const ST& /* mass */,
+                  const ST& minp, const ST& maxp,
+                  ST* KOKKOS_RESTRICT const x,
+                  ST const* KOKKOS_RESTRICT const c) const {
         // Clip.
-        ScalarValue2 reds;
-        Dispatch<>::parallel_reduce_NP2(team, [&] (const int& k, ScalarValue2& reds) {
-            ScalarValue delta = 0;
+        TwoT<ST> reds;
+        Dispatch<>::parallel_reduce_NP2(team, [&] (const int& k, TwoT<ST>& reds) {
+            ST delta = 0;
             if (x[k] > maxp) {
               delta = x[k] - maxp;
               x[k] = maxp;
@@ -957,12 +960,12 @@ public: // Expose for unit testing.
             reds.v[0] += delta*c[k];
           }, reds);
         if (reds.v[0] == 0) return false;
-        const ScalarValue addmass = reds.v[0];
+        const ST addmass = reds.v[0];
 
         if (addmass > 0) {
-          ScalarValue fac = 0;
+          ST fac = 0;
           // Get sum of weights. Don't store them; we don't want another array.
-          Dispatch<>::parallel_reduce_NP2(team, [&] (const int& k, ScalarValue& fac) {
+          Dispatch<>::parallel_reduce_NP2(team, [&] (const int& k, ST& fac) {
               fac += c[k]*(maxp - x[k]);
             }, fac);
           if (fac > 0) {
@@ -973,8 +976,8 @@ public: // Expose for unit testing.
               });
           }
         } else {
-          ScalarValue fac = 0;
-          Dispatch<>::parallel_reduce_NP2(team, [&] (const int& k, ScalarValue& fac) {
+          ST fac = 0;
+          Dispatch<>::parallel_reduce_NP2(team, [&] (const int& k, ST& fac) {
               fac += c[k]*(x[k] - minp);
             }, fac);
           if (fac > 0) {
@@ -1000,22 +1003,24 @@ template <int limiter_option, typename ArrayGll, typename ArrayGllLvl, typename 
 KOKKOS_INLINE_FUNCTION void SerialLimiter<ExecSpace>
 ::run (const ArrayGll& sphweights, const ArrayGllLvl& idpmass,
        const Array2Lvl& iqlim, const ArrayGllLvl& iptens,
-       const Array2GllLvl& irwrk) {
+       const Array2GllLvl& irwrk)
+{
+  using ST = std::remove_const_t<std::remove_reference_t<decltype(idpmass(0,0,0)[0])>>;
 
 #define forij for (int i = 0; i < NP; ++i) for (int j = 0; j < NP; ++j)
 #define forlev for (int lev = 0; lev < NUM_PHYSICAL_LEV; ++lev)
 
-  ViewUnmanaged<const ScalarValue[NP][NP][NUM_LEV*VECTOR_SIZE]>
+  ViewUnmanaged<const ST[NP][NP][NUM_LEV*VECTOR_SIZE]>
     dpmass(&idpmass(0,0,0)[0]);
-  ViewUnmanaged<ScalarValue[NP][NP][NUM_LEV*VECTOR_SIZE]>
+  ViewUnmanaged<ST[NP][NP][NUM_LEV*VECTOR_SIZE]>
     c(&irwrk(0,0,0,0)[0]);
-  ViewUnmanaged<ScalarValue[2][NUM_LEV*VECTOR_SIZE]>
+  ViewUnmanaged<ST[2][NUM_LEV*VECTOR_SIZE]>
     qlim(&iqlim(0,0)[0]);
 
   if (limiter_option == 8) {
-    ViewUnmanaged<ScalarValue[NP][NP][NUM_LEV*VECTOR_SIZE]>
+    ViewUnmanaged<ST[NP][NP][NUM_LEV*VECTOR_SIZE]>
       x(&iptens(0,0,0)[0]);
-    ScalarValue mass[NUM_PHYSICAL_LEV] = {0}, sumc[NUM_PHYSICAL_LEV] = {0};
+    ST mass[NUM_PHYSICAL_LEV] = {0}, sumc[NUM_PHYSICAL_LEV] = {0};
 
     forij {
       const auto& sphij = sphweights(i,j);
@@ -1042,12 +1047,12 @@ KOKKOS_INLINE_FUNCTION void SerialLimiter<ExecSpace>
     int donecnt = 0;
     char done[NUM_PHYSICAL_LEV] = {0};
     for (int iter = 0; iter < maxiter; ++iter) {
-      ScalarValue addmass[NUM_PHYSICAL_LEV] = {0};
+      ST addmass[NUM_PHYSICAL_LEV] = {0};
 
       forij {
         VECTOR_SIMD_LOOP forlev {
           auto& xij = x(i,j,lev);
-          ScalarValue delta = 0;
+          ST delta = 0;
           if (xij < qlim(0,lev)) {
             delta = xij - qlim(0,lev);
             xij = qlim(0,lev);
@@ -1068,7 +1073,7 @@ KOKKOS_INLINE_FUNCTION void SerialLimiter<ExecSpace>
       }
       if (donecnt == NUM_PHYSICAL_LEV) break;
 
-      ScalarValue f[NUM_PHYSICAL_LEV] = {0};
+      ST f[NUM_PHYSICAL_LEV] = {0};
       forij {
         VECTOR_SIMD_LOOP forlev {
           if (done[lev]) continue;
@@ -1107,11 +1112,11 @@ KOKKOS_INLINE_FUNCTION void SerialLimiter<ExecSpace>
       }
     }
   } else if (limiter_option == 9) {
-    ViewUnmanaged<ScalarValue[NP][NP][NUM_LEV*VECTOR_SIZE]>
+    ViewUnmanaged<ST[NP][NP][NUM_LEV*VECTOR_SIZE]>
       ptens(&iptens(0,0,0)[0]);
-    ViewUnmanaged<ScalarValue[NP][NP][NUM_LEV*VECTOR_SIZE]>
+    ViewUnmanaged<ST[NP][NP][NUM_LEV*VECTOR_SIZE]>
       x(&irwrk(1,0,0,0)[0]);
-    ScalarValue mass[NUM_PHYSICAL_LEV] = {0}, sumc[NUM_PHYSICAL_LEV] = {0};
+    ST mass[NUM_PHYSICAL_LEV] = {0}, sumc[NUM_PHYSICAL_LEV] = {0};
 
     forij {
       const auto& sphij = sphweights(i,j);
@@ -1133,7 +1138,7 @@ KOKKOS_INLINE_FUNCTION void SerialLimiter<ExecSpace>
         qlim(1,lev) = mass[lev]/sumc[lev];
     }
 
-    ScalarValue addmass[NUM_PHYSICAL_LEV] = {0};
+    ST addmass[NUM_PHYSICAL_LEV] = {0};
     // This is here to be BFB with the Fortran impl. When BFB is no longer
     // required, it is almost certainly better to remove this variable and the
     // conditionals on it.
@@ -1142,7 +1147,7 @@ KOKKOS_INLINE_FUNCTION void SerialLimiter<ExecSpace>
     forij {
       VECTOR_SIMD_LOOP forlev {
         auto& xij = x(i,j,lev);
-        ScalarValue delta = 0;
+        ST delta = 0;
         if (xij < qlim(0,lev)) {
           delta = xij - qlim(0,lev);
           xij = qlim(0,lev);
@@ -1157,7 +1162,7 @@ KOKKOS_INLINE_FUNCTION void SerialLimiter<ExecSpace>
       }
     }
 
-    ScalarValue f[NUM_PHYSICAL_LEV] = {0};
+    ST f[NUM_PHYSICAL_LEV] = {0};
     forij {
       VECTOR_SIMD_LOOP forlev {
         auto& xij = x(i,j,lev);

@@ -14,16 +14,19 @@
 
 namespace Homme {
 
-class EulerStepFunctorImpl;
+template<typename ST>
+class EulerStepFunctorImplST;
+
 struct FunctorsBuffersManager;
 
-class EulerStepFunctor {
-  std::shared_ptr<EulerStepFunctorImpl> p_;
+template<typename ST>
+class EulerStepFunctorST {
+  std::shared_ptr<EulerStepFunctorImplST<ST>> p_;
 
 public:
-  EulerStepFunctor();
+  EulerStepFunctorST();
 
-  EulerStepFunctor(const int num_elems);
+  EulerStepFunctorST(const int num_elems);
 
   bool setup_needed() { return !is_setup; }
   void setup();
@@ -49,6 +52,8 @@ public:
 private:
   bool is_setup;
 };
+
+using EulerStepFunctor = EulerStepFunctorST<ScalarValue>;
 
 } // namespace Homme
 
