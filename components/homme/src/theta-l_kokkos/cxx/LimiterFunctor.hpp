@@ -128,9 +128,9 @@ struct LimiterFunctor {
       });
 
       ScalarValue min_diff = Kokkos::reduction_identity<ScalarValue>::min();
-      auto diff_as_real = Homme::unpackView(diff);
-      auto dp_as_real   = Homme::unpackView(dp);
-      auto dp0_as_real  = Homme::unpackView(dp0);
+      auto diff_scalarized = Homme::unpackView(diff);
+      auto dp_scalarized   = Homme::unpackView(dp);
+      auto dp0_scalarized  = Homme::unpackView(dp0);
       Kokkos::Min<ScalarValue,ExecSpace> reducer(min_diff);
       Kokkos::parallel_reduce(Kokkos::ThreadVectorRange(kv.team,NUM_PHYSICAL_LEV),
                               [&](const int k,ScalarValue& result) {

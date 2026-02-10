@@ -208,7 +208,7 @@ struct EndpointSnapshots {
     // Direct access.
 
     KOKKOS_INLINE_FUNCTION
-    Real get_dp_real (const int t, const int i, const int j, const int k) const {
+    auto get_dp_real (const int t, const int i, const int j, const int k) const {
       return dps[t](i,j, k / VECTOR_SIZE)[k % VECTOR_SIZE];
     }
 
@@ -264,7 +264,7 @@ struct ManySnapshots {
     {}
 
     KOKKOS_INLINE_FUNCTION
-    Real get_dp_real (const int t, const int i, const int j, const int k) const {
+    auto get_dp_real (const int t, const int i, const int j, const int k) const {
       const int os = 2*t, kp = k / VECTOR_SIZE, ks = k % VECTOR_SIZE;
       return ((1 - beta[t])*dps[os  ](i,j,kp)[ks]
               +    beta[t] *dps[os+1](i,j,kp)[ks]);
@@ -443,7 +443,7 @@ eta_interp_eta (const KernelVariables& kv, const int nlev, const CRnV& hy_etai,
 //     p_dep_mid(eta_arr_mid) = I[p_dep_mid(eta_ref_mid)](eta_arr_mid)
 KOKKOS_FUNCTION void
 eta_interp_horiz (const KernelVariables& kv, const int nlev,
-                  const CRnVR& hy_etai, const CRnV& x, const CRelnV& y,
+                  const CRnV& hy_etai, const CRnV& x, const CRelnV& y,
                   const RnV& xwrk, const RelnV& ywrk,
                   const CRelnV& xi, const RelnV& yi) {
   const auto& xbdy = xwrk;
@@ -497,7 +497,7 @@ eta_interp_horiz (const KernelVariables& kv, const int nlev,
 */
 KOKKOS_FUNCTION void
 eta_to_dp (const KernelVariables& kv, const int nlev,
-           const Real hy_ps0, const CRnVR& hy_bi, const CRnVR& hy_etai,
+           const Real hy_ps0, const CRnVR& hy_bi, const CRnV& hy_etai,
            const CRelV& ps, const CRelnV& etai, const RelnV& wrk,
            const RelnV& dp) {
   const int nlevp = nlev + 1;
@@ -851,7 +851,7 @@ KOKKOS_FUNCTION void calc_vel_horiz_formula_node_ref_mid (
 // vertical velocity estimates at interface nodes.
 KOKKOS_FUNCTION void calc_eta_dot_formula_node_ref_int (
   const KernelVariables& kv, const SphereOperators& sphere_ops,
-  const CRNVR<NUM_INTERFACE_LEV>& hyetai, const CSNV<NUM_LEV>& hyetam,
+  const CRNV<NUM_INTERFACE_LEV>& hyetai, const CSNV<NUM_LEV>& hyetam,
   // Velocities are at midpoints. Final eta_dot entry is ignored.
   const Real dtsub, const CS2elNlev vsph[2], const CSelNlevp eta_dot[2],
   const SelNlevp& wrk1, const S2elNlevp& vwrk1,

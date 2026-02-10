@@ -240,7 +240,7 @@ void HybridVCoord::compute_deltas ()
 void HybridVCoord::compute_eta ()
 {
   // Create device views
-  etai = ExecViewManaged<Real[NUM_INTERFACE_LEV]>("Eta coordinate at interfaces");
+  etai = ExecViewManaged<ScalarValue[NUM_INTERFACE_LEV]>("Eta coordinate at interfaces");
   etam = ExecViewManaged<Scalar[NUM_LEV]>("Eta coordinate at midpoints");
   exner0 = ExecViewManaged<Scalar[NUM_LEV]>("exner0");
 
@@ -263,7 +263,7 @@ void HybridVCoord::compute_eta ()
   });
   Kokkos::parallel_for(Kokkos::RangePolicy<ExecSpace>(0,NUM_INTERFACE_LEV),
                        KOKKOS_LAMBDA(const int& ilev){
-    l_etai(ilev) = ADValue(l_hybrid_ai(ilev) + l_hybrid_bi(ilev));
+    l_etai(ilev) = l_hybrid_ai(ilev) + l_hybrid_bi(ilev);
   });
 }
 

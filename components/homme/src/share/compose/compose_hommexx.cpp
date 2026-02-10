@@ -4,8 +4,6 @@
 
 namespace homme {
 
-islmpi::IslMpi<>::Ptr get_isl_mpi_singleton();
-
 bool cedr_should_run();
 void cedr_sl_run_global();
 void cedr_sl_run_local(const int limiter_option);
@@ -47,11 +45,6 @@ void set_views (const SetView<HommexxReal***>& spheremp,
   slmm_throw_if(true, "Running a Hommexx code path with the non-Hommexx build"
                 " is not supported.\n");
 #endif
-}
-
-void set_hvcoord (const HommexxReal* etai, const HommexxReal* etam) {
-  auto& cm = *get_isl_mpi_singleton();
-  islmpi::set_hvcoord(cm, etai, etam);
 }
 
 void interp_v_update (const int step, const HommexxReal dtsub) {

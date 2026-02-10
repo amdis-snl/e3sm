@@ -298,7 +298,7 @@ int test_deta_caas (TestData& td) {
     };
 
     // nlev+1 deltas: deta = diff([0, etam, 1])
-    ExecView<Real*> deta_ref("deta_ref", nlev+1);
+    ExecView<ScalarValue*> deta_ref("deta_ref", nlev+1);
     ExecView<ScalarValue***> deta("deta",NP,NP,nlev+1), wrk("wrk",NP,NP,nlev+1);
     nerr += make_random_deta(td, deta_tol, deta_ref);
 
@@ -329,7 +329,7 @@ int test_deta_caas (TestData& td) {
 
     { // Modify one etam and test that only adjacent intervals change beyond eps.
       // nlev midpoints
-      ExecView<Real*> etam_ref("etam_ref",nlev);
+      ExecView<ScalarValue*> etam_ref("etam_ref",nlev);
       const auto her = Kokkos::create_mirror_view(etam_ref);
       const auto hder = cti::cmvdc(deta_ref);
       {
@@ -347,7 +347,7 @@ int test_deta_caas (TestData& td) {
       for (int trial = 0; trial < 2; ++trial) {
         for (int i = 0; i < NP; ++i)
           for (int j = 0; j < NP; ++j) {
-            for (int k = 0; k < nlev; ++k) etam[k] = her(k);
+            for (int k = 0; k < nlev; ++k) etam[k] = ADValue(her(k));
             // Perturb one level.
             const int idx = get_idx(i,j);
             etam[idx] += trial == 0 ? 1.1 : -13.1;
@@ -491,7 +491,7 @@ int test_limit_etai (TestData& td) {
   for (const int nlev : {143, 128, 81}) {
     const Real deta_tol = 1e5*td.eps/nlev;
 
-    ExecView<Real*> hy_etai("hy_etai",nlev+1), detai("detai",nlev);
+    ExecView<ScalarValue*> hy_etai("hy_etai",nlev+1), detai("detai",nlev);
     ExecView<ScalarValue***> wrk1("wrk1",NP,NP,nlev), wrk2("wrk2",NP,NP,nlev);
     ExecView<ScalarValue***> etai("etai",NP,NP,nlev);
 
@@ -565,7 +565,7 @@ int test_eta_interp (TestData& td) {
     HybridLevels h;
     fill(h, nlev);
 
-    ExecView<Real*> hy_etai("hy_etai",nlev+1);
+    ExecView<ScalarValue*> hy_etai("hy_etai",nlev+1);
     ExecView<ScalarValue***> x("x",NP,NP,nlev), y("y",NP,NP,nlev);
     ExecView<ScalarValue***> xi("xi",NP,NP,nlev+1), yi("yi",NP,NP,nlev+1);
     ExecView<ScalarValue***> xwrk("xwrk",NP,NP,nlev+2), ywrk("ywrk",NP,NP,nlev+2);
@@ -673,7 +673,8 @@ int test_eta_to_dp (TestData& td) {
     HybridLevels h;
     fill(h, nlev);
 
-    ExecView<Real*> hy_bi("hy_bi",nlev+1), hy_etai("hy_etai",nlev+1);
+    ExecView<Real*> hy_bi("hy_bi",nlev+1);
+    ExecView<ScalarValue*> hy_etai("hy_etai",nlev+1);
     ExecView<ScalarValue***> etai("etai",NP,NP,nlev+1), wrk("wrk",NP,NP,nlev+1);
     ExecView<ScalarValue***> dp("dp",NP,NP,nlev);
     ExecView<ScalarValue[NP][NP]> ps("ps");
@@ -764,7 +765,7 @@ struct Snapshots {
     {}
 
     KOKKOS_INLINE_FUNCTION
-    Real get_dp_real(const int t, const int i, const int j, const int k) const {
+    auto get_dp_real(const int t, const int i, const int j, const int k) const {
       return dps[t](i,j, k / VECTOR_SIZE)[k % VECTOR_SIZE];
     }
   };
@@ -897,7 +898,7 @@ int test_calc_etadot_from_etadotdpdnint (TestData& td) {
     ExecView<ScalarValue[NP][NP]> ps("ps");
     const Real ps0 = h.ps0;
     ExecView<Scalar*> db_deta_i("db_deta_i", calc_npack(nlev+1));
-    Kokkos::deep_copy(db_deta_i, h.b_eta);
+    Kokkos::deep_copy(db_deta_i, ScalarValue(h.b_eta));
 
     for (int trial = 0; trial < 2; ++trial) {
       const auto ps_m = Kokkos::create_mirror_view(ps);

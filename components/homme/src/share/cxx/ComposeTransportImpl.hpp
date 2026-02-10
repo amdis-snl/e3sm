@@ -348,10 +348,10 @@ struct ComposeTransportImpl {
   //      return w (yk - ykm1)/dx1 + (1-w) (ykp1 - yk)/dx2.
   // This impl is retained for BFBness in the original trajectory algorithm with
   // the F90. The next impl is preferred in practice.
-  template <typename Real>
-  KOKKOS_FUNCTION static Real approx_derivative1 (
-    const Real& xkm1, const Real& xk, const Real& xkp1,
-    const Real& ykm1, const Real& yk, const Real& ykp1)
+  template <typename XST, typename YST>
+  KOKKOS_FUNCTION static YST approx_derivative1 (
+    const XST& xkm1, const XST& xk, const XST& xkp1,
+    const YST& ykm1, const YST& yk, const YST& ykp1)
   {
     return (ykm1*((1/(xkm1 - xk))*((xk - xkp1)/(xkm1 - xkp1))) +
             yk  *(1/(xk - xkm1) + 1/(xk - xkp1)) +
@@ -360,10 +360,10 @@ struct ComposeTransportImpl {
 
   // In infinite precision, same as above. Impl as the weighted average of
   // 1-sided finite differences to reduce ops.
-  template <typename Real>
-  KOKKOS_FUNCTION static Real approx_derivative (
-    const Real& xkm1, const Real& xk, const Real& xkp1,
-    const Real& ykm1, const Real& yk, const Real& ykp1)
+  template <typename XST, typename YST>
+  KOKKOS_FUNCTION static auto approx_derivative (
+    const XST& xkm1, const XST& xk, const XST& xkp1,
+    const YST& ykm1, const YST& yk, const YST& ykp1)
   {
     const auto
       dx1 = xk - xkm1,

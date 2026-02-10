@@ -96,6 +96,12 @@ int all_reduce (const Parallel& p, const T* sendbuf, T* rcvbuf, int count, MPI_O
 } // namespace mpi
 
 namespace islmpi {
+
+#ifdef HOMMEXX_ENABLE_FAD_TYPES
+template<typename T, int N>
+Homme::Real ADValue(const Homme::FadType& x) {return x.val();}
+#endif
+
 // Meta and bulk data for the interpolation SL method with special comm pattern.
 
 #ifdef COMPOSE_BOUNDS_CHECK
@@ -769,8 +775,40 @@ void step(
   Real* dep_points_r,
   Real* q_min_r, Real* q_max_r);
 
-template <typename MT = ko::MachineTraits>
-void set_hvcoord(IslMpi<MT>& cm, const Real* etai, const Real* etam);
+inline Real Compose_ADValue(Real x) {return x;}
+
+template <typename Sc, typename MT = ko::MachineTraits>
+void set_hvcoord(IslMpi<MT>& cm, const Sc* etai, const Sc* etam) {
+  if (cm.etam.size() > 0) return;
+#if defined COMPOSE_HORIZ_OPENMP
+# pragma omp barrier
+# pragma omp master
+#endif
+  {
+    slmm_assert(cm.nlev > 0);
+    cm.etai_beg = Compose_ADValue(etai[0]);
+    cm.etai_end = Compose_ADValue(etai[cm.nlev]);
+    cm.etai = typename IslMpi<MT>::template ArrayD<Real*>("etai", cm.nlev+1);
+    cm.etam = typename IslMpi<MT>::template ArrayD<Real*>("etam", cm.nlev);
+    const auto hi = ko::create_mirror_view(cm.etai);
+    const auto hm = ko::create_mirror_view(cm.etam);
+    for (int k = 0; k <= cm.nlev; ++k) {
+      hi(k) = Compose_ADValue(etai[k]);
+      slmm_assert(k == 0 || hi(k) > hi(k-1));
+      slmm_assert(hi(k) > 0 && hi(k) < 1);
+    }
+    for (int k = 0; k < cm.nlev; ++k) {
+      hm(k) = Compose_ADValue(etam[k]);
+      slmm_assert(k == 0 || hm(k) > hm(k-1));
+      slmm_assert(hm(k) > 0 && hm(k) < 1);
+    }
+    ko::deep_copy(cm.etai, hi);
+    ko::deep_copy(cm.etam, hm);
+  }
+#if defined COMPOSE_HORIZ_OPENMP
+# pragma omp barrier
+#endif
+}
 
 template <typename MT = ko::MachineTraits>
 void interp_v_update(

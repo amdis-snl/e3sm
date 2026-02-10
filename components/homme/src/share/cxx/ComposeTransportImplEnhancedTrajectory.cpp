@@ -590,7 +590,7 @@ void ComposeTransportImpl
   assert(params.dt_tracer_factor > 0);
 
   const auto etai = cmvdc(m_hvcoord.etai);
-  const Real deta_ave = (etai(num_phys_lev) - etai(0)) / num_phys_lev;
+  const Real deta_ave = ADValue((etai(num_phys_lev) - etai(0)) / num_phys_lev);
   m_data.deta_tol = 10*std::numeric_limits<Real>::epsilon()*deta_ave;
 
   // diff(etai)
@@ -609,9 +609,9 @@ void ComposeTransportImpl
   {
     const auto m = Kokkos::create_mirror_view(m_data.hydetam_ref);
     const int nlev = num_phys_lev;
-    m(0) = etam(0) - etai(0);
-    for (int k = 1; k < nlev; ++k) m(k) = etam(k) - etam(k-1);
-    m(nlev) = etai(nlev) - etam(nlev-1);
+    m(0) = ADValue(etam(0) - etai(0));
+    for (int k = 1; k < nlev; ++k) m(k) = ADValue(etam(k) - etam(k-1));
+    m(nlev) = ADValue(etai(nlev) - etam(nlev-1));
     Kokkos::deep_copy(m_data.hydetam_ref, m);
   }
 
@@ -632,7 +632,7 @@ void ComposeTransportImpl
   m_data.db_deta_i = decltype(m_data.db_deta_i)("db_deta_i");
   {
     const auto m_p = Kokkos::create_mirror_view(m_data.db_deta_i);
-    HostViewUnmanaged<Real[NUM_INTERFACE_LEV]> m(pack2real(m_p));
+    HostViewUnmanaged<ScalarValue[NUM_INTERFACE_LEV]> m(pack2real(m_p));
     m(0) = m(NUM_INTERFACE_LEV-1) = 0; // unused
     const auto hybi = cmvdc(m_hvcoord.hybrid_bi);
     for (int k = 2; k < NUM_PHYSICAL_LEV-1; ++k)
@@ -654,8 +654,8 @@ void ComposeTransportImpl::observe_velocity (const TimeLevel& tl, const int step
     // This is either (1) the first vertical remap step in the tracer step or
     // (2) the first dynamics step and we're running vertically Eulerian. In
     // either case, zero the quantities accumulated over the step.
-    Kokkos::deep_copy(m_data.dp_extra_snapshots, 0);
-    Kokkos::deep_copy(m_data.vel_extra_snapshots, 0);
+    Kokkos::deep_copy(m_data.dp_extra_snapshots, ScalarValue(0));
+    Kokkos::deep_copy(m_data.vel_extra_snapshots, ScalarValue(0));
   }
 
   const auto& state = Context::singleton().get<ElementsState>();

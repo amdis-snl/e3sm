@@ -300,25 +300,4 @@ void ComposeTransportImpl::run (const TimeLevel& tl, const Real dt) {
 
 } // namespace Homme
 
-#ifdef HOMMEXX_ENABLE_FAD_TYPES
-namespace homme {
-  namespace islmpi {
-    inline Homme::Real Compose_ADValue(const Homme::FadType& x) {return x.val();}
-  } // namespace islmpi
-} // namespace homme
-
-#include "compose_slmm_islmpi.hpp"
-namespace homme {
-  islmpi::IslMpi<>::Ptr get_isl_mpi_singleton();
-
-  namespace compose {
-  #include "compose_set_hvcoord_impl.hpp"
-
-    template void set_hvcoord(const HommexxReal etai_beg, const HommexxReal etai_end,
-                              const Homme::FadType* etam);
-                              
-  } // namespace compose
-} // namespace homme
-#endif
-
 #endif // HOMME_ENABLE_COMPOSE
