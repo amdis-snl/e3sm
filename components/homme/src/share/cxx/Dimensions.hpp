@@ -53,6 +53,8 @@ namespace Homme {
   static constexpr const int Q_NUM_TIME_LEVELS = 2;
 #endif // GPU_BUILD
 
+static_assert(VECTOR_SIZE>0, "Vector size is not correctly defined (should be > 0)");
+
 template<int PHYSICAL_LENGTH>
 struct ColInfo {
 private:

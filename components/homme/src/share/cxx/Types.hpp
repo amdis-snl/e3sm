@@ -40,8 +40,15 @@ using ScalarValue = Real;
 KOKKOS_INLINE_FUNCTION
 Real ADValue(const Real& v) { return v; }
 
-using Scalar = ekat::Pack<ScalarValue,VECTOR_SIZE>;
-static_assert(Scalar::n>0, "Vector type is not correctly defined (vector length is 0)");
+template<typename T>
+using PackType = ekat::Pack<T,VECTOR_SIZE>;
+
+// Short names
+using Spack = PackType<ScalarValue>;
+using RPack = PackType<Real>;
+
+// For bwd compatibility, since it's used in virtually all Hommexx
+using Scalar = PackType<ScalarValue>;
 
 using MemoryManaged   = Kokkos::MemoryTraits<Kokkos::Restrict>;
 using MemoryUnmanaged = Kokkos::MemoryTraits<Kokkos::Unmanaged | Kokkos::Restrict>;
