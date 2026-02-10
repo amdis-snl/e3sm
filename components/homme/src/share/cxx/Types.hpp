@@ -37,10 +37,8 @@ using ScalarValue = FadType;
 using ScalarValue = Real;
 #endif
 
-inline Real ADValue(const Real& v) { return v; }
-#ifdef HOMMEXX_ENABLE_FAD_TYPES
-inline Real ADValue(const FadType& v) { return v.val(); }
-#endif
+KOKKOS_INLINE_FUNCTION
+Real ADValue(const Real& v) { return v; }
 
 using Scalar = ekat::Pack<ScalarValue,VECTOR_SIZE>;
 static_assert(Scalar::n>0, "Vector type is not correctly defined (vector length is 0)");

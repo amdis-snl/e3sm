@@ -23,7 +23,19 @@ using SFad = SFadN<T,HOMMEXX_SFAD_SIZE>;
 
 using FadType = SFad<double>;
 
+template<typename T, int N>
+KOKKOS_INLINE_FUNCTION
+T ADValue(const SFadN<T,N>& v) { return v.val(); }
+
+template<typename Expr>
+KOKKOS_INLINE_FUNCTION
+auto ADValue(const Expr& e)
+ -> std::enable_if_t<Sacado::IsExpr<Expr>::value,decltype(e.val())>
+{
+  return e.val();
 }
+
+} // namespace Homme
 
 #endif // HOMMEXX_ENABLE_FAD_TYPES
 
