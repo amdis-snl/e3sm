@@ -27,21 +27,23 @@
 
 namespace Homme {
 
-struct LimiterFunctor {
+template<typename ST>
+struct LimiterFunctorST {
+  using PT = PackType<ST>;
 
   struct Buffers {
     static constexpr int num_3d_scalar_mid_buf = 1;
-    ExecViewUnmanaged<Scalar*    [NP][NP][NUM_LEV]  >   buffer1;
+    ExecViewUnmanaged<PT*    [NP][NP][NUM_LEV]  >   buffer1;
   };
 
-  int                 m_np1;
-  const int           m_num_elems;
-  const bool          m_theta_hydrostatic_mode;
+  int                       m_np1;
+  const int                 m_num_elems;
+  const bool                m_theta_hydrostatic_mode;
 
-  HybridVCoord        m_hvcoord;
-  ElementsState       m_state;
-  Buffers             m_buffers;
-  ElementsGeometry    m_geometry;
+  HybridVCoord              m_hvcoord;
+  ElementsStateST<ST>       m_state;
+  Buffers                   m_buffers;
+  ElementsGeometry          m_geometry;
   
   double              m_dp3d_thresh;
   double              m_vtheta_thresh;           
@@ -61,7 +63,7 @@ struct LimiterFunctor {
 
   TeamUtils<ExecSpace> m_tu;
 
-  LimiterFunctor(const Elements &elements, const HybridVCoord &hvcoord, const SimulationParams& params)
+  LimiterFunctorST(const ElementsST<ST> &elements, const HybridVCoord &hvcoord, const SimulationParams& params)
       : m_num_elems(elements.num_elems())
       , m_theta_hydrostatic_mode(params.theta_hydrostatic_mode)
       , m_hvcoord(hvcoord)
@@ -211,6 +213,8 @@ struct LimiterFunctor {
   }
 
 };
+
+using LimiterFunctor = LimiterFunctorST<ScalarValue>;
 
 } // Namespace Homme
 

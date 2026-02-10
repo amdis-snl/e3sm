@@ -23,8 +23,11 @@
 
 namespace Homme {
 
-class ForcingFunctor
+template<typename ST>
+class ForcingFunctorST
 {
+  using PT = PackType<ST>;
+
 public:
 
   struct TagStates {};
@@ -32,11 +35,11 @@ public:
   struct TagTracers {};
   struct TagTracersPost {};
 
-  ForcingFunctor ()
-   : m_state(Context::singleton().get<ElementsState>())
-   , m_forcing(Context::singleton().get<ElementsForcing>())
+  ForcingFunctorST ()
+   : m_state(Context::singleton().get<ElementsStateST<ST>>())
+   , m_forcing(Context::singleton().get<ElementsForcingST<ST>>())
    , m_geometry(Context::singleton().get<ElementsGeometry>())
-   , m_tracers(Context::singleton().get<Tracers>())
+   , m_tracers(Context::singleton().get<TracersST<ST>>())
    , m_hvcoord(Context::singleton().get<HybridVCoord>())
    , m_num_state_elems(m_state.num_elems())
    , m_num_tracer_elems(m_tracers.num_elems())
@@ -68,7 +71,7 @@ public:
   // having all other Functor information available.
   // If this constructor is used, the setup() function must be called
   // before using any other ForcingFunctor functions.
-  ForcingFunctor (const int num_state_elems, const int num_tracer_elems, const int num_tracers)
+  ForcingFunctorST (const int num_state_elems, const int num_tracer_elems, const int num_tracers)
     : m_hvcoord(Context::singleton().get<HybridVCoord>())
     , m_num_state_elems(num_state_elems)
     , m_num_tracer_elems(num_tracer_elems)
@@ -126,10 +129,10 @@ public:
 
     const auto& c = Context::singleton();
 
-    m_state    = c.get<ElementsState>();
-    m_forcing  = c.get<ElementsForcing>();
+    m_state    = c.get<ElementsStateST<ST>>();
+    m_forcing  = c.get<ElementsForcingST<ST>>();
     m_geometry = c.get<ElementsGeometry>();
-    m_tracers  = c.get<Tracers>();
+    m_tracers  = c.get<TracersST<ST>>();
 
     // Check everything is init-ed
     assert (m_state.num_elems()>0);
@@ -169,7 +172,7 @@ public:
     constexpr int mid_size = NP*NP*NUM_LEV;
     constexpr int int_size = NP*NP*NUM_LEV_P;
 
-    Scalar* mem = reinterpret_cast<Scalar*>(fbm.get_memory());
+    PT* mem = reinterpret_cast<PT*>(fbm.get_memory());
 
     m_tn1 = decltype(m_tn1)(mem,m_num_state_elems);
     mem += mid_size*m_num_state_elems;
@@ -549,10 +552,10 @@ public:
 
 private:
 
-  ElementsState     m_state;
-  ElementsForcing   m_forcing;
-  ElementsGeometry  m_geometry;
-  Tracers           m_tracers;
+  ElementsStateST<ST>     m_state;
+  ElementsForcingST<ST>   m_forcing;
+  ElementsGeometry        m_geometry;
+  TracersST<ST>           m_tracers;
 
   HybridVCoord      m_hvcoord;
   ElementOps        m_elem_ops;
@@ -564,12 +567,12 @@ private:
 
   bool is_setup;
 
-  ExecViewUnmanaged<Scalar*[NP][NP][NUM_LEV]>   m_Rstar;
-  ExecViewUnmanaged<Scalar*[NP][NP][NUM_LEV]>   m_dp_adj;
-  ExecViewUnmanaged<Scalar*[NP][NP][NUM_LEV]>   m_pnh;
-  ExecViewUnmanaged<Scalar*[NP][NP][NUM_LEV_P]> m_pi_i;
-  ExecViewUnmanaged<Scalar*[NP][NP][NUM_LEV]>   m_exner;
-  ExecViewUnmanaged<Scalar*[NP][NP][NUM_LEV]>   m_tn1;
+  ExecViewUnmanaged<PT*[NP][NP][NUM_LEV]>   m_Rstar;
+  ExecViewUnmanaged<PT*[NP][NP][NUM_LEV]>   m_dp_adj;
+  ExecViewUnmanaged<PT*[NP][NP][NUM_LEV]>   m_pnh;
+  ExecViewUnmanaged<PT*[NP][NP][NUM_LEV_P]> m_pi_i;
+  ExecViewUnmanaged<PT*[NP][NP][NUM_LEV]>   m_exner;
+  ExecViewUnmanaged<PT*[NP][NP][NUM_LEV]>   m_tn1;
 
   int m_qsize;
   int m_np1;
@@ -586,5 +589,7 @@ private:
   Kokkos::TeamPolicy<ExecSpace,TagTracersPost>  m_policy_tracers_post;
   TeamUtils<ExecSpace> m_tu_states, m_tu_tracers_pre, m_tu_tracers, m_tu_tracers_post;
 };
+
+using ForcingFunctor = ForcingFunctorST<ScalarValue>;
 
 } // namespace Homme
