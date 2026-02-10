@@ -4,8 +4,6 @@
 
 namespace homme {
 
-islmpi::IslMpi<>::Ptr get_isl_mpi_singleton();
-
 bool cedr_should_run();
 void cedr_sl_run_global();
 void cedr_sl_run_local(const int limiter_option);
@@ -24,8 +22,8 @@ using View = typename TracerArrays<ko::MachineTraits>::View<DataType>;
 void set_views (const SetView<HommexxReal***>& spheremp,
                 const SetView<HommexxReal****>& dp, const SetView5& dp3d,
                 const SetView<HommexxReal******>& qdp, const SetView5& q,
-                const SetView5& dep_points, const SetView5& vnode,
-                const SetView5& vdep, const Int ndim) {
+                const SetView5& dep_points, const SetView5& vnode, const Int ndim,
+                const SetView5& vdep, const Int vdep_ndim) {
   static_assert(std::is_same<Real, HommexxReal>::value,
                 "Hommexx and Compose real types must be the same.");
 #ifdef COMPOSE_PORT
@@ -42,22 +40,17 @@ void set_views (const SetView<HommexxReal***>& spheremp,
   if (vnode.data())
     ta.vnode = View<Real****>(vnode.data(), nel, vnode.extent_int(1), np2, ndim);
   if (vdep.data())
-    ta.vdep  = View<Real****>(vdep.data(),  nel, vdep .extent_int(1), np2, ndim);
+    ta.vdep  = View<Real****>(vdep.data(),  nel, vdep .extent_int(1), np2, vdep_ndim);
 #else
   slmm_throw_if(true, "Running a Hommexx code path with the non-Hommexx build"
                 " is not supported.\n");
 #endif
 }
 
-#include "compose_set_hvcoord_impl.hpp"
-
-template void set_hvcoord(const HommexxReal etai_beg, const HommexxReal etai_end,
-                  const HommexxReal* etam);
-
-void calc_v_departure (const int step, const HommexxReal dtsub) {
+void interp_v_update (const int step, const HommexxReal dtsub) {
   auto& cm = *get_isl_mpi_singleton();
-  islmpi::calc_v_departure<>(cm, 0, cm.nelemd - 1, step, dtsub,
-                             nullptr, nullptr, nullptr);
+  islmpi::interp_v_update<>(cm, 0, cm.nelemd - 1, step, dtsub,
+                            nullptr, nullptr, nullptr);
 }
 
 void advect (const int np1, const int n0_qdp, const int np1_qdp) {

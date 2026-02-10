@@ -13,12 +13,21 @@
 #include "Types.hpp"
 #include <memory>
 
+#ifdef HOMMEXX_ENABLE_FAD_TYPES
+namespace homme {
+  namespace islmpi {
+    inline Homme::Real Compose_ADValue(const Homme::FadType& x) {return x.val();}
+  } // namespace islmpi
+} // namespace homme
+#endif
+
+
 namespace Homme {
 
-class FunctorsBuffersManager;
-class ComposeTransportImpl;
-class SimulationParams;
-class TimeLevel;
+struct FunctorsBuffersManager;
+struct ComposeTransportImpl;
+struct SimulationParams;
+struct TimeLevel;
 
 class ComposeTransport {
 public:
@@ -38,6 +47,7 @@ public:
   void init_buffers(const FunctorsBuffersManager& fbm);
   void init_boundary_exchanges();
 
+  void observe_velocity(const TimeLevel& tl, const int step);
   void run(const TimeLevel& tl, const Real dt);
   void remap_q(const TimeLevel& tl);
 

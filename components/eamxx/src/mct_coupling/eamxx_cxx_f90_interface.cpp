@@ -1,12 +1,10 @@
-#include "eamxx_config.h"
-
 #include "share/atm_process/atmosphere_process.hpp"
 #include "control/atmosphere_driver.hpp"
 #include "control/surface_coupling_utils.hpp"
 
 #include "dynamics/register_dynamics.hpp"
 #include "physics/register_physics.hpp"
-#include "diagnostics/register_diagnostics.hpp"
+#include "share/diagnostics/register_diagnostics.hpp"
 #include "control/register_surface_coupling.hpp"
 
 #include "mct_coupling/ScreamContext.hpp"
@@ -176,9 +174,9 @@ void scream_create_atm_instance (const MPI_Fint f_comm, const int atm_id,
 
     ad.set_comm(atm_comm);
     ad.set_params(scream_params);
+    ad.set_provenance_data (caseid,rest_caseid,hostname,username,versionid);
     ad.init_scorpio(atm_id);
     ad.init_time_stamps(run_t0,case_t0,run_type);
-    ad.set_provenance_data (caseid,rest_caseid,hostname,username,versionid);
     ad.create_output_managers ();
     ad.create_atm_processes ();
     ad.create_grids ();

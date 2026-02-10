@@ -19,6 +19,7 @@ module elm_varctl
   public :: cnallocate_carbonphosphorus_only_set
   public :: cnallocate_carbonphosphorus_only
   public :: get_carbontag ! get the tag for carbon simulations
+  public :: elm_varctl_set_iac_flag
   !
   private
   save
@@ -163,6 +164,10 @@ module elm_varctl
   !----------------------------------------------------------
   ! BGC logic and datasets
   !----------------------------------------------------------
+
+  ! true => iac/gcam component is present (prognostic)
+  !(public and protected to ensure read only access in other modules)
+  logical, public, protected :: iac_present = .false.
 
   ! values of 'prognostic','diagnostic','constant'
   character(len=16), public :: co2_type = 'constant'
@@ -396,7 +401,8 @@ module elm_varctl
   character(len = SHR_KIND_CS), public :: precip_downscaling_method  = 'ERMM' ! Precip downscaling method values can be ERMM or FNM
   logical, public :: use_lake_wat_storage = .false.
   logical, public :: use_top_solar_rad   = .false.  ! TOP : sub-grid topographic effect on surface solar radiation
-
+  logical, public :: use_finetop_rad     = .false.  ! fineTOP : fine(grid)-scale topographic effect on surface radiation balance (longwave + shortwave)
+  
   !----------------------------------------------------------
   ! Fan controls (use_fan)
   !----------------------------------------------------------
@@ -565,6 +571,11 @@ module elm_varctl
    !----------------------------------------------------------
    logical, public :: use_lnd_rof_two_way = .false.
    integer, public :: lnd_rof_coupling_nstep = 0
+
+   !----------------------------------------------------------
+   ! ocean land one way coupling
+   !----------------------------------------------------------
+   logical, public :: use_ocn_lnd_one_way = .false.
    
    
    !----------------------------------------------------------
@@ -664,6 +675,12 @@ contains
   logical function CNAllocate_CarbonPhosphorus_only()
     cnallocate_carbonphosphorus_only = carbonphosphorus_only
   end function CNAllocate_CarbonPhosphorus_only
+
+  ! set module iac flag
+  subroutine elm_varctl_set_iac_flag(iac_flag_in)
+    logical, intent(in) :: iac_flag_in
+    iac_present = iac_flag_in
+  end subroutine elm_varctl_set_iac_flag
 
   function get_carbontag(carbon_type)result(ctag)
     !$acc routine seq

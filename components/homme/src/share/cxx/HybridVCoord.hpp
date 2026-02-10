@@ -49,7 +49,7 @@ public:
   ExecViewManaged<Scalar[NUM_LEV]> hybrid_bi_delta;
 
   // Eta levels (at midpoints and interfaces)
-  ExecViewManaged<Real[NUM_INTERFACE_LEV]> etai;
+  ExecViewManaged<ScalarValue[NUM_INTERFACE_LEV]> etai;
   ExecViewManaged<Scalar[NUM_LEV]>         etam;
 
   // So far these seem to never be used
@@ -107,11 +107,11 @@ public:
 
       auto dp_ij = Homme::subview(dp,igp,jgp);
 
-      ColumnOps::column_reduction<NUM_PHYSICAL_LEV>(kv,dp_ij,ps(igp,jgp));
-      kv.team_barrier();
+      ScalarValue ps_val = 0;
+      ColumnOps::column_reduction<NUM_PHYSICAL_LEV>(kv,dp_ij,ps_val);
 
       Kokkos::single(Kokkos::PerThread(kv.team),[&](){
-        ps(igp,jgp) += hybrid_ai0*ps0;
+        ps(igp,jgp) = ps_val + hybrid_ai0*ps0;
       });
     });
     kv.team_barrier();
