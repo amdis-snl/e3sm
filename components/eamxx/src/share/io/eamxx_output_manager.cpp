@@ -2,6 +2,7 @@
 
 #include "share/scorpio_interface/eamxx_scorpio_interface.hpp"
 #include "share/io/scorpio_input.hpp"
+#include "share/physics/physics_constants.hpp"
 #include "share/util/eamxx_timing.hpp"
 #include "share/core/eamxx_config.hpp"
 
@@ -62,8 +63,8 @@ setup (const std::shared_ptr<fm_type>& field_mgr,
   // Will be useful if multiple grids are defined (see below).
   bool pg2_grid_in_io_streams = false;
   const auto& fields_pl = m_params.sublist("fields");
-  for (auto it=fields_pl.sublists_names_cbegin(); it!=fields_pl.sublists_names_cend(); ++it) {
-    if (*it == "physics_pg2") pg2_grid_in_io_streams = true;
+  for (const auto& sname : fields_pl.sublist_names()) {
+    if (sname == "physics_pg2") pg2_grid_in_io_streams = true;
   }
 
   if (m_params.isParameter("field_names")) {
@@ -83,21 +84,21 @@ setup (const std::shared_ptr<fm_type>& field_mgr,
     m_output_streams.push_back(output);
   } else {
     // Loop over all grids, creating an output stream for each
-    for (auto it=fields_pl.sublists_names_cbegin(); it!=fields_pl.sublists_names_cend(); ++it) {
+    for (const auto& sname : fields_pl.sublist_names()) {
       // Verify this grid exists in FM
-      EKAT_REQUIRE_MSG (field_mgr->get_grids_manager()->has_grid(*it),
-          "Error! Output requested on grid '" + *it + "', but the field manager does not store such grid.\n");
+      EKAT_REQUIRE_MSG (field_mgr->get_grids_manager()->has_grid(sname),
+          "Error! Output requested on grid '" + sname + "', but the field manager does not store such grid.\n");
 
       // This grid could be an alias. Get the grid name from the grid itself
       // as this is what the FieldManager expects.
-      const auto grid = field_mgr->get_grids_manager()->get_grid_nonconst(*it);
+      const auto grid = field_mgr->get_grids_manager()->get_grid_nonconst(sname);
       const auto& gname = grid->name();
 
       // If this is a GLL grid (or Dyn Grid, with GLL grid set as aux_io_grid)
       // and PG2 fields were found above, we must reset the grid COL tag name to
       // be "ncol_d" to avoid conflicting lengths with ncol on the PG2 grid.
       if (pg2_grid_in_io_streams) {
-        const auto& grid_pl = fields_pl.sublist(*it);
+        const auto& grid_pl = fields_pl.sublist(sname);
         auto io_grid = grid;
 
         std::string output_data_layout = "default";
@@ -150,6 +151,10 @@ setup (const std::shared_ptr<fm_type>& field_mgr,
           // NOTE: without this, the code crash while attempting to get a
           //       pio decomp for this var, since there are no dimensions.
           //       Perhaps you can explore setting the var as a global att
+          continue;
+        } else if (f.get_header().has_extra_data("save_as_geo_data") and
+                   not f.get_header().get_extra_data<bool>("save_as_geo_data")) {
+          // This field is NOT to be saved as geo data
           continue;
         }
         if (use_suffix) {
@@ -854,6 +859,15 @@ setup_file (      IOFileSpecs& filespecs,
     }
     scorpio::set_attribute(filename,"GLOBAL","fp_precision",fp_precision);
     set_file_header(filespecs);
+
+    const auto& pc_names = m_params.get<std::vector<std::string>>("constants",{});
+    const auto& pc_dict = physics::Constants<Real>::dictionary();
+    for (const auto& n: pc_names) {
+      const auto& c = pc_dict.at(n);
+      scorpio::define_var (filename, n, c.units.to_string(), {},
+                           "real", "real", false);
+      scorpio::write_var (filename, n, &c.value);
+    }
   }
 
   // Make all output streams register their dims/vars

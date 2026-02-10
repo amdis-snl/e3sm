@@ -7,9 +7,9 @@
 #include "share/data_managers/SCDataManager.hpp"
 #include "share/data_managers/grids_manager.hpp"
 #include "share/data_managers/field_manager.hpp"
+#include "share/data_managers/field_request.hpp"
 #include "share/property_checks/property_check.hpp"
 #include "share/field/field_identifier.hpp"
-#include "share/field/field_request.hpp"
 #include "share/field/field.hpp"
 #include "share/field/field_group.hpp"
 
@@ -127,7 +127,8 @@ public:
 
   // This method prepares the atm proc for computing the tendency of
   // output fields, as prescribed via parameter list
-  virtual void setup_tendencies_requests ();
+  // NOTE: virtual, as AtmProcGroup will override and just call it on stored procs
+  virtual void setup_step_tendencies (const std::string& default_grid);
 
   // Note: if we are being subcycled from the outside, the host will set
   //       do_update=false, and we will not update the timestamp of the AP
@@ -177,15 +178,13 @@ public:
 
 
   void init_step_tendencies ();
-  void compute_step_tendencies (const double dt);
+  void compute_step_tendencies ();
 
   // These methods allow the AD to figure out what each process needs, with very fine
   // grain detail. See field_request.hpp for more info on what FieldRequest and GroupRequest
   // are, and field_group.hpp for what groups of fields are.
-  const std::list<FieldRequest>& get_required_field_requests () const { return m_required_field_requests; }
-  const std::list<FieldRequest>& get_computed_field_requests () const { return m_computed_field_requests; }
-  const std::list<GroupRequest>& get_required_group_requests () const { return m_required_group_requests; }
-  const std::list<GroupRequest>& get_computed_group_requests () const { return m_computed_group_requests; }
+  const std::list<FieldRequest>& get_field_requests () const { return m_field_requests; }
+  const std::list<GroupRequest>& get_group_requests () const { return m_group_requests; }
 
   // These sets allow to get all the actual in/out fields stored by the atm proc
   // Note: if an atm proc requires a group, then all the fields in the group, as well as
@@ -285,7 +284,7 @@ public:
   // Note: (mem, nmem) describe an arbitrary device array. If mem!=nullptr,
   // the array will be hashed and reported as an additional entry
   void print_global_state_hash(const std::string& label, const TimeStamp& t,
-                               const bool in = true, const bool out = true, const bool internal = true,
+                               const bool pre_run,
                                const Real* mem = nullptr, const int nmem = 0) const;
 
   // For BFB tracking in production simulations.
@@ -405,18 +404,8 @@ protected:
     static_assert(RT==Required || RT==Computed || RT==Updated,
                   "Error! Invalid request type in call to add_field.\n");
 
-    switch (RT) {
-      case Required:
-        m_required_field_requests.push_back(req);
-        break;
-      case Computed:
-        m_computed_field_requests.push_back(req);
-        break;
-      case Updated:
-        m_required_field_requests.push_back(req);
-        m_computed_field_requests.push_back(req);
-        break;
-    }
+    auto& r = m_field_requests.emplace_back(req);
+    r.usage = RT;
   }
 
   template<RequestType RT>
@@ -425,20 +414,10 @@ protected:
     // Since we use C-style enum, let's avoid invalid integers casts
     static_assert(RT==Required || RT==Updated || RT==Computed,
         "Error! Invalid request type in call to add_group.\n");
-    switch (RT) {
-      case Required:
-        m_required_group_requests.push_back(req);
-        break;
-      case Computed:
-        m_computed_group_requests.push_back(req);
-        break;
-      case Updated:
-        m_required_group_requests.push_back(req);
-        m_computed_group_requests.push_back(req);
-        break;
-    }
-  }
 
+    auto& r = m_group_requests.emplace_back(req);
+    r.usage = RT;
+  }
 
   // Override this method to initialize the derived
   virtual void initialize_impl(const RunType run_type) = 0;
@@ -472,8 +451,8 @@ protected:
   virtual void set_required_group_impl (const FieldGroup& /* group */) {}
   virtual void set_computed_group_impl (const FieldGroup& /* group */) {}
 
-  // Adds a field to the list of internal fields
-  void add_internal_field (const Field& f);
+  // Adds a field to the list of internal fields, possibly adding it to the given groups
+  void add_internal_field (const Field& f, const std::vector<std::string>& groups = {});
 
   // These methods set up an extra pointer in the m_[fields|groups]_[in|out]_pointers,
   // for convenience of use (e.g., use a short name for a field/group).
@@ -567,9 +546,8 @@ private:
   std::list<Field>        m_internal_fields;
 
   // Data structures necessary to compute tendencies of updated fields
-  strmap_t<std::string>    m_tend_to_field;
-  strmap_t<Field>          m_proc_tendencies;
-  strmap_t<Field>          m_start_of_step_fields;
+  strmap_t<Field>    m_proc_tendencies;
+  strmap_t<Field>    m_start_of_step_fields;
 
   // These maps help to retrieve a field/group stored in the lists above. E.g.,
   //   auto ptr = m_field_in_pointers[field_name][grid_name];
@@ -617,9 +595,6 @@ private:
   // Whether we need to update time stamps at the end of the run method
   bool m_update_time_stamps = true;
 
-  // Whether this atm proc should compute tendencies for any of its updated fields
-  bool m_compute_proc_tendencies = false;
-
   // Log level for when property checks perform a repair
   ekat::logger::LogLevel  m_repair_log_level;
 
@@ -631,11 +606,9 @@ protected:
   // IOP object
   iop_data_ptr m_iop_data_manager;
 
-  // The list of in/out field/group requests.
-  std::list<FieldRequest>   m_required_field_requests;
-  std::list<FieldRequest>   m_computed_field_requests;
-  std::list<GroupRequest>   m_required_group_requests;
-  std::list<GroupRequest>   m_computed_group_requests;
+  // A map grid_name->requests for in/out field/group.
+  std::list<FieldRequest>   m_field_requests;
+  std::list<GroupRequest>   m_group_requests;
 
   void add_py_fields (const Field& f);
   void add_py_fields (const FieldGroup& g);

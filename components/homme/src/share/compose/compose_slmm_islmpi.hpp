@@ -579,10 +579,10 @@ struct IslMpi {
   const typename Advecter::ConstPtr advecter;
   const Int np, np2, nlev, qsize, qsized, nelemd, halo;
   const bool traj_3d;
-  const Int traj_nsubstep, dep_points_ndim;
+  const Int traj_nsubstep, dep_points_ndim, traj_msg_sz;
 
   Real etai_beg, etai_end;
-  ArrayD<Real*> etam;
+  ArrayD<Real*> etai, etam;
 
   ElemDataListH ed_h; // this rank's owned cells, indexed by LID
   ElemDataListD ed_d;
@@ -637,8 +637,10 @@ struct IslMpi {
           Int itraj_3d, Int itraj_nsubstep)
     : p(ip), advecter(advecter),
       np(inp), np2(np*np), nlev(inlev), qsize(iqsize), qsized(iqsized), nelemd(inelemd),
-      halo(ihalo), traj_3d(itraj_3d), traj_nsubstep(itraj_nsubstep),
-      dep_points_ndim(traj_3d && traj_nsubstep > 0 ? 4 : 3),
+      halo(ihalo), traj_3d(itraj_3d),
+      traj_nsubstep(itraj_nsubstep),
+      dep_points_ndim(traj_3d and traj_nsubstep > 0 ? 4 : 3),
+      traj_msg_sz(traj_3d ? 5 : dep_points_ndim),
       tracer_arrays(itracer_arrays)
   {}
 
@@ -767,36 +769,11 @@ void step(
   Real* dep_points_r,
   Real* q_min_r, Real* q_max_r);
 
-inline Real Compose_ADValue(Real x) {return x;}
-
-template <typename Sc, typename MT = ko::MachineTraits>
-void set_hvcoord(IslMpi<MT>& cm, const Real etai_beg, const Real etai_end,
-                 const Sc* etam) {
-  if (cm.etam.size() > 0) return;
-#if defined COMPOSE_HORIZ_OPENMP
-# pragma omp barrier
-# pragma omp master
-#endif
-  {
-    slmm_assert(cm.nlev > 0);
-    cm.etai_beg = etai_beg;
-    cm.etai_end = etai_end;
-    cm.etam = typename IslMpi<MT>::template ArrayD<Real*>("etam", cm.nlev);
-    const auto h = ko::create_mirror_view(cm.etam);
-    for (int k = 0; k < cm.nlev; ++k) {
-      h(k) = Compose_ADValue(etam[k]);
-      slmm_assert(k == 0 || h(k) > h(k-1));
-      slmm_assert(h(k) > 0 && h(k) < 1);
-    }
-    ko::deep_copy(cm.etam, h);
-  }
-#if defined COMPOSE_HORIZ_OPENMP
-# pragma omp barrier
-#endif
-}
+template <typename MT = ko::MachineTraits>
+void set_hvcoord(IslMpi<MT>& cm, const Real* etai, const Real* etam);
 
 template <typename MT = ko::MachineTraits>
-void calc_v_departure(
+void interp_v_update(
   IslMpi<MT>& cm, const Int nets, const Int nete, const Int step, const Real dtsub,
   Real* dep_points_r, const Real* vnode, Real* vdep);
 
