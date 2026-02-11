@@ -50,7 +50,7 @@ struct ColData {
     npack = calc_npack(nlev);
     d = decltype(d)(name, npack);
     h = Kokkos::create_mirror_view(d);
-    r = decltype(r)(cti::pack2real(h), calc_nscal(npack));
+    r = decltype(r)(pack2scalar(h.data()), calc_nscal(npack));
   }
 
   void h2d () { Kokkos::deep_copy(d, h); }
@@ -66,7 +66,7 @@ struct ElData {
     npack = calc_npack(nlev);
     d = decltype(d)(name, NP, NP, npack);
     h = Kokkos::create_mirror_view(d);
-    r = decltype(r)(cti::pack2real(h), NP, NP, calc_nscal(npack));
+    r = decltype(r)(pack2scalar(h.data()), NP, NP, calc_nscal(npack));
   }
 
   void d2h () { Kokkos::deep_copy(h, d); }
@@ -272,8 +272,8 @@ int make_random_deta (TestData& td, const Real deta_tol, const ExecView<Sc***>& 
 // Wrapper to main deta_caas routine; this wrapper is used in the unit test of
 // the main routine.
 KOKKOS_FUNCTION void
-deta_caas (const KernelVariables& kv, const int nlevp, const CRnV& deta_ref,
-           const Real low, const RelnV& wrk, const RelnV& deta) {
+deta_caas (const KernelVariables& kv, const int nlevp, const EVU<const Real*>& deta_ref,
+           const Real low, const EVU<Real***>& wrk, const EVU<Real***>& deta) {
   assert(deta_ref.extent_int(0) >= nlevp);
   assert_eln(wrk, nlevp);
   assert_eln(deta, nlevp);
@@ -298,12 +298,12 @@ int test_deta_caas (TestData& td) {
     };
 
     // nlev+1 deltas: deta = diff([0, etam, 1])
-    ExecView<ScalarValue*> deta_ref("deta_ref", nlev+1);
-    ExecView<ScalarValue***> deta("deta",NP,NP,nlev+1), wrk("wrk",NP,NP,nlev+1);
+    ExecView<Real*> deta_ref("deta_ref", nlev+1);
+    ExecView<Real***> deta("deta",NP,NP,nlev+1), wrk("wrk",NP,NP,nlev+1);
     nerr += make_random_deta(td, deta_tol, deta_ref);
 
     const auto policy = get_test_team_policy(1, nlev);
-    const auto run = [&] (const ExecView<ScalarValue***>& deta) {
+    const auto run = [&] (const ExecView<Real***>& deta) {
       const auto f = KOKKOS_LAMBDA(const cti::MT& team) {
         KernelVariables kv(team);
         deta_caas(kv, nlev+1, deta_ref, deta_tol, wrk, deta);
@@ -314,7 +314,7 @@ int test_deta_caas (TestData& td) {
 
     { // Test that if all is OK, the input is not altered.
       nerr += make_random_deta(td, deta_tol, deta);
-      ExecView<ScalarValue***>::HostMirror copy("copy",NP,NP,nlev+1);
+      ExecView<Real***>::HostMirror copy("copy",NP,NP,nlev+1);
       Kokkos::deep_copy(copy, deta);
       run(deta);
       const auto m = cti::cmvdc(deta);
@@ -329,7 +329,7 @@ int test_deta_caas (TestData& td) {
 
     { // Modify one etam and test that only adjacent intervals change beyond eps.
       // nlev midpoints
-      ExecView<ScalarValue*> etam_ref("etam_ref",nlev);
+      ExecView<Real*> etam_ref("etam_ref",nlev);
       const auto her = Kokkos::create_mirror_view(etam_ref);
       const auto hder = cti::cmvdc(deta_ref);
       {
@@ -392,13 +392,13 @@ int test_deta_caas (TestData& td) {
       const auto hde = Kokkos::create_mirror_view(deta);
       for (int i = 0; i < NP; ++i)
         for (int j = 0; j < NP; ++j) {
-          ScalarValue sum = 0;
+          Real sum = 0;
           for (int k = 0; k <= nlev; ++k) {
             hde(i,j,k) = td.urand(-0.5, 0.5);
             sum += hde(i,j,k);
           }
           // Make the column sum to 0.2 for safety in the next step.
-          const ScalarValue colsum = 0.2;
+          const Real colsum = 0.2;
           for (int k = 0; k <= nlev; ++k) hde(i,j,k) += (colsum - sum)/(nlev+1);
           for (int k = 0; k <= nlev; ++k) hde(i,j,k) /= colsum;
           sum = 0;
@@ -491,9 +491,9 @@ int test_limit_etai (TestData& td) {
   for (const int nlev : {143, 128, 81}) {
     const Real deta_tol = 1e5*td.eps/nlev;
 
-    ExecView<ScalarValue*> hy_etai("hy_etai",nlev+1), detai("detai",nlev);
-    ExecView<ScalarValue***> wrk1("wrk1",NP,NP,nlev), wrk2("wrk2",NP,NP,nlev);
-    ExecView<ScalarValue***> etai("etai",NP,NP,nlev);
+    ExecView<Real*> hy_etai("hy_etai",nlev+1), detai("detai",nlev);
+    ExecView<Real***> wrk1("wrk1",NP,NP,nlev), wrk2("wrk2",NP,NP,nlev);
+    ExecView<Real***> etai("etai",NP,NP,nlev);
 
     HybridLevels h;
     fill(h, nlev);
@@ -507,7 +507,7 @@ int test_limit_etai (TestData& td) {
       Kokkos::deep_copy(etai, he);
       const auto f = KOKKOS_LAMBDA(const cti::MT& team) {
         KernelVariables kv(team);
-        limit_etai(kv, nlev, hy_etai, detai, deta_tol, wrk1, wrk2, etai);
+        limit_etai<Real>(kv, nlev, hy_etai, detai, deta_tol, wrk1, wrk2, etai);
       };
       Kokkos::parallel_for(policy, f);
       Kokkos::fence();
@@ -565,10 +565,10 @@ int test_eta_interp (TestData& td) {
     HybridLevels h;
     fill(h, nlev);
 
-    ExecView<ScalarValue*> hy_etai("hy_etai",nlev+1);
-    ExecView<ScalarValue***> x("x",NP,NP,nlev), y("y",NP,NP,nlev);
-    ExecView<ScalarValue***> xi("xi",NP,NP,nlev+1), yi("yi",NP,NP,nlev+1);
-    ExecView<ScalarValue***> xwrk("xwrk",NP,NP,nlev+2), ywrk("ywrk",NP,NP,nlev+2);
+    ExecView<Real*> hy_etai("hy_etai",nlev+1);
+    ExecView<Real***> x("x",NP,NP,nlev), y("y",NP,NP,nlev);
+    ExecView<Real***> xi("xi",NP,NP,nlev+1), yi("yi",NP,NP,nlev+1);
+    ExecView<Real***> xwrk("xwrk",NP,NP,nlev+2), ywrk("ywrk",NP,NP,nlev+2);
 
     todev(h.etai, hy_etai);
 
@@ -583,7 +583,7 @@ int test_eta_interp (TestData& td) {
       Kokkos::deep_copy(xi, xih);
       const auto f = KOKKOS_LAMBDA(const cti::MT& team) {
         KernelVariables kv(team);
-        eta_interp_eta(kv, nlev, hy_etai,
+        eta_interp_eta<Real>(kv, nlev, hy_etai,
                        nlev, 0, x, getcolc(y,0,0),
                        xwrk, getcol(ywrk,0,0),
                        ni, 0, getcolc(xi,0,0), yi);
@@ -597,7 +597,7 @@ int test_eta_interp (TestData& td) {
       Kokkos::deep_copy(xi, xih);
       const auto f = KOKKOS_LAMBDA(const cti::MT& team) {
         KernelVariables kv(team);
-        eta_interp_horiz(kv, nlev, hy_etai,
+        eta_interp_horiz<Real>(kv, nlev, hy_etai,
                          getcolc(x,0,0), y,
                          getcol(xwrk,0,0), ywrk,
                          xi, yi);
@@ -674,10 +674,10 @@ int test_eta_to_dp (TestData& td) {
     fill(h, nlev);
 
     ExecView<Real*> hy_bi("hy_bi",nlev+1);
-    ExecView<ScalarValue*> hy_etai("hy_etai",nlev+1);
-    ExecView<ScalarValue***> etai("etai",NP,NP,nlev+1), wrk("wrk",NP,NP,nlev+1);
-    ExecView<ScalarValue***> dp("dp",NP,NP,nlev);
-    ExecView<ScalarValue[NP][NP]> ps("ps");
+    ExecView<Real*> hy_etai("hy_etai",nlev+1);
+    ExecView<Real***> etai("etai",NP,NP,nlev+1), wrk("wrk",NP,NP,nlev+1);
+    ExecView<Real***> dp("dp",NP,NP,nlev);
+    ExecView<Real[NP][NP]> ps("ps");
     const Real hy_ps0 = h.ps0;
 
     todev(h.bi, hy_bi);
@@ -694,7 +694,7 @@ int test_eta_to_dp (TestData& td) {
     const auto run = [&] () {
       const auto f = KOKKOS_LAMBDA(const cti::MT& team) {
         KernelVariables kv(team);
-        eta_to_dp(kv, nlev, hy_ps0, hy_bi, hy_etai, ps, etai, wrk, dp);
+        eta_to_dp<Real>(kv, nlev, hy_ps0, hy_bi, hy_etai, ps, etai, wrk, dp);
       };
       Kokkos::parallel_for(policy, f);
       Kokkos::fence();
@@ -897,8 +897,8 @@ int test_calc_etadot_from_etadotdpdnint (TestData& td) {
     ElData wrk("wrk",nlev+1), ed("ed",nlev+1);
     ExecView<ScalarValue[NP][NP]> ps("ps");
     const Real ps0 = h.ps0;
-    ExecView<Scalar*> db_deta_i("db_deta_i", calc_npack(nlev+1));
-    Kokkos::deep_copy(db_deta_i, ScalarValue(h.b_eta));
+    ExecView<RPack*> db_deta_i("db_deta_i", calc_npack(nlev+1));
+    Kokkos::deep_copy(db_deta_i, h.b_eta);
 
     for (int trial = 0; trial < 2; ++trial) {
       const auto ps_m = Kokkos::create_mirror_view(ps);

@@ -5,6 +5,8 @@
 
 #ifdef HOMMEXX_ENABLE_FAD_TYPES
 
+#include <ekat_scalar_traits.hpp>
+
 // Disable view specializations
 #define SACADO_DISABLE_FAD_VIEW_SPEC
 
@@ -37,6 +39,23 @@ auto ADValue(const Expr& e)
 
 } // namespace Homme
 
+namespace ekat {
+template<typename T, int N>
+struct ScalarTraits<Homme::SFadN<T,N>>
+{
+  using inner_traits = ScalarTraits<T>;
+
+  using value_type  = Homme::SFadN<T,N>;
+  using scalar_type = value_type;
+
+  static constexpr bool is_simd = false;
+
+  static constexpr bool is_floating_point = inner_traits::is_floating_point;
+
+  static constexpr bool specialized = true;
+};
+
+}
 #endif // HOMMEXX_ENABLE_FAD_TYPES
 
 #endif // HOMMEXX_SACADO_TYPES_HPP

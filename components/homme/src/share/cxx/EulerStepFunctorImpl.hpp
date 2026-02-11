@@ -820,8 +820,8 @@ private:
           x[k] = ptens(i,j,vpi)[vsi]/dpm;
         });
 
-      Kokkos::ScalarValue2 sums;
-      Dispatch<>::parallel_reduce_NP2(team, [&] (const int& k, Kokkos::ScalarValue2& sums) {
+      ScalarValue2 sums;
+      Dispatch<>::parallel_reduce_NP2(team, [&] (const int& k, ScalarValue2& sums) {
           sums.v[0] += x[k]*c[k];
           sums.v[1] += c[k];
         }, sums);
@@ -942,8 +942,8 @@ public: // Expose for unit testing.
                   ScalarValue* KOKKOS_RESTRICT const x,
                   ScalarValue const* KOKKOS_RESTRICT const c) const {
         // Clip.
-        Kokkos::ScalarValue2 reds;
-        Dispatch<>::parallel_reduce_NP2(team, [&] (const int& k, Kokkos::ScalarValue2& reds) {
+        ScalarValue2 reds;
+        Dispatch<>::parallel_reduce_NP2(team, [&] (const int& k, ScalarValue2& reds) {
             ScalarValue delta = 0;
             if (x[k] > maxp) {
               delta = x[k] - maxp;

@@ -16,6 +16,7 @@
 #include "Dimensions.hpp"
 
 #include <ekat_pack.hpp>
+#include <ekat_scalar_traits.hpp>
 
 #define __MACRO_STRING(MacroVal) #MacroVal
 #define MACRO_STRING(MacroVal) __MACRO_STRING(MacroVal)
@@ -49,6 +50,13 @@ using RPack = PackType<Real>;
 
 // For bwd compatibility, since it's used in virtually all Hommexx
 using Scalar = PackType<ScalarValue>;
+
+template<typename T>
+KOKKOS_INLINE_FUNCTION
+auto pack2scalar(PackType<T>* p) { return &((*p)[0]); }
+template<typename T>
+KOKKOS_INLINE_FUNCTION
+auto pack2scalar(const PackType<T>* p) { return &((*p)[0]); }
 
 using MemoryManaged   = Kokkos::MemoryTraits<Kokkos::Restrict>;
 using MemoryUnmanaged = Kokkos::MemoryTraits<Kokkos::Unmanaged | Kokkos::Restrict>;
@@ -179,37 +187,28 @@ namespace Remap {
 struct VertRemapAlg {};
 } // namespace Remap
 
+// A kokkos-compatible implementation of a static array of 2 entries
+
+template<typename T>
+struct TwoT {
+  T v[2];
+  KOKKOS_FORCEINLINE_FUNCTION
+  TwoT () : v{0,0} {}
+
+  KOKKOS_FORCEINLINE_FUNCTION
+  TwoT& operator+= (const TwoT& o) {
+    v[0] += o.v[0];
+    v[1] += o.v[1];
+    return *this;
+  }
+};
+
+using Real2 = TwoT<Real>;
+using ScalarValue2 = TwoT<ScalarValue>;
+
 } // Homme
 
-// A kokkos-compatible implementation of a static array of 2 Real's
 namespace Kokkos {
-
-struct Real2 {
-  Homme::Real v[2];
-  KOKKOS_FORCEINLINE_FUNCTION
-  Real2 () : v{0,0} {}
-
-  KOKKOS_FORCEINLINE_FUNCTION
-  Real2& operator+= (const Real2& o) {
-    v[0] += o.v[0];
-    v[1] += o.v[1];
-    return *this;
-  }
-};
-
-struct ScalarValue2 {
-  Homme::ScalarValue v[2];
-  KOKKOS_FORCEINLINE_FUNCTION
-  ScalarValue2 () : v{0,0} {}
-
-  KOKKOS_FORCEINLINE_FUNCTION
-  ScalarValue2& operator+= (const ScalarValue2& o) {
-    v[0] += o.v[0];
-    v[1] += o.v[1];
-    return *this;
-  }
-};
-
 #ifdef HOMMEXX_ENABLE_FAD_TYPES
 template<>
 struct reduction_identity<Homme::FadType> {
@@ -229,18 +228,11 @@ struct reduction_identity<Homme::Scalar> {
 };
 
 // Specialization of a Kokkos structure, needed in the initialization of reduction operations.
-template<> struct reduction_identity<Real2> {
+template<typename T> struct reduction_identity<Homme::TwoT<T>> {
   KOKKOS_FORCEINLINE_FUNCTION
-  static Real2 sum() { return Real2(); }
-};
-
-// Specialization of a Kokkos structure, needed in the initialization of reduction operations.
-template<> struct reduction_identity<ScalarValue2> {
-  KOKKOS_FORCEINLINE_FUNCTION
-  static ScalarValue2 sum() { return ScalarValue2(); }
+  static Homme::TwoT<T> sum() { return Homme::TwoT<T>(); }
 };
 
 } // namespace Kokkos
-
 
 #endif // HOMMEXX_TYPES_HPP

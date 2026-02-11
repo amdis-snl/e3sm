@@ -7,6 +7,8 @@
 #include "HommexxEnums.hpp"
 #include "utilities/SubviewUtils.hpp"
 
+#include <ekat_scalar_traits.hpp>
+
 namespace Homme {
 
 /*
@@ -52,21 +54,18 @@ public:
   static_assert(MIDPOINTS::NumPacks>1,
                 "Error! Some logic may be wrong with only one column pack.\n");
 
-  using DefaultMidProvider = ExecViewUnmanaged<const Scalar [NUM_LEV]>;
-  using DefaultIntProvider = ExecViewUnmanaged<const Scalar [NUM_LEV_P]>;
-
-  template<CombineMode CM = CombineMode::Replace, typename InputProvider = DefaultIntProvider>
+  template<CombineMode CM = CombineMode::Replace, typename InputProvider, typename ST>
   KOKKOS_INLINE_FUNCTION
   static void compute_midpoint_values (const KernelVariables& kv,
                                 const InputProvider& x_i,
-                                const ExecViewUnmanaged<Scalar [NUM_LEV]>& x_m,
+                                const ExecViewUnmanaged<ST [NUM_LEV]>& x_m,
                                 const Real alpha = 1.0, const Real beta = 0.0)
   {
     // Compute midpoint quanitiy.
     if (VECTOR_SIZE==1) {
       Kokkos::parallel_for(Kokkos::ThreadVectorRange(kv.team,NUM_PHYSICAL_LEV),
                            [&](const int& ilev) {
-        Scalar tmp = (x_i(ilev) + x_i(ilev+1))/2.0;
+        ST tmp = (x_i(ilev) + x_i(ilev+1))/2.0;
         combine<CM>(tmp, x_m(ilev), alpha, beta);
       });
     } else {
@@ -77,32 +76,32 @@ public:
 
       // Try to use SIMD operations as much as possible.
       for (int ilev=0; ilev<LAST_MID_PACK; ++ilev) {
-        Scalar tmp = ekat::shift_left(x_i(ilev+1)[0],x_i(ilev));
+        auto tmp = ekat::shift_left(x_i(ilev+1)[0],x_i(ilev));
         tmp += x_i(ilev);
         tmp /= 2.0;
         combine<CM>(tmp, x_m(ilev), alpha, beta);
       }
 
       // Last level pack treated separately, since ilev+1 may throw depending if NUM_LEV=NUM_LEV_P
-      Scalar tmp = ekat::shift_left(x_i(LAST_INT_PACK)[LAST_INT_PACK_END],x_i(LAST_MID_PACK));
+      auto tmp = ekat::shift_left(x_i(LAST_INT_PACK)[LAST_INT_PACK_END],x_i(LAST_MID_PACK));
       tmp += x_i(LAST_MID_PACK);
       tmp /= 2.0;
       combine<CM>(tmp, x_m(LAST_MID_PACK), alpha, beta);
     }
   }
 
-  template<CombineMode CM = CombineMode::Replace, typename InputProvider = DefaultMidProvider>
+  template<CombineMode CM = CombineMode::Replace, typename InputProvider, typename ST>
   KOKKOS_INLINE_FUNCTION
   static void compute_interface_values (const KernelVariables& kv,
                                  const InputProvider& x_m,
-                                 const ExecViewUnmanaged<Scalar [NUM_LEV_P]>& x_i,
+                                 const ExecViewUnmanaged<ST [NUM_LEV_P]>& x_i,
                                  const Real alpha = 1.0, const Real beta = 0.0)
   {
     // Compute interface quanitiy.
     if (VECTOR_SIZE==1) {
       Kokkos::parallel_for(Kokkos::ThreadVectorRange(kv.team,1,NUM_PHYSICAL_LEV),
                            [=](const int& ilev) {
-        Scalar tmp = (x_m(ilev) + x_m(ilev-1)) / 2.0;
+        ST tmp = (x_m(ilev) + x_m(ilev-1)) / 2.0;
         combine<CM>(tmp, x_i(ilev), alpha, beta);
       });
       // Fix the top/bottom
@@ -118,7 +117,7 @@ public:
 
       // Try to use SIMD operations as much as possible: the last NUM_LEV-1 packs are treated uniformly, and can be vectorized
       for (int ilev=1; ilev<NUM_LEV; ++ilev) {
-        Scalar tmp = ekat::shift_right(x_m(ilev-1)[VECTOR_END], x_m(ilev));
+        auto tmp = ekat::shift_right(x_m(ilev-1)[VECTOR_END], x_m(ilev));
         tmp += x_m(ilev);
         tmp /= 2.0;
         combine<CM>(tmp, x_i(ilev), alpha, beta);
@@ -126,7 +125,7 @@ public:
 
       // First pack does not have a previous pack, and the extrapolation of the 1st interface is x_i = x_m.
       // Insert 0 in leading term
-      Scalar tmp = ekat::shift_right(0,x_m(0));
+      auto tmp = ekat::shift_right(0,x_m(0));
       tmp += x_m(0);
       tmp /= 2.0;
       combine<CM>(tmp, x_i(0), alpha, beta);
@@ -139,22 +138,23 @@ public:
 
   // Similar to the above, but uses midpoints/interface weights when computing the average
   template<CombineMode CM = CombineMode::Replace,
-           typename WeightsMidProvider = DefaultMidProvider,
-           typename WeightsIntProvider = DefaultIntProvider,
-           typename InputProvider = DefaultMidProvider>
+           typename WeightsMidProvider,
+           typename WeightsIntProvider,
+           typename InputProvider,
+           typename ST>
   KOKKOS_INLINE_FUNCTION
   static void compute_interface_values (const KernelVariables& kv,
                                  const WeightsMidProvider& weights_m,
                                  const WeightsIntProvider& weights_i,
                                  const InputProvider& x_m,
-                                 const ExecViewUnmanaged<Scalar [NUM_LEV_P]>& x_i,
+                                 const ExecViewUnmanaged<ST [NUM_LEV_P]>& x_i,
                                  const Real alpha = 1.0, const Real beta = 0.0)
   {
     // Compute interface quanitiy.
     if (VECTOR_SIZE==1) {
       Kokkos::parallel_for(Kokkos::ThreadVectorRange(kv.team,1,NUM_PHYSICAL_LEV),
                            [=](const int& ilev) {
-        Scalar tmp = (x_m(ilev)*weights_m(ilev) + x_m(ilev-1)*weights_m(ilev-1)) / (2.0*weights_i(ilev));
+        ST tmp = (x_m(ilev)*weights_m(ilev) + x_m(ilev-1)*weights_m(ilev-1)) / (2.0*weights_i(ilev));
         combine<CM>(tmp,x_i(ilev),alpha,beta);
       });
       // Fix the top/bottom
@@ -170,7 +170,7 @@ public:
 
       // Try to use SIMD operations as much as possible: the last NUM_LEV-1 packs are treated uniformly, and can be vectorized
       for (int ilev=1; ilev<NUM_LEV; ++ilev) {
-        Scalar tmp = ekat::shift_right(x_m(ilev-1)[VECTOR_END]*weights_m(ilev-1)[VECTOR_END],x_m(ilev)*weights_m(ilev));
+        auto tmp = ekat::shift_right(x_m(ilev-1)[VECTOR_END]*weights_m(ilev-1)[VECTOR_END],x_m(ilev)*weights_m(ilev));
         tmp += x_m(ilev)*weights_m(ilev);
         tmp /= 2.0*weights_i(ilev);
         combine<CM>(tmp,x_i(ilev),alpha,beta);
@@ -178,7 +178,7 @@ public:
 
       // First pack does not have a previous pack, and the extrapolation of the 1st interface is x_i = x_m.
       // Insert 0 as leading term.
-      Scalar tmp = ekat::shift_right(0,x_m(0)*weights_m(0));
+      auto tmp = ekat::shift_right(0,x_m(0)*weights_m(0));
       tmp += x_m(0)*weights_m(0);
       tmp /= 2.0*weights_i(0);
       combine<CM>(tmp, x_i(0), alpha, beta);
@@ -190,18 +190,18 @@ public:
   }
 
   template<CombineMode CM = CombineMode::Replace,
-           typename InputProvider = DefaultIntProvider>
+           typename InputProvider, typename ST, typename... Props>
   KOKKOS_INLINE_FUNCTION
   static void compute_midpoint_delta (const KernelVariables& kv,
                                const InputProvider& x_i,
-                               const ExecViewUnmanaged<Scalar [NUM_LEV]>& dx_m,
+                               const ExecView<ST [NUM_LEV], Props...>& dx_m,
                                const Real alpha = 1.0, const Real beta = 0.0)
   {
     // Compute increment of interface values at midpoints.
     if (VECTOR_SIZE==1) {
       Kokkos::parallel_for(Kokkos::ThreadVectorRange(kv.team,0,NUM_PHYSICAL_LEV),
                            [=](const int& ilev) {
-        Scalar tmp = x_i(ilev+1)-x_i(ilev);
+        ST tmp = x_i(ilev+1)-x_i(ilev);
         combine<CM>(tmp,dx_m(ilev),alpha,beta);
       });
     } else {
@@ -212,22 +212,22 @@ public:
 
       // Try to use SIMD operations as much as possible. First NUM_LEV-1 packs can be treated the same
       for (int ilev=0; ilev<LAST_MID_PACK; ++ilev) {
-        Scalar tmp = ekat::shift_left(x_i(ilev+1)[0],x_i(ilev));
+        auto tmp = ekat::shift_left(x_i(ilev+1)[0],x_i(ilev));
         combine<CM>(tmp - x_i(ilev),dx_m(ilev),alpha,beta);
       }
 
       // Last pack does not necessarily have a next pack, so needs to be treated a part.
-      Scalar tmp = ekat::shift_left(x_i(LAST_INT_PACK)[LAST_INT_PACK_END],x_i(LAST_MID_PACK));
+      auto tmp = ekat::shift_left(x_i(LAST_INT_PACK)[LAST_INT_PACK_END],x_i(LAST_MID_PACK));
       combine<CM>(tmp - x_i(LAST_MID_PACK),dx_m(LAST_MID_PACK),alpha,beta);
     }
   }
 
   template<CombineMode CM = CombineMode::Replace,
-           typename InputProvider = DefaultMidProvider>
+           typename InputProvider, typename ST>
   KOKKOS_INLINE_FUNCTION
   static void compute_interface_delta (const KernelVariables& kv,
                                 const InputProvider& x_m,
-                                const ExecViewUnmanaged<Scalar [NUM_LEV_P]> dx_i,
+                                const ExecViewUnmanaged<ST [NUM_LEV_P]> dx_i,
                                 const Real alpha = 1.0, const Real beta = 0.0,
                                 const Real bcVal = 0.0)
   {
@@ -254,12 +254,12 @@ public:
       //       be present in LAST_MID_PACK_END+1, which would pollute
       //       values in the last pack of dx_i at LAST_INT_PACK_END
       for (int ilev=1; ilev<LAST_MID_PACK; ++ilev) {
-        Scalar tmp = ekat::shift_right(x_m(ilev-1)[VECTOR_END],x_m(ilev));
+        auto tmp = ekat::shift_right(x_m(ilev-1)[VECTOR_END],x_m(ilev));
         combine<CM>(x_m(ilev) - tmp, dx_i(ilev), alpha, beta);
       }
 
       // First and last pack need to be treated separately, due the bc.
-      Scalar tmp = ekat::shift_right(0,x_m(0));
+      auto tmp = ekat::shift_right(0,x_m(0));
       tmp = x_m(0)-tmp;
       tmp[0] = bcVal;
       combine<CM>(tmp, dx_i(0), alpha, beta);
@@ -284,23 +284,23 @@ public:
   //       assumed to be VALID. In other words, the boundary condition of the integral must
   //       be set from OUTSIDE this kernel
   // Note: InputProvider could be a lambda or a 1d view.
-  template<bool Forward, bool Inclusive, int LENGTH, typename InputProvider>
+  template<bool Forward, bool Inclusive, int LENGTH, typename InputProvider, typename ST>
   KOKKOS_INLINE_FUNCTION
   static void column_scan (const KernelVariables& kv,
                     const InputProvider& input_provider,
-                    const ExecViewUnmanaged<Scalar [ColInfo<LENGTH>::NumPacks]>& sum,
-                    const ScalarValue s0 = 0.0)
+                    const ExecViewUnmanaged<ST [ColInfo<LENGTH>::NumPacks]>& sum,
+                    const typename ekat::ScalarTraits<ST>::scalar_type s0 = 0.0)
   {
     column_scan_impl<VECTOR_SIZE,Forward,Inclusive,LENGTH>(kv,input_provider,sum,s0);
   }
 
-  template<int PackLength, bool Forward,bool Inclusive,int LENGTH,typename InputProvider>
+  template<int PackLength, bool Forward,bool Inclusive,int LENGTH,typename InputProvider,typename ST>
   KOKKOS_INLINE_FUNCTION
   static typename std::enable_if<(PackLength>1)>::type
   column_scan_impl (const KernelVariables& /* kv */,
                     const InputProvider& input_provider,
-                    const ExecViewUnmanaged<Scalar [ColInfo<LENGTH>::NumPacks]>& sum,
-                    const ScalarValue s0 = 0.0)
+                    const ExecViewUnmanaged<ST [ColInfo<LENGTH>::NumPacks]>& sum,
+                    const typename ekat::ScalarTraits<ST>::scalar_type s0 = 0.0)
   {
     constexpr int OFFSET             = Inclusive ? 0 : 1;
     constexpr int LOOP_RAW_SIZE      = LENGTH - OFFSET;
@@ -314,7 +314,7 @@ public:
     // since the if is evaluated at compile time, so no big deal.
     if (Forward) {
       // Running integral
-      ScalarValue integration = s0;
+      typename ekat::ScalarTraits<ST>::scalar_type integration = s0;
 
       for (int ilev = 0; ilev<LOOP_SIZE; ++ilev) {
         // In all but the last level pack, the loop is over the whole pack
@@ -339,7 +339,7 @@ public:
       }
     } else {
       // Running integral
-      ScalarValue integration = s0;
+      typename ekat::ScalarTraits<ST>::scalar_type integration = s0;
 
       // In an exclusive sum, the procedure below would fail to add 
       // the input's last level to the output's second-to-last level
@@ -367,13 +367,13 @@ public:
     }
   }
 
-  template<int PackLength,bool Forward,bool Inclusive,int LENGTH,typename InputProvider>
+  template<int PackLength,bool Forward,bool Inclusive,int LENGTH,typename InputProvider,typename ST>
   KOKKOS_INLINE_FUNCTION
   static typename std::enable_if<PackLength==1>::type
   column_scan_impl (const KernelVariables& kv,
                     const InputProvider& input_provider,
-                    const ExecViewUnmanaged<Scalar [ColInfo<LENGTH>::NumPacks]>& sum,
-                    const ScalarValue s0 = 0.0)
+                    const ExecViewUnmanaged<ST [ColInfo<LENGTH>::NumPacks]>& sum,
+                    const typename ekat::ScalarTraits<ST>::scalar_type s0 = 0.0)
   {
     if (Forward) {
       // If exclusive, no need to go to access last input level
@@ -381,7 +381,7 @@ public:
       constexpr int loop_size = LENGTH - offset;
 
       Dispatch<>::parallel_scan(kv.team, loop_size,
-                                [&](const int k, ScalarValue& accumulator, const bool last) {
+                                [&](const int k, auto& accumulator, const bool last) {
         if (k==0) {
           // First entry from the bottom: set initial value
           accumulator = s0;
@@ -398,7 +398,7 @@ public:
       constexpr int loop_size = LENGTH - offset;
 
       Dispatch<>::parallel_scan(kv.team, loop_size,
-                                [&](const int k, ScalarValue& accumulator, const bool last) {
+                                [&](const int k, auto& accumulator, const bool last) {
         // k_bwd must range in (loop_size,0], while k ranges in [0, loop_size).
         const int k_bwd = LENGTH - k - 1;
 
@@ -421,11 +421,11 @@ public:
   // initial value. Similarly for backward sum
   // Note: we are *assuming* that the first (or last, for bwd) entry of  sum
   //       contains the desired initial value
-  template<bool Forward,typename InputProvider>
+  template<bool Forward,typename InputProvider,typename ST>
   KOKKOS_INLINE_FUNCTION
   static void column_scan_mid_to_int (const KernelVariables& kv,
                                const InputProvider& input_provider,
-                               const ExecViewUnmanaged<Scalar [NUM_LEV_P]>& sum)
+                               const ExecViewUnmanaged<ST [NUM_LEV_P]>& sum)
   {
     if (Forward) {
       // It's safe to pass the output as it is, and claim is Exclusive over NUM_INTERFACE_LEV
@@ -440,8 +440,8 @@ public:
       constexpr int LAST_INT_PACK     = INTERFACES::LastPack;
       constexpr int LAST_INT_PACK_END = INTERFACES::LastPackEnd;
 
-      ExecViewUnmanaged<Scalar[NUM_LEV]> sum_cropped(sum.data());
-      const ScalarValue s0 = sum(LAST_INT_PACK)[LAST_INT_PACK_END];
+      ExecViewUnmanaged<ST[NUM_LEV]> sum_cropped(sum.data());
+      const auto s0 = sum(LAST_INT_PACK)[LAST_INT_PACK_END];
       Kokkos::single(Kokkos::PerThread(kv.team),[&](){
         sum_cropped(LAST_MID_PACK)[LAST_MID_PACK_END] = s0;
       });
@@ -453,19 +453,19 @@ public:
   //       allows one to test the packed reduction behavior in a bfb build.
   template<int LENGTH, typename InputProvider, bool PackedReduction =
 #ifdef HOMMEXX_BFB_TESTING
-      false
+      false,
 #else
-      true
+      true,
 #endif
->
+    typename ST>
   KOKKOS_INLINE_FUNCTION
   static void column_reduction (const KernelVariables& kv,
                                 const InputProvider& input,
-                                ScalarValue& sum)
+                                ST& sum)
   {
     if (PackedReduction) {
-      // To squeeze some perf out on CPU, do reduction at Scalar level,
-      // then reduce the Scalar at the end. Be CAREFUL: the last pack may
+      // To squeeze some perf out on CPU, do reduction at ST level,
+      // then reduce the ST at the end. Be CAREFUL: the last pack may
       // contain some garbage if VECTOR_SIZE does not divide LENGTH!
 
       constexpr int  NUM_PACKS     = ColInfo<LENGTH>::NumPacks;
@@ -475,9 +475,9 @@ public:
       constexpr int  NUM_PACKS_M1  = NUM_PACKS>0 ? NUM_PACKS-1 : 0;
       constexpr int  LOOP_LENGTH   = HAS_GARBAGE ? NUM_PACKS_M1 : NUM_PACKS;
 
-      Scalar packed_sum;
+      PackType<ST> packed_sum(0);
       Dispatch<>::parallel_reduce(kv.team,Kokkos::ThreadVectorRange(kv.team,LOOP_LENGTH),
-                                  [&](const int ilev, Scalar& accumulator){
+                                  [&](const int ilev, PackType<ST>& accumulator){
         accumulator += input(ilev);
       },packed_sum);
 
@@ -494,7 +494,7 @@ public:
       ekat::reduce_sum(packed_sum,sum);
     } else {
       Dispatch<>::parallel_reduce(kv.team,Kokkos::ThreadVectorRange(kv.team,LENGTH),
-                                  [&](const int k, ScalarValue& accumulator) {
+                                  [&](const int k, ST& accumulator) {
         if (VECTOR_SIZE>1) {
           const int ilev = k / VECTOR_SIZE;
           const int ivec = k % VECTOR_SIZE;

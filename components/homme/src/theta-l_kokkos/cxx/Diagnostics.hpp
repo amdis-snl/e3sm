@@ -236,9 +236,9 @@ public:
 
       // Compute IEner
       IEner = 0.0;
-      Kokkos::ScalarValue2 sum;
+      ScalarValue2 sum;
       Dispatch<>::parallel_reduce(kv.team,Kokkos::ThreadVectorRange(kv.team, NUM_PHYSICAL_LEV),
-                                  [&](const int ilev, Kokkos::ScalarValue2& accumulator){
+                                  [&](const int ilev, ScalarValue2& accumulator){
         accumulator.v[0] += PhysicalConstants::cp*vtheta_dp_real(ilev)*exner_real(ilev);
         accumulator.v[1] += (phi_i_real(ilev+1)-phi_i_real(ilev))*pnh_real(ilev);
       },sum);
