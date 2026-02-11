@@ -115,7 +115,7 @@ public:
 
       auto dp_ij = Homme::subview(dp,igp,jgp);
 
-      ScalarValue ps_val = 0;
+      ST ps_val = 0;
       ColumnOps::column_reduction<NUM_PHYSICAL_LEV>(kv,dp_ij,ps_val);
 
       Kokkos::single(Kokkos::PerThread(kv.team),[&](){
