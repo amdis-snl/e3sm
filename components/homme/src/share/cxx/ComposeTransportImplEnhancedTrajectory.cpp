@@ -324,7 +324,7 @@ void update_dep_points (
 void interp_etadot_at_interfaces (const CTI& c, const cti::DeparturePoints& vdep) {
   assert(vdep.extent_int(4) == 5);
   const auto& etai = c.m_hvcoord.etai;
-  const CRNV<NUM_PHYSICAL_LEV> etam(cti::cpack2real(c.m_hvcoord.etam));
+  const auto etam = ekat::scalarize(c.m_hvcoord.etam);
   const auto f = KOKKOS_LAMBDA (const int idx) {
     int ie, lev, i, j;
     cti::idx_ie_physlev_ij(idx, ie, lev, i, j);
@@ -450,8 +450,8 @@ int interp_departure_points_to_floating_level_midpoints (const CTI& c, const int
   const auto hyai0 = h.hybrid_ai0;
   const auto& hybi = h.hybrid_bi;
   const auto& hyetai = h.etai;
-  const CRNV<NUM_PHYSICAL_LEV> hyetam(cti::cpack2real(h.etam));
-  const CRNV<NUM_PHYSICAL_LEV> detai(cti::cpack2real(d.hydetai));
+  const auto hyetam = ekat::scalarize(h.etam);
+  const auto detai  = ekat::scalarize(d.hydetai);
   const auto deta_tol = d.deta_tol;
   const auto& dep_pts = d.dep_pts;
   const auto& dp3d = c.m_state.m_dp3d;
@@ -467,24 +467,25 @@ int interp_departure_points_to_floating_level_midpoints (const CTI& c, const int
     const auto wrk4 = Homme::subview(buf1d, kv.team_idx);
     const auto vwrk = Homme::subview(buf2a, kv.team_idx);
     // Reconstruct Lagrangian levels at t1 on arrival column.
-    const auto eta = p2rel(wrk3.data(), nlev);
+    const auto eta = el_scratch<ScalarValue>(wrk3.data(),nlev);
     const auto f = [&] (const int i, const int j, const int k) {
       eta(i,j,k) = dep_pts(ie,k,i,j,3);
     };
     cti::loop_ijk<cti::num_phys_lev>(kv, f);
     kv.team_barrier();
-    limcnt += limit_etai(kv, nlev,
+    limcnt += limit_etai<ScalarValue>(kv, nlev,
                          hyetai, detai, deta_tol,
-                         p2rel(wrk1.data(), nlev), p2rel(wrk2.data(), nlev),
+                         el_scratch<ScalarValue>(wrk1.data(),nlev),
+                         el_scratch<ScalarValue>(wrk2.data(),nlev),
                          eta);
     kv.team_barrier();
     {
       // Compute Lagrangian level interfaces at t1 on arrival column.
-      const auto etai_arr = p2rel(wrk4.data(), nlevp);
+      const auto etai_arr = el_scratch<ScalarValue>(wrk4.data(), nlevp);
       // eta_arr_int = I[eta_ref_int(eta_dep_int)](eta_ref_int)
-      eta_interp_eta(kv, nlev, hyetai,
+      eta_interp_eta<ScalarValue>(kv, nlev, hyetai,
                      nlevp-2, 1, eta, hyetai,
-                     p2rel(wrk1.data(), nlev+1), RnV(cti::pack2real(wrk2), nlev+1),
+                     el_scratch<ScalarValue>(wrk1.data(), nlev+1), col_scratch<ScalarValue>(wrk2.data(), nlev+1),
                      nlevp-2, 1, hyetai, etai_arr);
       const auto f = [&] (const int i, const int j) {
         etai_arr(i,j,0) = hyetai(0);
@@ -492,33 +493,32 @@ int interp_departure_points_to_floating_level_midpoints (const CTI& c, const int
       };
       c.loop_ij(kv, f);
       // Compute divdp.
-      const ExecViewUnmanaged<ScalarValue[NP][NP]> ps(cti::pack2real(vwrk));
+      const ExecViewUnmanaged<ScalarValue[NP][NP]> ps(pack2scalar(vwrk.data()));
       calc_ps(kv, nlev,
               ps0, hyai0,
               Homme::subview(dp3d, ie, np1),
               ps);
       kv.team_barrier();
-      eta_to_dp(kv, nlev,
+      eta_to_dp<ScalarValue>(kv, nlev,
                 ps0, hybi, hyetai,
                 ps, etai_arr,
-                p2rel(wrk2.data(), nlev+1),
-                RelnV(cti::pack2real(Homme::subview(c.m_derived.m_divdp, ie)),
-                      NP, NP, NUM_LEV*VECTOR_SIZE));
+                el_scratch<ScalarValue>(wrk2.data(), nlev+1),
+                ekat::scalarize(Homme::subview(c.m_derived.m_divdp, ie)));
       kv.team_barrier();
     }
     // Compute Lagrangian level midpoints at t1 on arrival column.
-    const auto etam_arr = p2rel(wrk4.data(), nlev);
+    const auto etam_arr = el_scratch<ScalarValue>(wrk4.data(), nlev);
     // eta_arr_mid = I[eta_ref_int(eta_dep_int)](eta_ref_mid)
-    eta_interp_eta(kv, nlev, hyetai,
+    eta_interp_eta<ScalarValue>(kv, nlev, hyetai,
                    nlevp-2, 1, eta, hyetai,
-                   p2rel(wrk1.data(), nlev+1), RnV(cti::pack2real(wrk2), nlev+1),
+                   el_scratch<ScalarValue>(wrk1.data(), nlev+1), col_scratch<ScalarValue>(wrk2.data(), nlev+1),
                    nlev, 0, hyetam, etam_arr);
     kv.team_barrier();
     // Compute departure horizontal points corresponding to arrival
     // Lagrangian level midpoints:
     //     p_dep_mid(eta_arr_mid) = I[p_dep_mid(eta_ref_mid)](eta_arr_mid)
     {
-      const RelnV dpts_in(cti::pack2real(vwrk), NP, NP, nlev);
+      const RelnV dpts_in(pack2scalar(vwrk.data()), NP, NP, nlev);
       const RelnV dpts_out(dpts_in.data() + NP*NP*nlev, NP, NP, nlev);
       for (int d = 0; d < 3; ++d) {
         const auto f = [&] (const int i, const int j, const int k) {
@@ -526,10 +526,10 @@ int interp_departure_points_to_floating_level_midpoints (const CTI& c, const int
         };
         c.loop_ijk<cti::num_phys_lev>(kv, f);
         kv.team_barrier();
-        eta_interp_horiz(kv, nlev,
+        eta_interp_horiz<ScalarValue>(kv, nlev,
                          hyetai,
                          hyetam, dpts_in,
-                         RnV(cti::pack2real(wrk2), nlev+2), p2rel(wrk1.data(), nlev+2),
+                         col_scratch<ScalarValue>(wrk2.data(), nlev+2), el_scratch<ScalarValue>(wrk1.data(), nlev+2),
                          etam_arr, dpts_out);
         kv.team_barrier();
         const auto g = [&] (const int i, const int j, const int k) {
@@ -560,8 +560,7 @@ void dss_vnode (const CTI& c, const cti::DeparturePoints& vnode) {
   const auto& spheremp = c.m_geometry.m_spheremp;
   const auto& rspheremp = c.m_geometry.m_rspheremp;
   const auto& vp = c.m_tracers.qtens_biharmonic;
-  const ExecViewUnmanaged<ScalarValue**[NP][NP][NUM_LEV*VECTOR_SIZE]>
-    v(cti::pack2real(vp), vp.extent_int(0), vp.extent_int(1));
+  const auto v = ekat::scalarize(vp);
   const auto f = KOKKOS_LAMBDA (const int idx) {
     int ie, lev, i, j;
     cti::idx_ie_physlev_ij(idx, ie, lev, i, j);
@@ -596,22 +595,23 @@ void ComposeTransportImpl
   // diff(etai)
   m_data.hydetai = decltype(m_data.hydetai)("hydetai");
   const auto detai_pack = Kokkos::create_mirror_view(m_data.hydetai);
-  HostViewUnmanaged<ScalarValue[NUM_PHYSICAL_LEV]> detai(pack2real(detai_pack));
+  const auto detai = ekat::scalarize(detai_pack);
   for (int k = 0; k < num_phys_lev; ++k)
     detai(k) = etai(k+1) - etai(k);
   Kokkos::deep_copy(m_data.hydetai, detai_pack);
 
   const auto etamp = cmvdc(m_hvcoord.etam);
-  HostViewUnmanaged<ScalarValue[NUM_PHYSICAL_LEV]> etam(pack2real(etamp));
+  const auto etam = ekat::scalarize(etamp);
   
   // hydetam_ref
   m_data.hydetam_ref = decltype(m_data.hydetam_ref)("hydetam_ref");
   {
     const auto m = Kokkos::create_mirror_view(m_data.hydetam_ref);
     const int nlev = num_phys_lev;
-    m(0) = ADValue(etam(0) - etai(0));
-    for (int k = 1; k < nlev; ++k) m(k) = ADValue(etam(k) - etam(k-1));
-    m(nlev) = ADValue(etai(nlev) - etam(nlev-1));
+    m(0) = etam(0) - etai(0);
+    for (int k = 1; k < nlev; ++k)
+      m(k) = etam(k) - etam(k-1);
+    m(nlev) = etai(nlev) - etam(nlev-1);
     Kokkos::deep_copy(m_data.hydetam_ref, m);
   }
 
@@ -632,7 +632,7 @@ void ComposeTransportImpl
   m_data.db_deta_i = decltype(m_data.db_deta_i)("db_deta_i");
   {
     const auto m_p = Kokkos::create_mirror_view(m_data.db_deta_i);
-    HostViewUnmanaged<ScalarValue[NUM_INTERFACE_LEV]> m(pack2real(m_p));
+    const auto m = ekat::scalarize(m_p);
     m(0) = m(NUM_INTERFACE_LEV-1) = 0; // unused
     const auto hybi = cmvdc(m_hvcoord.hybrid_bi);
     for (int k = 2; k < NUM_PHYSICAL_LEV-1; ++k)

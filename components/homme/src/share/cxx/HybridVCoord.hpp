@@ -38,41 +38,46 @@ public:
 
   // hybrid ai
   ExecViewManaged<Real[NUM_INTERFACE_LEV]> hybrid_ai;
-  ExecViewManaged<Scalar[NUM_LEV_P]> hybrid_ai_packed;
-  ExecViewManaged<Scalar[NUM_LEV]> hybrid_am;
-  ExecViewManaged<Scalar[NUM_LEV]> hybrid_ai_delta;
+  ExecViewManaged<RPack[NUM_LEV_P]> hybrid_ai_packed;
+  ExecViewManaged<RPack[NUM_LEV]> hybrid_am;
+  ExecViewManaged<RPack[NUM_LEV]> hybrid_ai_delta;
 
   // hybrid bi
   ExecViewManaged<Real[NUM_INTERFACE_LEV]> hybrid_bi;
-  ExecViewManaged<Scalar[NUM_LEV_P]> hybrid_bi_packed;
-  ExecViewManaged<Scalar[NUM_LEV]> hybrid_bm;
-  ExecViewManaged<Scalar[NUM_LEV]> hybrid_bi_delta;
+  ExecViewManaged<RPack[NUM_LEV_P]> hybrid_bi_packed;
+  ExecViewManaged<RPack[NUM_LEV]> hybrid_bm;
+  ExecViewManaged<RPack[NUM_LEV]> hybrid_bi_delta;
 
   // Eta levels (at midpoints and interfaces)
-  ExecViewManaged<ScalarValue[NUM_INTERFACE_LEV]> etai;
-  ExecViewManaged<Scalar[NUM_LEV]>         etam;
+  ExecViewManaged<Real[NUM_INTERFACE_LEV]> etai;
+  ExecViewManaged<RPack[NUM_LEV]>         etam;
 
   // So far these seem to never be used
   // ExecViewManaged<Real[NUM_INTERFACE_LEV]> delta_etai;
   // ExecViewManaged<Scalar[NUM_LEV]>         delta_etam;
 
-  ExecViewManaged<Scalar[NUM_LEV]> dp0;
-  ExecViewManaged<Scalar[NUM_LEV]> exner0;
+  ExecViewManaged<RPack[NUM_LEV]> dp0;
+  ExecViewManaged<RPack[NUM_LEV]> exner0;
 
   bool m_inited;
 
-  // This reference p is computed several times in the code, so we decide
+  // This reference p is computed several times in the code, so implement it once here
+  // NOTE: I tried to template only on ST, and use PT=PackType<ST>, but the const-ness
+  //       of ps data type makes the type deduction fail. So template on ps's scalar type
+  //       as well as dp's scalar type, checking that dp's is indeed a PackType<nonconst_ST>
+  template<typename ST, typename PT>
   KOKKOS_INLINE_FUNCTION
-  void compute_dp_ref (const KernelVariables& kv,
-                       const ExecViewUnmanaged<const ScalarValue[NP][NP]>& ps,
-                       const ExecViewUnmanaged<Scalar [NP][NP][NUM_LEV]>& dp) const
+  std::enable_if_t<std::is_same_v<PT,PackType<std::remove_const_t<ST>>>>
+  compute_dp_ref (const KernelVariables& kv,
+                  const ExecViewUnmanaged<ST[NP][NP]>& ps,
+                  const ExecViewUnmanaged<PT[NP][NP][NUM_LEV]>& dp) const
   {
     Kokkos::parallel_for(Kokkos::TeamThreadRange(kv.team,NP*NP),
                          [&](const int& point_idx) {
       const int igp = point_idx / NP;
       const int jgp = point_idx % NP;
       auto point_dp = Homme::subview(dp,igp,jgp);
-      const ScalarValue point_ps = ps(igp,jgp);
+      const auto point_ps = ps(igp,jgp);
       Kokkos::parallel_for(Kokkos::ThreadVectorRange(kv.team,NUM_LEV),
                            [&](const int& ilev) {
         point_dp(ilev) = hybrid_ai_delta(ilev)*ps0 +
@@ -80,13 +85,14 @@ public:
       });
     });
 
-    // Should we remove this and let the user put it from outside if needed?
+    // TODO: remove this and let the user put it from outside if needed
     kv.team_barrier();
   }
 
+  template<typename ST>
   KOKKOS_INLINE_FUNCTION
-  void compute_dp_ref (const KernelVariables& kv, const ScalarValue ps,
-                       const ExecViewUnmanaged<Scalar [NUM_LEV]>& dp) const
+  void compute_dp_ref (const KernelVariables& kv, const ST ps,
+                       const ExecViewUnmanaged<PackType<ST>[NUM_LEV]>& dp) const
   {
     Kokkos::parallel_for(Kokkos::ThreadVectorRange(kv.team,NUM_LEV),
                          [&](const int& ilev) {
@@ -95,10 +101,12 @@ public:
     });
   }
 
+  template<typename ST, typename PT>
   KOKKOS_INLINE_FUNCTION
-  void compute_ps_ref_from_dp (const KernelVariables& kv,
-                       const ExecViewUnmanaged<const Scalar [NP][NP][NUM_LEV]>& dp,
-                       const ExecViewUnmanaged<      ScalarValue   [NP][NP]>& ps) const
+  std::enable_if_t<ekat::IsPack<PT>::value>
+  compute_ps_ref_from_dp (const KernelVariables& kv,
+                          const ExecViewUnmanaged<PT[NP][NP][NUM_LEV]>& dp,
+                          const ExecViewUnmanaged<ST[NP][NP]>& ps) const
   {
     Kokkos::parallel_for(Kokkos::TeamThreadRange(kv.team,NP*NP),
                          [&](const int idx) {
@@ -117,10 +125,11 @@ public:
     kv.team_barrier();
   }
 
+  template<typename ST>
   KOKKOS_INLINE_FUNCTION
   void compute_ps_ref_from_phis (const KernelVariables& kv,
-                       const ExecViewUnmanaged<const Real [NP][NP]>& phis,
-                          const ExecViewUnmanaged<      ScalarValue [NP][NP]>& ps) const
+                                 const ExecViewUnmanaged<const Real [NP][NP]>& phis,
+                                 const ExecViewUnmanaged<      ST [NP][NP]>& ps) const
   {
     Kokkos::parallel_for(Kokkos::TeamThreadRange(kv.team,NP*NP),
                          [&](const int idx) {

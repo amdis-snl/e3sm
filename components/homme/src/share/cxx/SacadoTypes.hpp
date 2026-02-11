@@ -5,6 +5,8 @@
 
 #ifdef HOMMEXX_ENABLE_FAD_TYPES
 
+#include <ekat_scalar_traits.hpp>
+
 // Disable view specializations
 #define SACADO_DISABLE_FAD_VIEW_SPEC
 
@@ -23,8 +25,37 @@ using SFad = SFadN<T,HOMMEXX_SFAD_SIZE>;
 
 using FadType = SFad<double>;
 
+template<typename T, int N>
+KOKKOS_INLINE_FUNCTION
+T ADValue(const SFadN<T,N>& v) { return v.val(); }
+
+template<typename Expr>
+KOKKOS_INLINE_FUNCTION
+auto ADValue(const Expr& e)
+ -> std::enable_if_t<Sacado::IsExpr<Expr>::value,decltype(e.val())>
+{
+  return e.val();
 }
 
+} // namespace Homme
+
+namespace ekat {
+template<typename T, int N>
+struct ScalarTraits<Homme::SFadN<T,N>>
+{
+  using inner_traits = ScalarTraits<T>;
+
+  using value_type  = Homme::SFadN<T,N>;
+  using scalar_type = value_type;
+
+  static constexpr bool is_simd = false;
+
+  static constexpr bool is_floating_point = inner_traits::is_floating_point;
+
+  static constexpr bool specialized = true;
+};
+
+}
 #endif // HOMMEXX_ENABLE_FAD_TYPES
 
 #endif // HOMMEXX_SACADO_TYPES_HPP

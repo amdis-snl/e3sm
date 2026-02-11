@@ -11,6 +11,8 @@
 #include "utilities/TestUtils.hpp"
 #include "utilities/ViewUtils.hpp"
 
+#include <ekat_pack_kokkos.hpp>
+
 #include <random>
 
 namespace Homme
@@ -39,10 +41,10 @@ void HybridVCoord::init(const Real ps0_in,
   // Create member views
   hybrid_ai = ExecViewManaged<Real[NUM_INTERFACE_LEV]>("Hybrid coordinates; coefficient A_interfaces");
   hybrid_bi = ExecViewManaged<Real[NUM_INTERFACE_LEV]>("Hybrid coordinates; coefficient B_interfaces");
-  hybrid_ai_packed = ExecViewManaged<Scalar[NUM_LEV_P]>("Hybrid coordinates; coefficient A_interfaces");
-  hybrid_bi_packed = ExecViewManaged<Scalar[NUM_LEV_P]>("Hybrid coordinates; coefficient B_interfaces");
-  hybrid_am = ExecViewManaged<Scalar[NUM_LEV]>("Hybrid coordinates; coefficient A_midpoints");
-  hybrid_bm = ExecViewManaged<Scalar[NUM_LEV]>("Hybrid coordinates; coefficient B_midpoints");
+  hybrid_ai_packed = ExecViewManaged<RPack[NUM_LEV_P]>("Hybrid coordinates; coefficient A_interfaces");
+  hybrid_bi_packed = ExecViewManaged<RPack[NUM_LEV_P]>("Hybrid coordinates; coefficient B_interfaces");
+  hybrid_am = ExecViewManaged<RPack[NUM_LEV]>("Hybrid coordinates; coefficient A_midpoints");
+  hybrid_bm = ExecViewManaged<RPack[NUM_LEV]>("Hybrid coordinates; coefficient B_midpoints");
 
   // Init interface views
   Kokkos::deep_copy(hybrid_ai, hyai_h);
@@ -60,8 +62,8 @@ void HybridVCoord::init(const Real ps0_in,
   Kokkos::deep_copy(hybrid_bi_packed,hybi_p_h);
 
   // Init midpoints views
-  auto hybrid_am_h = Kokkos::create_mirror_view(unpackView(hybrid_am));
-  auto hybrid_bm_h = Kokkos::create_mirror_view(unpackView(hybrid_bm));
+  auto hybrid_am_h = Kokkos::create_mirror_view(ekat::scalarize(hybrid_am));
+  auto hybrid_bm_h = Kokkos::create_mirror_view(ekat::scalarize(hybrid_bm));
 
   for (int i=0; i<NUM_PHYSICAL_LEV; ++i) {
     hybrid_am_h(i) = hyam_h(i);
@@ -87,14 +89,14 @@ void HybridVCoord::init(const Real ps0_in,
 void HybridVCoord::random_init(int seed)
 {
   // Create views
-  hybrid_ai_packed = ExecViewManaged<Scalar[NUM_LEV_P]>("Hybrid coordinates; coefficient A_interfaces");
-  hybrid_bi_packed = ExecViewManaged<Scalar[NUM_LEV_P]>("Hybrid coordinates; coefficient B_interfaces");
+  hybrid_ai_packed = ExecViewManaged<RPack[NUM_LEV_P]>("Hybrid coordinates; coefficient A_interfaces");
+  hybrid_bi_packed = ExecViewManaged<RPack[NUM_LEV_P]>("Hybrid coordinates; coefficient B_interfaces");
 
   hybrid_ai = ExecViewManaged<Real[NUM_INTERFACE_LEV]>("Hybrid coordinates; coefficient A_interfaces");
   hybrid_bi = ExecViewManaged<Real[NUM_INTERFACE_LEV]>("Hybrid coordinates; coefficient B_interfaces");
 
-  hybrid_am = ExecViewManaged<Scalar[NUM_LEV]>("Hybrid a_interface coefs");
-  hybrid_bm = ExecViewManaged<Scalar[NUM_LEV]>("Hybrid b_interface coefs");
+  hybrid_am = ExecViewManaged<RPack[NUM_LEV]>("Hybrid a_interface coefs");
+  hybrid_bm = ExecViewManaged<RPack[NUM_LEV]>("Hybrid b_interface coefs");
 
   std::mt19937_64 engine(seed);
   ps0 = 1.0;
@@ -211,9 +213,9 @@ void HybridVCoord::compute_deltas ()
   // This is obviously not for speed (tiny amount of work, and only at setup),
   // but rather to delegate the logic to a single place (namely ColumnOps),
   // so that we avoid making mistakes by replicating the same algorithm
-  hybrid_ai_delta = ExecViewManaged<Scalar[NUM_LEV]>("delta hyai");
-  hybrid_bi_delta = ExecViewManaged<Scalar[NUM_LEV]>("delta hybi");
-  dp0 = ExecViewManaged<Scalar[NUM_LEV]>("dp0");
+  hybrid_ai_delta = ExecViewManaged<RPack[NUM_LEV]>("delta hyai");
+  hybrid_bi_delta = ExecViewManaged<RPack[NUM_LEV]>("delta hybi");
+  dp0 = ExecViewManaged<RPack[NUM_LEV]>("dp0");
 
   // Create local copies, to avoid issue of lambda on GPU
   auto hyai = hybrid_ai_packed;
@@ -240,9 +242,9 @@ void HybridVCoord::compute_deltas ()
 void HybridVCoord::compute_eta ()
 {
   // Create device views
-  etai = ExecViewManaged<ScalarValue[NUM_INTERFACE_LEV]>("Eta coordinate at interfaces");
-  etam = ExecViewManaged<Scalar[NUM_LEV]>("Eta coordinate at midpoints");
-  exner0 = ExecViewManaged<Scalar[NUM_LEV]>("exner0");
+  etai = ExecViewManaged<Real[NUM_INTERFACE_LEV]>("Eta coordinate at interfaces");
+  etam = ExecViewManaged<RPack[NUM_LEV]>("Eta coordinate at midpoints");
+  exner0 = ExecViewManaged<RPack[NUM_LEV]>("exner0");
 
   // Local copies, to avoid issues on GPU when accessing this-> members
   auto l_etai = etai;

@@ -29,6 +29,8 @@
 #include "mpi/MpiBuffersManager.hpp"
 #include "mpi/Connectivity.hpp"
 
+#include <ekat_pack_kokkos.hpp>
+
 #include <cassert>
 
 namespace Homme {
@@ -57,6 +59,12 @@ struct ComposeTransportImpl {
   using Buf2 = ExecViewUnmanaged<Scalar*[2][NP][NP][NUM_LEV_P]>;
 
   using DeparturePoints = ExecViewManaged<ScalarValue*****>;
+
+  template<typename DT, typename... Props>
+  using EV = ExecView<DT,Props...>;
+
+  template<typename DT>
+  using EVU = ExecViewUnmanaged<DT>;
 
   typedef ExecViewUnmanaged<Scalar[NP][NP][NUM_LEV]> SNlev;
   typedef ExecViewUnmanaged<ScalarValue[NP][NP][NUM_LEV*VECTOR_SIZE]> RNlev;
@@ -93,9 +101,9 @@ struct ComposeTransportImpl {
     Buf1e buf1e[n_buf1];
     Buf2 buf2[n_buf2];
 
-    ExecView<Scalar[NUM_LEV]> hydetai; // diff(etai)
+    ExecView<RPack[NUM_LEV]> hydetai; // diff(etai)
     ExecView<Real[NUM_INTERFACE_LEV]> hydetam_ref;
-    ExecView<Scalar[NUM_LEV_P]> db_deta_i; // B_eta at interfaces
+    ExecView<RPack[NUM_LEV_P]> db_deta_i; // B_eta at interfaces
 
     // Persistent, allocated memory, depending on options.
     DeparturePoints dep_pts, vnode, vdep; // (ie,lev,i,j,d)
@@ -298,15 +306,6 @@ struct ComposeTransportImpl {
     return h;
   }
 
-  static KOKKOS_INLINE_FUNCTION
-  ScalarValue* pack2real (Scalar* pack) { return &(*pack)[0]; }
-  static KOKKOS_INLINE_FUNCTION
-  const ScalarValue* pack2real (const Scalar* pack) { return &(*pack)[0]; }
-  template <typename View> static KOKKOS_INLINE_FUNCTION
-  ScalarValue* pack2real (const View& v) { return pack2real(v.data()); }
-  template <typename View> static KOKKOS_INLINE_FUNCTION
-  const ScalarValue* cpack2real (const View& v) { return pack2real(v.data()); }
-
   KOKKOS_FUNCTION
   static void ugradv_sphere (
     const SphereOperators& sphere_ops, const KernelVariables& kv,
@@ -376,9 +375,9 @@ struct ComposeTransportImpl {
     const KernelVariables& kv, const CSNlevp& xs, const CSNlevp& ys,
     const SNlev& yps) // yps(:,:,0) is undefined
   {
-    CRNlevp x(cpack2real(xs));
-    CRNlevp y(cpack2real(ys));
-    RNlev yp(pack2real(yps));
+    auto x  = ekat::scalarize(xs);
+    auto y  = ekat::scalarize(ys);
+    auto yp = ekat::scalarize(yps);
     const auto f = [&] (const int i, const int j, const int k) {
       if (k == 0) return;
       yp(i,j,k) = approx_derivative1(x(i,j,k-1), x(i,j,k), x(i,j,k+1),
