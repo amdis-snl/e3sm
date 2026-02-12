@@ -201,6 +201,8 @@ public:
   int get_num_3d_fields () const { return m_num_3d_fields; }
   int get_num_3d_int_fields () const { return m_num_3d_int_fields; }
 
+  size_t get_scalar_size () const;
+
   template<typename ptr_type, typename raw_type>
   struct Pointer {
 

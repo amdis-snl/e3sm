@@ -187,6 +187,11 @@ void BoundaryExchange::set_num_fields (const int num_1d_fields, const int num_2d
   m_cleaned_up = false;
 }
 
+size_t BoundaryExchange::get_scalar_size () const
+{
+  return sizeof(ScalarValue);
+}
+
 void BoundaryExchange::clean_up()
 {
   if (m_cleaned_up) {
@@ -1044,19 +1049,19 @@ void BoundaryExchange::build_buffer_views_and_requests()
   h_increment_2d[etoi(ConnectionKind::MISSING)] =  0;
   HostViewManaged<int[3]> h_increment_3d = h_increment_2d;
 
-  auto buffers_manager = m_buffers_manager;
+  auto bm = m_buffers_manager;
 
-  using local_buf_ptr_type = decltype( buffers_manager->get_local_buffer().data());
-  using local_buf_val_type = decltype(*buffers_manager->get_local_buffer().data());
+  using local_buf_ptr_type = ScalarValue*;
+  using local_buf_val_type = ScalarValue;
   HostViewManaged<Pointer<local_buf_ptr_type, local_buf_val_type>[3]> h_all_send_buffers("");
   HostViewManaged<Pointer<local_buf_ptr_type, local_buf_val_type>[3]> h_all_recv_buffers("");
 
-  h_all_send_buffers[etoi(ConnectionSharing::LOCAL)]   = buffers_manager->get_local_buffer().data();
-  h_all_send_buffers[etoi(ConnectionSharing::SHARED)]  = buffers_manager->get_send_buffer().data();
-  h_all_send_buffers[etoi(ConnectionSharing::MISSING)] = buffers_manager->get_blackhole_send_buffer().data();
-  h_all_recv_buffers[etoi(ConnectionSharing::LOCAL)]   = buffers_manager->get_local_buffer().data();
-  h_all_recv_buffers[etoi(ConnectionSharing::SHARED)]  = buffers_manager->get_recv_buffer().data();
-  h_all_recv_buffers[etoi(ConnectionSharing::MISSING)] = buffers_manager->get_blackhole_recv_buffer().data();
+  h_all_send_buffers[etoi(ConnectionSharing::LOCAL)]   = reinterpret_cast<ScalarValue*>(bm->get_local_buffer());
+  h_all_send_buffers[etoi(ConnectionSharing::SHARED)]  = reinterpret_cast<ScalarValue*>(bm->get_send_buffer());
+  h_all_send_buffers[etoi(ConnectionSharing::MISSING)] = reinterpret_cast<ScalarValue*>(bm->get_blackhole_send_buffer());
+  h_all_recv_buffers[etoi(ConnectionSharing::LOCAL)]   = reinterpret_cast<ScalarValue*>(bm->get_local_buffer());
+  h_all_recv_buffers[etoi(ConnectionSharing::SHARED)]  = reinterpret_cast<ScalarValue*>(bm->get_recv_buffer());
+  h_all_recv_buffers[etoi(ConnectionSharing::MISSING)] = reinterpret_cast<ScalarValue*>(bm->get_blackhole_recv_buffer());
 
   std::vector<int> slot_idx_to_elem_conn_pair, pids, pid_offsets;
   init_slot_idx_to_elem_conn_pair(slot_idx_to_elem_conn_pair, pids, pid_offsets);
@@ -1153,32 +1158,30 @@ void BoundaryExchange::build_buffer_views_and_requests()
   assert (h_buf_offset[etoi(ConnectionSharing::SHARED)]==mpi_buffer_size);
 #endif // NDEBUG
 
-  {
-    const auto mpi_comm = m_connectivity->get_comm().mpi_comm();
-    const size_t npids = pids.size();
-    free_requests();
-    m_send_requests.resize(npids);
-    m_recv_requests.resize(npids);
-    MPIViewManaged<ScalarValue*>::pointer_type send_ptr = buffers_manager->get_mpi_send_buffer().data();
-    MPIViewManaged<ScalarValue*>::pointer_type recv_ptr = buffers_manager->get_mpi_recv_buffer().data();
-    int offset = 0;
-    for (size_t ip = 0; ip < npids; ++ip) {
-      int count = 0;
-      for (int k = pid_offsets[ip]; k < pid_offsets[ip+1]; ++k) {
-        const auto i = slot_idx_to_elem_conn_pair[k];
-        const auto& info = ucon(i);
-        count += m_elem_buf_size[info.kind];
-      }
-      HOMMEXX_MPI_CHECK_ERROR(MPI_Send_init(send_ptr + offset, count, m_scalar_dtype,
-                                            pids[ip], m_exchange_type, mpi_comm,
-                                            &m_send_requests[ip]),
-                              m_connectivity->get_comm().mpi_comm());
-      HOMMEXX_MPI_CHECK_ERROR(MPI_Recv_init(recv_ptr + offset, count, m_scalar_dtype,
-                                            pids[ip], m_exchange_type, mpi_comm,
-                                            &m_recv_requests[ip]),
-                              m_connectivity->get_comm().mpi_comm());
-      offset += count;
+  const auto mpi_comm = m_connectivity->get_comm().mpi_comm();
+  const size_t npids = pids.size();
+  free_requests();
+  m_send_requests.resize(npids);
+  m_recv_requests.resize(npids);
+  auto send_ptr = reinterpret_cast<ScalarValue*>(bm->get_mpi_send_buffer());
+  auto recv_ptr = reinterpret_cast<ScalarValue*>(bm->get_mpi_recv_buffer());
+  int offset = 0;
+  for (size_t ip = 0; ip < npids; ++ip) {
+    int count = 0;
+    for (int k = pid_offsets[ip]; k < pid_offsets[ip+1]; ++k) {
+      const auto i = slot_idx_to_elem_conn_pair[k];
+      const auto& info = ucon(i);
+      count += m_elem_buf_size[info.kind];
     }
+    HOMMEXX_MPI_CHECK_ERROR(MPI_Send_init(send_ptr + offset, count, m_scalar_dtype,
+                                          pids[ip], m_exchange_type, mpi_comm,
+                                          &m_send_requests[ip]),
+                            m_connectivity->get_comm().mpi_comm());
+    HOMMEXX_MPI_CHECK_ERROR(MPI_Recv_init(recv_ptr + offset, count, m_scalar_dtype,
+                                          pids[ip], m_exchange_type, mpi_comm,
+                                          &m_recv_requests[ip]),
+                            m_connectivity->get_comm().mpi_comm());
+    offset += count;
   }
 
   // Now the buffer views and the requests are built

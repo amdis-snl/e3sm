@@ -12,24 +12,7 @@
 namespace Homme
 {
 
-MpiBuffersManager::MpiBuffersManager ()
- : m_num_customers     (0)
- , m_mpi_buffer_size   (0)
- , m_local_buffer_size (0)
- , m_buffers_busy      (false)
- , m_views_are_valid   (false)
-{
-  // The "fake" buffers used for MISSING connections. These do not depend on the requirements
-  // from the custormers, so we can create them right away.
-  constexpr size_t blackhole_buffer_size = 2 * NUM_LEV * VECTOR_SIZE;
-  m_blackhole_send_buffer = ExecViewManaged<ScalarValue*>("blackhole array",blackhole_buffer_size);
-  m_blackhole_recv_buffer = ExecViewManaged<ScalarValue*>("blackhole array",blackhole_buffer_size);
-  Kokkos::deep_copy(m_blackhole_send_buffer,0.0);
-  Kokkos::deep_copy(m_blackhole_recv_buffer,0.0);
-}
-
 MpiBuffersManager::MpiBuffersManager (std::shared_ptr<Connectivity> connectivity)
- : MpiBuffersManager()
 {
   set_connectivity(connectivity);
 }
@@ -45,8 +28,8 @@ MpiBuffersManager::~MpiBuffersManager ()
 
 void MpiBuffersManager::check_for_reallocation ()
 {
-  for (auto& it : m_customers) {
-    update_requested_sizes (it);
+  for (const auto& it : m_customers) {
+    update_requested_sizes (it.first);
   }
 }
 
@@ -67,9 +50,13 @@ void MpiBuffersManager::allocate_buffers ()
   }
 
   // The buffers used for packing/unpacking
-  m_send_buffer  = ExecViewManaged<ScalarValue*>("send buffer",  m_mpi_buffer_size);
-  m_recv_buffer  = ExecViewManaged<ScalarValue*>("recv buffer",  m_mpi_buffer_size);
-  m_local_buffer = ExecViewManaged<ScalarValue*>("local buffer", m_local_buffer_size);
+  m_send_buffer  = ExecViewManaged<char*>("send buffer",  m_mpi_buffer_size);
+  m_recv_buffer  = ExecViewManaged<char*>("recv buffer",  m_mpi_buffer_size);
+  m_local_buffer = ExecViewManaged<char*>("local buffer", m_local_buffer_size);
+  m_blackhole_send_buffer = ExecViewManaged<char*>("blackhole array",m_blackhole_buffer_size);
+  m_blackhole_recv_buffer = ExecViewManaged<char*>("blackhole array",m_blackhole_buffer_size);
+  Kokkos::deep_copy(m_blackhole_send_buffer,0.0);
+  Kokkos::deep_copy(m_blackhole_recv_buffer,0.0);
 
   // The buffers used in MPI calls
   m_mpi_send_buffer = Kokkos::create_mirror_view(decltype(m_mpi_send_buffer)::execution_space(),m_send_buffer);
@@ -99,6 +86,55 @@ void MpiBuffersManager::unlock_buffers ()
   m_buffers_busy = false;
 }
 
+char* MpiBuffersManager::get_send_buffer () const
+{
+  // We ensure that the buffers are valid
+  assert(m_views_are_valid);
+  return m_send_buffer.data();
+}
+
+char* MpiBuffersManager::get_recv_buffer () const
+{
+  // We ensure that the buffers are valid
+  assert(m_views_are_valid);
+  return m_recv_buffer.data();
+}
+
+char* MpiBuffersManager::get_local_buffer () const
+{
+  // We ensure that the buffers are valid
+  assert(m_views_are_valid);
+  return m_local_buffer.data();
+}
+
+char* MpiBuffersManager::get_mpi_send_buffer() const
+{
+  // We ensure that the buffers are valid
+  assert(m_views_are_valid);
+  return m_mpi_send_buffer.data();
+}
+
+char* MpiBuffersManager::get_mpi_recv_buffer() const
+{
+  // We ensure that the buffers are valid
+  assert(m_views_are_valid);
+  return m_mpi_recv_buffer.data();
+}
+
+char* MpiBuffersManager::get_blackhole_send_buffer () const
+{
+  // We ensure that the buffers are valid
+  assert(m_views_are_valid);
+  return m_blackhole_send_buffer.data();
+}
+
+char* MpiBuffersManager::get_blackhole_recv_buffer () const
+{
+  // We ensure that the buffers are valid
+  assert(m_views_are_valid);
+  return m_blackhole_recv_buffer.data();
+}
+
 void MpiBuffersManager::add_customer (BoundaryExchange* add_me)
 {
   // We don't allow null customers (although this should never happen)
@@ -108,14 +144,14 @@ void MpiBuffersManager::add_customer (BoundaryExchange* add_me)
   assert (m_customers.find(add_me)==m_customers.end());
 
   // Add to the list of customers
-  auto pair_it_bool = m_customers.emplace(add_me,CustomerNeeds{0,0});
+  m_customers.emplace(add_me,CustomerNeeds{0,0});
 
   // Update the number of customers
   ++m_num_customers;
 
   // If this customer has already started the registration, we can already update the buffers sizes
   if (add_me->is_registration_started()) {
-    update_requested_sizes(*pair_it_bool.first);
+    update_requested_sizes(add_me);
   }
 }
 
@@ -140,44 +176,56 @@ void MpiBuffersManager::remove_customer (BoundaryExchange* remove_me)
   --m_num_customers;
 }
 
-void MpiBuffersManager::update_requested_sizes (typename std::map<BoundaryExchange*,CustomerNeeds>::value_type& customer)
+void MpiBuffersManager::update_requested_sizes (BoundaryExchange* customer)
 {
   // Make sure connectivity is valid
   assert (m_connectivity && m_connectivity->is_finalized());
 
   // Make sure this is a customer
-  assert (m_customers.find(customer.first)!=m_customers.end());
+  assert (m_customers.find(customer)!=m_customers.end());
 
   // Get the number of fields that this customer has
-  const int num_1d_fields = customer.first->get_num_1d_fields();
-  const int num_2d_fields = customer.first->get_num_2d_fields();
-  const int num_3d_fields = customer.first->get_num_3d_fields();
-  const int num_3d_int_fields = customer.first->get_num_3d_int_fields();
+  const int num_1d_fields = customer->get_num_1d_fields();
+  const int num_2d_fields = customer->get_num_2d_fields();
+  const int num_3d_fields = customer->get_num_3d_fields();
+  const int num_3d_int_fields = customer->get_num_3d_int_fields();
+  const size_t scalar_size = customer->get_scalar_size();
 
   // Compute the requested buffers sizes and compare with stored ones
-  required_buffer_sizes (num_1d_fields, num_2d_fields, num_3d_fields, num_3d_int_fields, customer.second.mpi_buffer_size, customer.second.local_buffer_size);
-  if (customer.second.mpi_buffer_size>m_mpi_buffer_size) {
-    // Update the total
-    m_mpi_buffer_size = customer.second.mpi_buffer_size;
+  auto& needs = m_customers.at(customer);
+  required_buffer_sizes (scalar_size, num_1d_fields, num_2d_fields, num_3d_fields, num_3d_int_fields,
+                         needs.mpi_buffer_size, needs.local_buffer_size, needs.blackhole_buffer_size);
+  if (needs.mpi_buffer_size>m_mpi_buffer_size) {
+    // Update the current mpi buf size
+    m_mpi_buffer_size = needs.mpi_buffer_size;
 
     // Mark the views as invalid
     m_views_are_valid = false;
   }
 
-  if(customer.second.local_buffer_size>m_local_buffer_size) {
-    // Update the total
-    m_local_buffer_size = customer.second.local_buffer_size;
+  if(needs.local_buffer_size>m_local_buffer_size) {
+    // Update the current local buf size
+    m_local_buffer_size = needs.local_buffer_size;
+
+    // Mark the views as invalid
+    m_views_are_valid = false;
+  }
+
+  if(needs.blackhole_buffer_size>m_blackhole_buffer_size) {
+    // Update the current blackhole buf size
+    m_blackhole_buffer_size = needs.blackhole_buffer_size;
 
     // Mark the views as invalid
     m_views_are_valid = false;
   }
 }
 
-void MpiBuffersManager::required_buffer_sizes (const int num_1d_fields, const int num_2d_fields,
+void MpiBuffersManager::required_buffer_sizes (const size_t scalar_size,
+                                               const int num_1d_fields, const int num_2d_fields,
                                                const int num_3d_fields, const int num_3d_interface_fields,
-                                               size_t& mpi_buffer_size, size_t& local_buffer_size) const
+                                               size_t& mpi_buffer_size, size_t& local_buffer_size, size_t& blackhole_buffer_size) const
 {
-  mpi_buffer_size = local_buffer_size = 0;
+  mpi_buffer_size = local_buffer_size = blackhole_buffer_size = 0;
 
   // The buffer size for each connection kind
   // Note: for 2d/3d fields, we have 1 Real per GP (per level, in 3d). For 1d fields,
@@ -193,6 +241,12 @@ void MpiBuffersManager::required_buffer_sizes (const int num_1d_fields, const in
 
   local_buffer_size += elem_buf_size[etoi(ConnectionKind::CORNER)] * m_connectivity->get_num_connections<HostMemSpace>(ConnectionSharing::LOCAL,ConnectionKind::CORNER);
   local_buffer_size += elem_buf_size[etoi(ConnectionKind::EDGE)]   * m_connectivity->get_num_connections<HostMemSpace>(ConnectionSharing::LOCAL,ConnectionKind::EDGE);
+
+  local_buffer_size *= scalar_size;
+  mpi_buffer_size *= scalar_size;
+
+  // The "fake" buffer used for MISSING connections has a fixed size (in terms of scalars)
+  blackhole_buffer_size = scalar_size * 2 * NUM_LEV * VECTOR_SIZE;
 }
 
 } // namespace Homme
