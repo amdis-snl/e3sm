@@ -25,7 +25,8 @@
 namespace Homme
 {
 
-class BoundaryExchange;
+template<typename ST>
+class BoundaryExchangeST;
 struct FunctorsBuffersManager;
 
 template<typename ST>
@@ -419,7 +420,7 @@ protected:
 
   TeamUtils<ExecSpace> m_tu; // If the policies only differ by tag, just need one tu
 
-  std::shared_ptr<BoundaryExchange> m_be, m_be_tom;
+  std::shared_ptr<BoundaryExchangeST<ST>> m_be, m_be_tom;
 
   ExecViewManaged<PT[NUM_LEV]> m_nu_scale_top;
   int m_nu_scale_top_ilev_pack_lim;

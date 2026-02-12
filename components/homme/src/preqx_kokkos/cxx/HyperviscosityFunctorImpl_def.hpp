@@ -120,7 +120,7 @@ void HyperviscosityFunctorImplST<ST>::init_buffers (const FunctorsBuffersManager
 
 template<typename ST>
 void HyperviscosityFunctorImplST<ST>::init_boundary_exchanges () {
-  m_be = std::make_shared<BoundaryExchange>();
+  m_be = std::make_shared<BoundaryExchangeST<ST>>();
   auto& be = *m_be;
   auto bm_exchange = Context::singleton().get<MpiBuffersManagerMap>()[MPI_EXCHANGE];
   be.set_buffers_manager(bm_exchange);

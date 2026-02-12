@@ -18,7 +18,8 @@
 namespace Homme
 {
 
-class BoundaryExchange;
+template<typename ST>
+class BoundaryExchangeST;
 struct FunctorsBuffersManager;
 
 template<typename ST>
@@ -311,7 +312,7 @@ private:
   TeamPolicyType<TagFirstLaplaceHV>                 m_policy_first_laplace;
   TeamPolicyType<TagHyperPreExchange>               m_policy_pre_exchange;
 
-  std::shared_ptr<BoundaryExchange> m_be;
+  std::shared_ptr<BoundaryExchangeST<ST>> m_be;
 
   ExecViewManaged<PT[NUM_LEV]> m_nu_scale_top;
 };

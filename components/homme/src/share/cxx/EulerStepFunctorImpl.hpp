@@ -112,8 +112,8 @@ class EulerStepFunctorImplST {
 
   ThreadPreferences m_tpref;
 
-  std::shared_ptr<BoundaryExchange> m_mm_be, m_mmqb_be;
-  Kokkos::Array<std::shared_ptr<BoundaryExchange>, 3*Q_NUM_TIME_LEVELS> m_bes;
+  std::shared_ptr<BoundaryExchangeST<ST>> m_mm_be, m_mmqb_be;
+  Kokkos::Array<std::shared_ptr<BoundaryExchangeST<ST>>, 3*Q_NUM_TIME_LEVELS> m_bes;
 
   enum { m_mem_per_team = 2 * NP * NP * sizeof(ST) };
 
@@ -233,8 +233,8 @@ public:
     DSSOption dss_vars[3] = {DSSOption::ETA, DSSOption::OMEGA, DSSOption::DIV_VDP_AVE};
     for (int np1_qdp = 0, k = 0; np1_qdp < Q_NUM_TIME_LEVELS; ++np1_qdp) {
       for (auto dssi : dss_vars) {
-        m_bes[k] = std::make_shared<BoundaryExchange>();
-        BoundaryExchange& be = *m_bes[k];
+        m_bes[k] = std::make_shared<BoundaryExchangeST<ST>>();
+        BoundaryExchangeST<ST>& be = *m_bes[k];
         be.set_buffers_manager(bm_exchange);
         int num_mid = dssi==DSSOption::ETA ? 0 : 1;
         int num_int = 1 - num_mid;
@@ -257,7 +257,7 @@ public:
     }
 
     {
-      m_mmqb_be = std::make_shared<BoundaryExchange>();
+      m_mmqb_be = std::make_shared<BoundaryExchangeST<ST>>();
       m_mmqb_be->set_buffers_manager(bm_exchange);
       m_mmqb_be->set_num_fields(0, 0, m_data.qsize);
       m_mmqb_be->register_field(m_tracers.qtens_biharmonic, m_data.qsize, 0);
@@ -266,8 +266,8 @@ public:
 
     {
       auto bm_exchange_minmax = Context::singleton().get<MpiBuffersManagerMap>()[MPI_EXCHANGE_MIN_MAX];
-      m_mm_be = std::make_shared<BoundaryExchange>();
-      BoundaryExchange& be = *m_mm_be;
+      m_mm_be = std::make_shared<BoundaryExchangeST<ST>>();
+      BoundaryExchangeST<ST>& be = *m_mm_be;
       be.set_buffers_manager(bm_exchange_minmax);
       be.set_num_fields(m_data.qsize, 0, 0);
       be.register_min_max_fields(m_tracers.qlim, m_data.qsize, 0);

@@ -81,7 +81,7 @@ struct CaarFunctorImplST {
   // Policies
   Kokkos::TeamPolicy<ExecSpace, void> m_policy;
 
-  Kokkos::Array<std::shared_ptr<BoundaryExchange>, NUM_TIME_LEVELS> m_bes;
+  Kokkos::Array<std::shared_ptr<BoundaryExchangeST<ST>>, NUM_TIME_LEVELS> m_bes;
 
   CaarFunctorImplST(const int num_elems, const SimulationParams& params)
     : m_num_elems(num_elems)
@@ -191,7 +191,7 @@ struct CaarFunctorImplST {
 
   void init_boundary_exchanges (const std::shared_ptr<MpiBuffersManager>& bm_exchange) {
     for (int tl=0; tl<NUM_TIME_LEVELS; ++tl) {
-      m_bes[tl] = std::make_shared<BoundaryExchange>();
+      m_bes[tl] = std::make_shared<BoundaryExchangeST<ST>>();
       auto& be = *m_bes[tl];
       be.set_buffers_manager(bm_exchange);
       be.set_num_fields(0,0,4);

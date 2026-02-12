@@ -123,7 +123,7 @@ struct CaarFunctorImplST {
 
   TeamUtils<ExecSpace> m_tu;
 
-  Kokkos::Array<std::shared_ptr<BoundaryExchange>, NUM_TIME_LEVELS> m_bes;
+  Kokkos::Array<std::shared_ptr<BoundaryExchangeST<ST>>, NUM_TIME_LEVELS> m_bes;
 
   CaarFunctorImplST(const ElementsST<ST> &elements, const TracersST<ST>&/* tracers */,
                     const ReferenceElement &ref_FE, const HybridVCoord &hvcoord,
@@ -308,7 +308,7 @@ struct CaarFunctorImplST {
   void init_boundary_exchanges (const std::shared_ptr<MpiBuffersManager>& bm_exchange) {
     const auto& sp = Context::singleton().get<SimulationParams>();
     for (int tl=0; tl<NUM_TIME_LEVELS; ++tl) {
-      m_bes[tl] = std::make_shared<BoundaryExchange>();
+      m_bes[tl] = std::make_shared<BoundaryExchangeST<ST>>();
       auto& be = *m_bes[tl];
       be.m_label = std::string("CAAR-") + std::to_string(tl);
       be.m_diagnostics_level = sp.internal_diagnostics_level;
