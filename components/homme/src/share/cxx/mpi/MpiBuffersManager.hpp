@@ -93,9 +93,6 @@ public:
   // Ask the manager to re-check whether there is enough storage for all the BE's
   void check_for_reallocation ();
 
-  // Check that the allocated views can handle the requested number of 2d/3d fields
-  bool check_views_capacity (const int num_1d_fields, const int num_2d_fields, const int num_3d_fields, const int num_3d_interface_fields) const;
-
   // Allocate the buffers (overwriting possibly already allocated ones if needed)
   void allocate_buffers ();
 

@@ -58,15 +58,6 @@ void MpiBuffersManager::set_connectivity (std::shared_ptr<Connectivity> connecti
   m_connectivity = connectivity;
 }
 
-bool MpiBuffersManager::check_views_capacity (const int num_1d_fields, const int num_2d_fields, const int num_3d_fields, const int num_3d_interface_fields) const
-{
-  size_t mpi_buffer_size, local_buffer_size;
-  required_buffer_sizes (num_1d_fields, num_2d_fields, num_3d_fields, num_3d_interface_fields, mpi_buffer_size, local_buffer_size);
-
-  return (mpi_buffer_size<=m_mpi_buffer_size) &&
-         (local_buffer_size<=m_local_buffer_size);
-}
-
 void MpiBuffersManager::allocate_buffers ()
 {
   // If views are marked as valid, they are already allocated, and no other
