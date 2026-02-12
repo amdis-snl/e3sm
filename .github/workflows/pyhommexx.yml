@@ -1,0 +1,131 @@
+name: pyhommexx
+
+on:
+  # Runs on PRs against master
+  pull_request:
+    branches: [ master ]
+    types: [opened, synchronize, ready_for_review, reopened]
+    paths:
+      - '.github/workflows/hommexx-amdis-tests.yml'
+      - 'components/homme/**'
+
+  # Manual run is used to bless
+  workflow_dispatch:
+
+  # Also run nightly
+  schedule:
+    - cron: '0 7 * * *'  # Runs at 7 AM UTC, which is midnight MT during Standard Time
+
+concurrency:
+  # Two runs are in the same group if they are testing the same git ref
+  #  - if trigger=pull_request, the ref is refs/pull/<PR_NUMBER>/merge
+  #  - for other triggers, the ref is the branch tested
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  cpu-gcc:
+    runs-on:  [ubuntu-latest]
+    name: cpu-gcc
+    steps:
+      - name: Setup Miniconda
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          python-version: 3.9  # Specify your desired Python version
+          channels: conda-forge,defaults  # Specify your desired channels
+          auto-activate-base: false
+          activate-environment: homme-env
+      - name: Install conda packages
+        shell: bash -l {0}  # Use bash -l to ensure conda commands are available
+        run: |
+          conda install -c conda-forge                  \
+            gcc=13.2.0 gxx=13.2.0 gfortran=13.2.0 cmake \
+            openmpi openblas                            \
+            libnetcdf libpnetcdf netcdf-fortran         \
+            numpy xarray netCDF4 mpi4py nanobind
+      - name: Check out the repository
+        uses: actions/checkout@v5
+        with:
+          path: e3sm/source
+      - name: Show action trigger
+        uses: ./e3sm/source/.github/actions/show-workflow-trigger
+      - name: trilinos-clone
+        run: |
+          cd ${GITHUB_WORKSPACE}
+          mkdir trilinos && cd trilinos
+          git clone --filter=blob:none https://github.com/trilinos/Trilinos.git source
+          cd source
+          git checkout master
+      - name: trilinos-config
+        shell: bash -l {0}
+        run: |
+          cd ${GITHUB_WORKSPACE}/trilinos
+          mkdir build && cd build
+          cmake -Wno-dev \
+            -D CMAKE_CC_COMPILER:STRING=gcc                               \
+            -D CMAKE_CXX_COMPILER:STRING=g++                              \
+            -D CMAKE_INSTALL_PREFIX=${GITHUB_WORKSPACE}/trilinos/install  \
+            \
+            -D Trilinos_ENABLE_EXAMPLES:BOOL=OFF                          \
+            -D Trilinos_ENABLE_TESTS:BOOL=OFF                             \
+            -D Trilinos_ENABLE_OpenMP:BOOL=OFF                            \
+            -D Trilinos_ENABLE_ALL_PACKAGES:BOOL=OFF                      \
+            -D Trilinos_ENABLE_ALL_OPTIONAL_PACKAGES:BOOL=OFF             \
+            -D Trilinos_ENABLE_Sacado:BOOL=ON                             \
+            \
+            -S ${GITHUB_WORKSPACE}/trilinos/source
+      - name: trilinos-build-install
+        shell: bash -l {0}
+        run : |
+          cd ${GITHUB_WORKSPACE}/trilinos/build
+          make -j4 install
+      - name: get submodules
+        run: |
+          git config --global url."https://github.com/".insteadOf git@github.com:
+          cd ${GITHUB_WORKSPACE}/e3sm/source
+          git submodule update --init --recursive cime
+          git submodule update --init externals/ekat
+          git submodule update --init externals/scorpio
+          cd externals/ekat
+          git submodule update --init extern/kokkos
+          git submodule update --init extern/Catch2
+      - name: hommexx-configure
+        shell: bash -l {0}
+        run: |
+          cd ${GITHUB_WORKSPACE}/e3sm
+          export Trilinos_ROOT=${GITHUB_WORKSPACE}/trilinos/install
+          mkdir build && cd build
+          cmake \
+           -D CMAKE_BUILD_TYPE:STRING=RELEASE         \
+           -D CMAKE_CXX_COMPILER:STRING=mpicxx        \
+           -D CMAKE_C_COMPILER:STIRNG=mpicc           \
+           -D CMAKE_Fortran_COMPILER:STRING=mpifort   \
+           -D CMAKE_C_FLAGS:STRING="-fPIC"            \
+           -D CMAKE_CXX_FLAGS:STRING="-fPIC"          \
+           -D CMAKE_Fortran_FLAGS:STRING="-fPIC"      \
+           \
+           -D OPT_FLAGS:STRING="-O3"                  \
+           \
+           -D HOMME_FIND_BLASLAPACK:BOOL=ON           \
+           -D HOMME_AMDIS_PROJECT:BOOL=ON             \
+           -D HOMMEXX_ENABLE_FWD_SENS:BOOL=ON         \
+           -D HOMMEXX_ENABLE_FAD_TYPES:BOOL=ON        \
+           -D HOMMEXX_BFB_TESTING:BOOL=ON             \
+           -D HOMME_BUILD_PYHOMMEXX:BOOL=ON           \
+           -D PYHOMMEXX_NLEV:STRING=128               \
+           -D PYHOMMEXX_QSIZE:STRING=10               \
+           \
+           -S ${GITHUB_WORKSPACE}/e3sm/source/components/homme
+      - name: hommexx-build
+        shell: bash -l {0}
+        run: |
+          cd ${GITHUB_WORKSPACE}/e3sm/build
+          make -j4 pyhommexx
+      - name: Upload log files
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: logs
+          path: |
+            e3sm/build/CMakeCache.txt
+          retention-days: 14
