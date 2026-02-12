@@ -20,19 +20,19 @@ namespace Homme
 
 // Forward declarations
 class Connectivity;
-class BoundaryExchange;
+class BoundaryExchangeBase;
 
 /*
- * MpiBuffersManager: a class to handle the buffers needed by BoundaryExchange
+ * MpiBuffersManager: a class to handle the buffers needed by BoundaryExchangeBase
  *
  * This class (BM) is responsible mainly for allocating buffers to be
- * used by the BoundaryExchange (BE) class. A single BM object can
+ * used by the BoundaryExchangeBase (BE) class. A single BM object can
  * be the buffers provider for several different BE objects, which
  * are referred to as 'customers'; in this case, the stored buffers
  * will have a size big enough to accommodate the most demanding needs
  * among those of all the customers. For more details about why one BM
  * may have more than one customer, see the explanation in the header
- * BoundaryExchange.hpp.
+ * BoundaryExchangeBase.hpp.
  *
  * The BM class stores 4 types of buffers, in the form of Kokkos View's:
  *
@@ -113,20 +113,21 @@ public:
 
   std::shared_ptr<Connectivity> get_connectivity () const { return m_connectivity; }
 
-private:
-
-  // Make BoundaryExchange a friend, so it can call the next four methods underneath
-  friend class BoundaryExchange;
-
-  // Adds/removes the given BoundaryExchange to/from the list of 'customers' of this class
-  // Note: the only class that should call these methods is BoundaryExchange, so
-  //       it can register/unregister itself as a customer
-  void add_customer (BoundaryExchange* add_me);
-  void remove_customer (BoundaryExchange* remove_me);
   // Deep copy the send/recv buffer to/from the mpi_send/recv buffer
   // Note: these are no-ops if MPIMemSpace=ExecMemSpace
-  void sync_send_buffer (BoundaryExchange* customer);
-  void sync_recv_buffer (BoundaryExchange* customer);
+  void sync_send_buffer (BoundaryExchangeBase* customer);
+  void sync_recv_buffer (BoundaryExchangeBase* customer);
+
+private:
+
+  // Make BoundaryExchangeBase a friend, so it can call the next four methods underneath
+  friend class BoundaryExchangeBase;
+
+  // Adds/removes the given BoundaryExchangeBase to/from the list of 'customers' of this class
+  // Note: the only class that should call these methods is BoundaryExchangeBase, so
+  //       it can register/unregister itself as a customer
+  void add_customer (BoundaryExchangeBase* add_me);
+  void remove_customer (BoundaryExchangeBase* remove_me);
 
   // Small struct, to hold customer's needs. We could use an std::pair, but this is more verbose
   struct CustomerNeeds {
@@ -141,7 +142,7 @@ private:
 
   // If necessary, updates buffers sizes so that there is enough storage to hold the required number of fields.
   // Note: this method does not (re)allocate views
-  void update_requested_sizes (BoundaryExchange* customer);
+  void update_requested_sizes (BoundaryExchangeBase* customer);
 
   // Computes the required storages
   void required_buffer_sizes (const size_t scalar_size,
@@ -164,7 +165,7 @@ private:
   bool m_views_are_valid = false;
 
   // Customers of this MpiBuffersManager, each with its local and mpi sizes
-  std::map<BoundaryExchange*,CustomerNeeds>  m_customers;
+  std::map<BoundaryExchangeBase*,CustomerNeeds>  m_customers;
 
   // The connectivity (needed to allocate buffers)
   std::shared_ptr<Connectivity> m_connectivity;
@@ -183,7 +184,7 @@ private:
   ExecViewManaged<char*>  m_blackhole_recv_buffer;
 };
 
-inline void MpiBuffersManager::sync_send_buffer (BoundaryExchange* customer)
+inline void MpiBuffersManager::sync_send_buffer (BoundaryExchangeBase* customer)
 {
   // Only customers can call this
   assert (m_customers.find(customer)!=m_customers.end());
@@ -199,7 +200,7 @@ inline void MpiBuffersManager::sync_send_buffer (BoundaryExchange* customer)
   }
 }
 
-inline void MpiBuffersManager::sync_recv_buffer (BoundaryExchange* customer)
+inline void MpiBuffersManager::sync_recv_buffer (BoundaryExchangeBase* customer)
 {
   // Only customers can call this
   assert (m_customers.find(customer)!=m_customers.end());
@@ -215,7 +216,7 @@ inline void MpiBuffersManager::sync_recv_buffer (BoundaryExchange* customer)
   }
 }
 
-// MpiBuffersManagerMap contains a MpiBuffersManager for each type of BoundaryExchange
+// MpiBuffersManagerMap contains a MpiBuffersManager for each type of BoundaryExchangeBase
 struct MpiBuffersManagerMap {
 public:
   MpiBuffersManagerMap () {

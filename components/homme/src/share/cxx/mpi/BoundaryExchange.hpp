@@ -7,8 +7,8 @@
 #ifndef HOMMEXX_BOUNDARY_EXCHANGE_HPP
 #define HOMMEXX_BOUNDARY_EXCHANGE_HPP
 
+#include "BoundaryExchangeBase.hpp"
 #include "Connectivity.hpp"
-#include "ConnectivityHelpers.hpp"
 
 #include "Types.hpp"
 #include "MpiHelpers.hpp"
@@ -23,9 +23,6 @@
 
 namespace Homme
 {
-
-// Forward declaration
-class MpiBuffersManager;
 
 /*
  * BoundaryExchange: a class to handle the pack/exchange/unpack process
@@ -87,7 +84,7 @@ class MpiBuffersManager;
  *
  */
 
-class BoundaryExchange
+class BoundaryExchange : public BoundaryExchangeBase
 {
 public:
 
@@ -100,21 +97,11 @@ public:
 
   ~BoundaryExchange();
 
-  // Set the connectivity if default constructor was used
-  void set_connectivity (std::shared_ptr<Connectivity> connectivity);
-
-  // Set the buffers manager (registration must not be completed)
-  void set_buffers_manager (std::shared_ptr<MpiBuffersManager> buffers_manager);
-
   // These number refers to *scalar* fields. A 2-vector field counts as 2 fields.
   void set_num_fields (const int num_1d_fields, const int num_2d_fields, const int num_3d_fields, const int num_3d_int_fields = 0);
 
   // Clean up MPI stuff and registered fields (but leaves connectivity and buffers manager)
   void clean_up ();
-
-  // Check whether fields registration has already started/finished
-  bool is_registration_started   () const { return m_registration_started;   }
-  bool is_registration_completed () const { return m_registration_completed; }
 
   // Notes:
   // - the first runtime dimension (if present) is always the number of elements
@@ -185,23 +172,12 @@ public:
   template<int DIM, typename... Properties>
   void register_min_max_fields (ExecView<Scalar*[DIM][2][NUM_LEV], Properties...> field_min_max, int num_dims, int start_dim);
 
-  // Size the buffers, and initialize the MPI types
-  void registration_completed();
-
   // Exchange all registered 2d and 3d fields
   void exchange ();
   void exchange (ExecViewUnmanaged<const Real * [NP][NP]> rspheremp);
 
   // Exchange all registered 1d fields, performing min/max operations with neighbors
   void exchange_min_max ();
-
-  // Get the number of 2d/3d fields that this object handles
-  int get_num_1d_fields () const { return m_num_1d_fields; }
-  int get_num_2d_fields () const { return m_num_2d_fields; }
-  int get_num_3d_fields () const { return m_num_3d_fields; }
-  int get_num_3d_int_fields () const { return m_num_3d_int_fields; }
-
-  size_t get_scalar_size () const;
 
   template<typename ptr_type, typename raw_type>
   struct Pointer {
@@ -225,44 +201,17 @@ public:
   void pack_and_send_min_max ();
   void recv_and_unpack_min_max ();
 
-  // If you are really not sure whether we are still transmitting, you can make sure we're done by calling this
-  void waitall ();
-
-  // Set an optional string label for this object. If present, it is used in
-  // optional diagnostic output.
-  void set_label (const std::string& label);
-  const std::string& get_label () const;
-  // Request diagnostic output after each boundary exchange. Default is level =
-  // 0, corresponding to none.
-  void set_diagnostics_level (const int level);
-
 private:
 
-  short int m_exchange_type;
-
   // Make MpiBuffersManager a friend, so it can call the method underneath
-  friend class MpiBuffersManager;
-  void clear_buffer_views_and_requests ();
+  void clear_buffer_views_and_requests () override;
 
-  void build_buffer_views_and_requests ();
-
-  std::shared_ptr<Connectivity>   m_connectivity;
-
-  MPI_Datatype              m_scalar_dtype;
-  int                       m_elem_buf_size[2];
-
-  std::vector<MPI_Request>  m_send_requests;
-  std::vector<MPI_Request>  m_recv_requests;
+  void build_buffer_views_and_requests () override;
 
   ExecViewManaged<ExecViewManaged<Scalar[2][NUM_LEV]>**>            m_1d_fields;
   ExecViewManaged<ExecViewManaged<ScalarValue[NP][NP]>**>           m_2d_fields;
   ExecViewManaged<ExecViewManaged<Scalar[NP][NP][NUM_LEV]>**>       m_3d_fields;
   ExecViewManaged<ExecViewManaged<Scalar[NP][NP][NUM_LEV_P]>**>     m_3d_int_fields;
-
-  // This class contains all the buffers to be stuffed in the buffers views, and used in pack/unpack,
-  // as well as the mpi buffers used in MPI calls (which are the same as the former if MPIMemSpace=ExecMemSpace),
-  // and the blackhole buffers (used for missing connections)
-  std::shared_ptr<MpiBuffersManager> m_buffers_manager;
 
   // send_buffer(..) points to the right area of one of the three buffers in the
   // buffers manager:
@@ -287,33 +236,6 @@ private:
   ExecViewManaged<ExecViewUnmanaged<Scalar**>**>  m_send_3d_int_buffers;
   ExecViewManaged<ExecViewUnmanaged<Scalar**>**>  m_recv_3d_int_buffers;  
 
-  std::vector<int> m_3d_nlev_pack;        // during registration
-  ExecViewManaged<int*> m_3d_nlev_pack_d; //  after registration
-
-  // The number of registered fields
-  int         m_num_1d_fields;    // Without counting the 2x factor due to min/max fields
-  int         m_num_2d_fields;
-  int         m_num_3d_fields;
-  int         m_num_3d_int_fields;
-
-  // The following flags are used to ensure that a bad user does not call setup/cleanup/registration
-  // methods of this class in an order that generate errors. And if he/she does, we try to avoid errors.
-  bool        m_registration_started;
-  bool        m_registration_completed;
-  bool        m_buffer_views_and_requests_built;
-  bool        m_cleaned_up;
-  bool        m_send_pending;
-  bool        m_recv_pending;
-
-  int         m_num_elems;
-
-  std::string m_label;
-  int m_diagnostics_level;
-
-  void init_slot_idx_to_elem_conn_pair(
-    std::vector<int>& h_slot_idx_to_elem_conn_pair,
-    std::vector<int>& pids, std::vector<int>& pids_os);
-  void free_requests();
   // Only the impl knows about the raw pointer.
   void exchange(const ExecViewUnmanaged<const Real * [NP][NP]>* rspheremp);
 public: // This is semantically private but must be public for nvcc.

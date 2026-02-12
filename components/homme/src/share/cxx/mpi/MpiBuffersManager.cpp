@@ -6,7 +6,7 @@
 
 #include "MpiBuffersManager.hpp"
 
-#include "BoundaryExchange.hpp"
+#include "BoundaryExchangeBase.hpp"
 #include "Connectivity.hpp"
 
 namespace Homme
@@ -135,7 +135,7 @@ char* MpiBuffersManager::get_blackhole_recv_buffer () const
   return m_blackhole_recv_buffer.data();
 }
 
-void MpiBuffersManager::add_customer (BoundaryExchange* add_me)
+void MpiBuffersManager::add_customer (BoundaryExchangeBase* add_me)
 {
   // We don't allow null customers (although this should never happen)
   assert (add_me!=nullptr);
@@ -155,7 +155,7 @@ void MpiBuffersManager::add_customer (BoundaryExchange* add_me)
   }
 }
 
-void MpiBuffersManager::remove_customer (BoundaryExchange* remove_me)
+void MpiBuffersManager::remove_customer (BoundaryExchangeBase* remove_me)
 {
   // We don't allow null customers (although this should never happen)
   assert (remove_me!=nullptr);
@@ -176,7 +176,7 @@ void MpiBuffersManager::remove_customer (BoundaryExchange* remove_me)
   --m_num_customers;
 }
 
-void MpiBuffersManager::update_requested_sizes (BoundaryExchange* customer)
+void MpiBuffersManager::update_requested_sizes (BoundaryExchangeBase* customer)
 {
   // Make sure connectivity is valid
   assert (m_connectivity && m_connectivity->is_finalized());

@@ -173,6 +173,7 @@ MACRO(THETAL_KOKKOS_SETUP)
     ${SRC_SHARE_DIR}/cxx/prim_step.cpp
     ${SRC_SHARE_DIR}/cxx/vertical_remap.cpp
     ${SRC_SHARE_DIR}/cxx/VerticalRemapManager.cpp
+    ${SRC_SHARE_DIR}/cxx/mpi/BoundaryExchangeBase.cpp
     ${SRC_SHARE_DIR}/cxx/mpi/BoundaryExchange.cpp
     ${SRC_SHARE_DIR}/cxx/mpi/Comm.cpp
     ${SRC_SHARE_DIR}/cxx/mpi/Connectivity.cpp

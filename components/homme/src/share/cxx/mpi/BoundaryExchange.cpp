@@ -36,30 +36,6 @@ static void alloc3d (A& a, B& b, int ne, int a2, int b2) {
 
 BoundaryExchange::BoundaryExchange()
 {
-  m_num_1d_fields = 0;
-  m_num_2d_fields = 0;
-  m_num_3d_fields = 0;
-  m_num_3d_int_fields = 0;
-
-  m_connectivity    = std::shared_ptr<Connectivity>();
-  m_buffers_manager = std::shared_ptr<MpiBuffersManager>();
-
-  m_num_elems = -1;
-
-  // Prohibit registration until the number of fields has been set
-  m_registration_started   = false;
-  m_registration_completed = false;
-
-  // There is no buffer view or request yet
-  m_buffer_views_and_requests_built = false;
-
-  // We start with a clean class
-  m_cleaned_up = true;
-  m_send_pending = false;
-  m_recv_pending = false;
-
-  m_diagnostics_level = 0;
-
 #ifdef HOMMEXX_ENABLE_FWD_SENS
   if constexpr (Sacado::IsFad<ScalarValue>::value) {
     // We need a user-defined mpi datatype. Since SFad are
@@ -72,6 +48,7 @@ BoundaryExchange::BoundaryExchange()
   {
     m_scalar_dtype = MPI_DOUBLE;
   }
+  m_scalar_size = sizeof(ScalarValue);
 }
 
 BoundaryExchange::BoundaryExchange(std::shared_ptr<Connectivity> connectivity, std::shared_ptr<MpiBuffersManager> buffers_manager)
@@ -82,71 +59,11 @@ BoundaryExchange::BoundaryExchange(std::shared_ptr<Connectivity> connectivity, s
 
   // Set the buffers manager
   set_buffers_manager (buffers_manager);
-
-  m_diagnostics_level = 0;
 }
 
 BoundaryExchange::~BoundaryExchange()
 {
   clean_up ();
-
-  // It may be that we never really used this object, and never set the BM...
-  if (m_buffers_manager) {
-    // Remove me as a customer of the BM
-    m_buffers_manager->remove_customer(this);
-  }
-}
-
-void BoundaryExchange::set_label (const std::string& label) { m_label = label; }
-const std::string& BoundaryExchange::get_label () const { return m_label; }
-void BoundaryExchange::set_diagnostics_level (const int level) { m_diagnostics_level = level; }
-
-void BoundaryExchange::set_connectivity (std::shared_ptr<Connectivity> connectivity)
-{
-  // Functionality only available before registration starts
-  assert (!m_registration_started && !m_registration_completed);
-
-  // Make sure it is a valid connectivity (does not need to be initialized/finalized yet)
-  // Also, replacing the connectivity could have unintended side-effects; better prohibit it.
-  // Besides, when can it be useful?
-  assert (connectivity && !m_connectivity);
-
-  // If the buffers manager is set and it stores a connectivity, it must match the input one
-  assert (!m_buffers_manager || m_buffers_manager->get_connectivity()==connectivity);
-
-  // Set the connectivity
-  m_connectivity = connectivity;
-  m_num_elems = connectivity->get_num_local_elements();
-}
-
-void BoundaryExchange::set_buffers_manager (std::shared_ptr<MpiBuffersManager> buffers_manager)
-{
-  // Functionality available only before the registration is completed
-  assert (!m_registration_completed);
-
-  // Make sure it is a valid pointer. Also, replacing the buffers manager
-  // could have unintended side-effects; better prohibit it.
-  // Besides, when can it be useful?
-  assert (buffers_manager && !m_buffers_manager);
-
-  // If the buffers manager stores a connectivity, and we already have one set, they must match
-  assert (!buffers_manager->is_connectivity_set() || !(m_connectivity) || buffers_manager->get_connectivity()==m_connectivity);
-
-  // Set the internal pointer
-  m_buffers_manager = buffers_manager;
-
-  // Set the connectivity in the buffers manager, if not already set
-  if (!m_buffers_manager->is_connectivity_set() && m_connectivity) {
-    m_buffers_manager->set_connectivity(m_connectivity);
-  }
-
-  // If I don't store a connectivity, take it from the buffers manager (if it has one)
-  if (m_buffers_manager->is_connectivity_set() && !m_connectivity) {
-    set_connectivity(m_buffers_manager->get_connectivity());
-  }
-
-  // Add myself as a customer of the BM
-  m_buffers_manager->add_customer(this);
 }
 
 void BoundaryExchange::set_num_fields (const int num_1d_fields, const int num_2d_fields, const int num_3d_fields, const int num_3d_int_fields)
@@ -187,11 +104,6 @@ void BoundaryExchange::set_num_fields (const int num_1d_fields, const int num_2d
   m_cleaned_up = false;
 }
 
-size_t BoundaryExchange::get_scalar_size () const
-{
-  return sizeof(ScalarValue);
-}
-
 void BoundaryExchange::clean_up()
 {
   if (m_cleaned_up) {
@@ -221,67 +133,6 @@ void BoundaryExchange::clean_up()
 
   // Now we're all cleaned
   m_cleaned_up = true;
-}
-
-void BoundaryExchange::registration_completed()
-{
-  // If everything is already set up, just return
-  if (m_registration_completed) {
-    // TODO: should we prohibit two consecutive calls of this method? It seems harmless, so I'm allowing it
-    return;
-  }
-
-  // TODO: should we assert that m_registration_started=true? Or simply return if not? Can calling this
-  //       method without a call to registration started be dangerous? Not sure...
-
-  // At this point, the connectivity MUST be finalized already, and the buffers manager must be set already
-  assert (m_connectivity && m_connectivity->is_finalized());
-  assert (m_buffers_manager);
-
-  // Create the MPI data types, for corners and edges
-  // Note: this is the size per element, per connection. It is the number of ScalarValue's to send/receive to/from the neighbor
-  // Note: for 2d/3d fields, we have 1 Real per GP (per level, in 3d). For 1d fields,
-  //       we have 2 Real per level (max and min over element).
-
-  int single_ptr_buf_size = m_num_2d_fields + m_num_3d_int_fields*NUM_LEV_P*VECTOR_SIZE;
-  for (int i = 0; i < m_num_3d_fields; ++i)
-    single_ptr_buf_size += m_3d_nlev_pack[i]*VECTOR_SIZE;
-  m_elem_buf_size[etoi(ConnectionKind::CORNER)] = m_num_1d_fields*2*NUM_LEV*VECTOR_SIZE + single_ptr_buf_size * 1;
-  m_elem_buf_size[etoi(ConnectionKind::EDGE)]   = m_num_1d_fields*2*NUM_LEV*VECTOR_SIZE + single_ptr_buf_size * NP;
-
-  // Determine what kind of BE is this (exchange or exchange_min_max)
-  m_exchange_type = m_num_1d_fields>0 ? MPI_EXCHANGE_MIN_MAX : MPI_EXCHANGE;
-
-  // Finalize bookkeeping for any exchange on fewer than NUM_LEV levels.
-  {
-    bool need_nlev_pack = false;
-    for (int i = 0; i < m_num_3d_fields; ++i)
-      if (m_3d_nlev_pack[i] != NUM_LEV) {
-        Errors::runtime_check(m_3d_nlev_pack[i] < NUM_LEV,
-                              "Optional nlev must be <= NUM_LEV");
-        Errors::runtime_check(m_3d_nlev_pack[i] > 0,
-                              "Optional nlev must be > 0");
-        need_nlev_pack = true;
-        break;
-      }
-    if (need_nlev_pack) {
-      m_3d_nlev_pack_d = ExecViewManaged<int*>("m_3d_nlev_pack_d", m_3d_nlev_pack.size());
-      const auto h = Kokkos::create_mirror_view(m_3d_nlev_pack_d);
-      for (int i = 0; i < m_num_3d_fields; ++i) h(i) = m_3d_nlev_pack[i];
-      Kokkos::deep_copy(m_3d_nlev_pack_d, h);
-    }
-    // Clear the host vector if it's not needed.
-    if ( ! need_nlev_pack) m_3d_nlev_pack = decltype(m_3d_nlev_pack)();
-  }
-
-  // Prohibit further registration of fields, and allow exchange
-  m_registration_started   = false;
-  m_registration_completed = true;
-
-  // Optimistically build buffers here. If registration is called with largest
-  // BufferManager user first, then building will occur just once, in the
-  // prim_init2 call.
-  build_buffer_views_and_requests();
 }
 
 void BoundaryExchange::exchange () {
@@ -1188,84 +1039,6 @@ void BoundaryExchange::build_buffer_views_and_requests()
   m_buffer_views_and_requests_built = true;
 }
 
-void BoundaryExchange
-::free_requests () {
-  for (size_t i=0; i<m_send_requests.size(); ++i)
-    HOMMEXX_MPI_CHECK_ERROR(MPI_Request_free(&m_send_requests[i]),
-                            m_connectivity->get_comm().mpi_comm());
-  m_send_requests.clear();
-  for (size_t i=0; i<m_recv_requests.size(); ++i)
-    HOMMEXX_MPI_CHECK_ERROR(MPI_Request_free(&m_recv_requests[i]),
-                            m_connectivity->get_comm().mpi_comm());
-  m_recv_requests.clear();
-}
-
-// A slot is the space in a communication buffer for an (element, connection)
-// pair. The slot index space numbers slots so that, first, they are contiguous
-// by remote PID and, second, within a PID block, each comm partner agrees on
-// order of slots.
-void BoundaryExchange
-::init_slot_idx_to_elem_conn_pair (
-  std::vector<int>& slot_idx_to_elem_conn_pair,
-  std::vector<int>& pids, std::vector<int>& pid_offsets)
-{
-  struct IP {
-    size_t i, ord;
-    int pid;
-    bool operator< (const IP& o) const {
-      if (pid < o.pid) return true;
-      if (pid > o.pid) return false;
-      return ord < o.ord;
-    }
-  };
-
-  const auto& ucon = m_connectivity->get_h_ucon();
-  const auto& ucon_ptr = m_connectivity->get_h_ucon_ptr();
-  const size_t nconn = ucon.size();
-  const int mce = m_connectivity->get_max_corner_elements();
-  const int n_idx_per_elem = 8*mce;
-  std::vector<IP> i2remote(nconn);
-
-  for (size_t k = 0; k < nconn; ++k) {
-    const auto& info = ucon(k);
-    auto& i2r = i2remote[k];
-    // Original sequence through connections.
-    i2r.i = k;
-    // An ordering of the message buffer upon which both members of the
-    // communication pair agree.
-    const auto& lgp = info.local.gid < info.remote.gid ? info.local : info.remote;
-    i2r.ord = lgp.gid*n_idx_per_elem + lgp.dir*mce + lgp.dir_idx;
-    // If local, indicate with -1, which is < the smallest pid of 0.
-    i2r.pid = -1;
-    if (info.sharing == etoi(ConnectionSharing::SHARED))
-      i2r.pid = info.remote_pid;
-  }
-
-  // Sort so that, first, all connections having the same remote_pid are
-  // contiguous; second, within such a block, ord is ascending. The first lets
-  // us set up comm buffers so monolithic messages slot right in. The second
-  // means that the send and recv partners agree on how a monolithic message is
-  // packed.
-  std::sort(i2remote.begin(), i2remote.end());
-
-  // Collect the unique remote_pids and get the offsets of the contiguous blocks
-  // of them.
-  slot_idx_to_elem_conn_pair.resize(nconn);
-  pids.clear();
-  pid_offsets.clear();
-  int prev_pid = -2;
-  for (size_t k = 0; k < nconn; ++k) {
-    const auto& i2r = i2remote[k];
-    if (i2r.pid > prev_pid && i2r.pid != -1) {
-      pids.push_back(i2r.pid);
-      pid_offsets.push_back(k);
-      prev_pid = i2r.pid;
-    }
-    slot_idx_to_elem_conn_pair[k] = i2r.i;
-  }
-  pid_offsets.push_back(nconn);
-}
-
 void BoundaryExchange::clear_buffer_views_and_requests ()
 {
   // MpiBuffersManager calls this method upon (re)allocation of buffers, so that all its customers are forced to
@@ -1292,28 +1065,6 @@ void BoundaryExchange::clear_buffer_views_and_requests ()
 
   // Done
   m_buffer_views_and_requests_built = false;
-}
-
-void BoundaryExchange::waitall()
-{
-  if (!m_send_pending && !m_recv_pending) {
-    return;
-  }
-
-  // At this point, the connectivity MUST be valid
-  assert (m_connectivity);
-
-  // Safety check
-  assert (m_buffers_manager->are_buffers_busy());
-
-  if ( ! m_send_requests.empty())
-    HOMMEXX_MPI_CHECK_ERROR(MPI_Waitall(m_send_requests.size(), m_send_requests.data(), MPI_STATUSES_IGNORE),
-                            m_connectivity->get_comm().mpi_comm());
-  if ( ! m_recv_requests.empty())
-    HOMMEXX_MPI_CHECK_ERROR(MPI_Waitall(m_recv_requests.size(), m_recv_requests.data(), MPI_STATUSES_IGNORE),
-                            m_connectivity->get_comm().mpi_comm());
-
-  m_buffers_manager->unlock_buffers();
 }
 
 } // namespace Homme
