@@ -17,9 +17,9 @@ class HybridVCoord;
 
 // Reference states, needed in HV and vert remap
 struct RefStates {
-  ExecViewManaged<Scalar * [NP][NP][NUM_LEV_P]> phi_i_ref;
-  ExecViewManaged<Scalar * [NP][NP][NUM_LEV  ]> theta_ref;
-  ExecViewManaged<Scalar * [NP][NP][NUM_LEV  ]> dp_ref;
+  ExecViewManaged<RPack * [NP][NP][NUM_LEV_P]> phi_i_ref;
+  ExecViewManaged<RPack * [NP][NP][NUM_LEV  ]> theta_ref;
+  ExecViewManaged<RPack * [NP][NP][NUM_LEV  ]> dp_ref;
 
   RefStates () :
     m_num_elems(0)
