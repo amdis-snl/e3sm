@@ -656,11 +656,11 @@ static void f2c (Elements& e) {
   HostViewManaged<Real*[NUM_TIME_LEVELS][NUM_PHYSICAL_LEV][NP][NP]> vtheta_dp("",nelems);
   HostViewManaged<Real*[NUM_TIME_LEVELS][NUM_INTERFACE_LEV][NP][NP]> phinh_i("",nelems);
   f2c_f90(e.num_elems(),dp3d.data(),w_i.data(),v.data(),vtheta_dp.data(),phinh_i.data(),gradphis.data());
-  sync_to_device(dp3d,e.m_state.m_dp3d);
-  sync_to_device(w_i,e.m_state.m_w_i);
-  sync_to_device(v,e.m_state.m_v); 
-  sync_to_device(vtheta_dp,e.m_state.m_vtheta_dp);
-  sync_to_device(phinh_i,e.m_state.m_phinh_i);
+  sync_to_device(viewConst(dp3d),e.m_state.m_dp3d);
+  sync_to_device(viewConst(w_i),e.m_state.m_w_i);
+  sync_to_device(viewConst(v),e.m_state.m_v);
+  sync_to_device(viewConst(vtheta_dp),e.m_state.m_vtheta_dp);
+  sync_to_device(viewConst(phinh_i),e.m_state.m_phinh_i);
   Kokkos::deep_copy(e.m_geometry.m_gradphis, gradphis);
 }
 

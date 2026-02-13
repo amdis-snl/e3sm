@@ -110,8 +110,8 @@ TEST_CASE("forcing", "forcing") {
            h_gradphis.data(), hv.ps0, p.qsize);
 
   // Create f90-layout views
-  HVM<Real*[QSIZE_D][NUM_PHYSICAL_LEV][NP][NP]>                    q_f90 ("",num_elems);
-  HVM<Real*[QSIZE_D][NUM_PHYSICAL_LEV][NP][NP]>                    fq_f90 ("",num_elems);
+  HVM<Real**[NUM_PHYSICAL_LEV][NP][NP]> q_f90 ("",num_elems,QSIZE_D);
+  HVM<Real**[NUM_PHYSICAL_LEV][NP][NP]> fq_f90 ("",num_elems,QSIZE_D);
   HVM<Real*[Q_NUM_TIME_LEVELS][QSIZE_D][NUM_PHYSICAL_LEV][NP][NP]> qdp_f90("",num_elems);
 
   HVM<Real*[NUM_TIME_LEVELS][NUM_PHYSICAL_LEV][2][NP][NP]> v_f90("",num_elems);
@@ -191,7 +191,7 @@ TEST_CASE("forcing", "forcing") {
           //Kokkos::deep_copy(ps_f90,state.m_ps_v);
           sync_to_host(state.m_ps_v,ps_f90);
 
-          sync_to_host<3>(forcing.m_fm,fm_f90);
+          sync_to_host(forcing.m_fm,fm_f90);
           sync_to_host(forcing.m_ft,ft_f90);
           sync_to_host(forcing.m_fvtheta,fvtheta_f90);
           sync_to_host(forcing.m_fphi,fphi_f90);
@@ -308,7 +308,7 @@ TEST_CASE("forcing", "forcing") {
     sync_to_host(state.m_dp3d,dp_f90);
     sync_to_host(state.m_phinh_i,phinh_f90);
 
-    sync_to_host<3>(forcing.m_fm,fm_f90);
+    sync_to_host(forcing.m_fm,fm_f90);
     sync_to_host(forcing.m_ft,ft_f90);
     sync_to_host(forcing.m_fvtheta,fvtheta_f90);
     sync_to_host(forcing.m_fphi,fphi_f90);

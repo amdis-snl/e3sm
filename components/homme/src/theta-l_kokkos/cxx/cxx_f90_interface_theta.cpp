@@ -228,8 +228,8 @@ void cxx_push_results_to_f90(F90Ptr &elem_state_v_ptr,         F90Ptr &elem_stat
                HostViewUnmanaged<Real * [NUM_PHYSICAL_LEV][NP][NP]>(
                    elem_derived_omega_p_ptr, num_elems));
   sync_to_host(tracers.Q,
-               HostViewUnmanaged<Real * [QSIZE_D][NUM_PHYSICAL_LEV][NP][NP]>(
-                   elem_Q_ptr, num_elems));
+               HostViewUnmanaged<Real **[NUM_PHYSICAL_LEV][NP][NP]>(
+                   elem_Q_ptr, num_elems, tracers.num_tracers()));
 }
 
 void cxx_push_sensitivities_to_f90(F90Ptr &elem_sens_v_ptr,     F90Ptr &elem_sens_w_i_ptr,
@@ -336,28 +336,29 @@ void push_forcing_to_c (F90Ptr elem_derived_FM,
   ElementsForcing &forcing = Context::singleton().get<ElementsForcing>();
   const int num_elems = forcing.num_elems();
 
-  HostViewUnmanaged<Real *[NUM_PHYSICAL_LEV][3][NP][NP]> fm_f90(
+  HostViewUnmanaged<const Real *[NUM_PHYSICAL_LEV][3][NP][NP]> fm_f90(
       elem_derived_FM, num_elems);
-  sync_to_device<3>(fm_f90, forcing.m_fm);
+  sync_to_device(fm_f90, forcing.m_fm);
 
-  HostViewUnmanaged<Real * [NUM_PHYSICAL_LEV][NP][NP]> fvtheta_f90(
+  HostViewUnmanaged<const Real * [NUM_PHYSICAL_LEV][NP][NP]> fvtheta_f90(
       elem_derived_FVTheta, num_elems);
   sync_to_device(fvtheta_f90, forcing.m_fvtheta);
 
-  HostViewUnmanaged<Real * [NUM_PHYSICAL_LEV][NP][NP]> ft_f90(
+  HostViewUnmanaged<const Real * [NUM_PHYSICAL_LEV][NP][NP]> ft_f90(
       elem_derived_FT, num_elems);
   sync_to_device(ft_f90, forcing.m_ft);
 
-  HostViewUnmanaged<Real * [NUM_INTERFACE_LEV][NP][NP]> fphi_f90(
+  HostViewUnmanaged<const Real * [NUM_INTERFACE_LEV][NP][NP]> fphi_f90(
       elem_derived_FPHI, num_elems);
   sync_to_device(fphi_f90, forcing.m_fphi);
 
   Tracers &tracers = Context::singleton().get<Tracers>();
+  const int num_tracers = tracers.num_tracers();
   if (tracers.fq.data() == nullptr) {
-    tracers.fq = decltype(tracers.fq)("fq", num_elems, tracers.num_tracers());
+    tracers.fq = decltype(tracers.fq)("fq", num_elems, num_tracers);
   }
-  HostViewUnmanaged<Real * [QSIZE_D][NUM_PHYSICAL_LEV][NP][NP]> fq_f90(
-      elem_derived_FQ, num_elems);
+  HostViewUnmanaged<const Real **[NUM_PHYSICAL_LEV][NP][NP]> fq_f90(
+      elem_derived_FQ, num_elems, num_tracers);
   sync_to_device(fq_f90, tracers.fq);
 }
 

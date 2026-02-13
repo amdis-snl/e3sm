@@ -280,7 +280,7 @@ TEST_CASE("caar", "caar_testing") {
             sync_to_host(elems.m_state.m_phinh_i, phinh_i_f90);
             sync_to_host(elems.m_state.m_v, v_f90);
 
-            sync_to_host<2>(elems.m_derived.m_vn0, vn0_f90);
+            sync_to_host(elems.m_derived.m_vn0, vn0_f90);
             sync_to_host(elems.m_derived.m_eta_dot_dpdn, eta_dot_dpdn_f90);
             sync_to_host(elems.m_derived.m_omega_p, omega_p_f90);
 
