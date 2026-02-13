@@ -127,7 +127,8 @@ struct ViewConst{};
 //        Instead, we want the same 'template signature', simply with a const data type.
 template<typename DataType, typename...Props>
 struct ViewConst<ViewType<DataType,Props...>> {
-  using type = ViewType<const DataType,Props...>;
+  using const_dtype = typename ViewType<DataType,Props...>::traits::const_data_type;
+  using type = ViewType<const_dtype,Props...>;
 };
 
 // This is ugly, but prevents unnecessary copies
