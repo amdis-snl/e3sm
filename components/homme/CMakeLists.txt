@@ -64,14 +64,16 @@ ENDIF()
 
 option (HOMMEXX_ENABLE_FAD_TYPES "Whether to enable FAD types via Sacado" OFF)
 if (HOMMEXX_ENABLE_FAD_TYPES)
-  set (HOMMEXX_SFAD_SIZE 1 CACHE STRING "Length of the SFad sacado type")
-  # Ensure the use picked a valid SFAD size
-  if (NOT HOMMEXX_SFAD_SIZE MATCHES "^[0-9]+$" OR HOMMEXX_SFAD_SIZE LESS_EQUAL 0)
-    message (FATAL_ERROR "HOMMEXX_SFAD_SIZE (${HOMMEXX_SFAD_SIZE}) must be a positive integer")
-  endif()
   find_package(Trilinos REQUIRED COMPONENTS Sacado)
+
+  set (HOMMEXX_DP_SFAD_SIZE 1 CACHE STRING "Length of the SFad sacado type for derivatives w.r.t. parameters")
+
+  # Ensure the use picked a valid SFAD sizes
+  if (NOT HOMMEXX_DP_SFAD_SIZE MATCHES "^[0-9]+$" OR HOMMEXX_DP_SFAD_SIZE LESS_EQUAL 0)
+    message (FATAL_ERROR "HOMMEXX_DP_SFAD_SIZE (${HOMMEXX_DP_SFAD_SIZE}) must be a positive integer")
+  endif()
 else()
-  set (HOMMEXX_SFAD_SIZE 0 CACHE STRING "Length of the SFad sacado type" FORCE)
+  set (HOMMEXX_DP_SFAD_SIZE 0 CACHE STRING "Length of the SFad sacado type" FORCE)
 endif()
 
 OPTION (HOMMEXX_ENABLE_FWD_SENS "Whether to build HOMEXX in forward sensitivity mode (experimental)" OFF)

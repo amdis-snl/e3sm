@@ -51,8 +51,8 @@ class HyperviscosityFunctorImpl
     Real  nu_ratio2;
 
 #ifdef HOMMEXX_TEST_HYPERVIS_FAD
-    FadType rel_perturb;
-    FadType nu;
+    DpFadType rel_perturb;
+    DpFadType nu;
 #else
     const Real  nu;
 #endif

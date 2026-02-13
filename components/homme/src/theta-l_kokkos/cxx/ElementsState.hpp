@@ -37,20 +37,22 @@ private:
 };
 
 /* Per element data - specific velocity, temperature, pressure, etc. */
-class ElementsState {
+template<typename ST>
+class ElementsStateST {
 public:
+  using PT = PackType<ST>;
 
   RefStates m_ref_states;
 
-  ExecViewManaged<Scalar * [NUM_TIME_LEVELS][2][NP][NP][NUM_LEV  ]> m_v;          // Horizontal velocity
-  ExecViewManaged<Scalar * [NUM_TIME_LEVELS]   [NP][NP][NUM_LEV_P]> m_w_i;        // Vertical velocity at interfaces
-  ExecViewManaged<Scalar * [NUM_TIME_LEVELS]   [NP][NP][NUM_LEV  ]> m_vtheta_dp;  // Virtual potential temperature (mass)
-  ExecViewManaged<Scalar * [NUM_TIME_LEVELS]   [NP][NP][NUM_LEV_P]> m_phinh_i;    // Geopotential used by NH model at interfaces
-  ExecViewManaged<Scalar * [NUM_TIME_LEVELS]   [NP][NP][NUM_LEV  ]> m_dp3d;       // Delta p on levels
+  ExecViewManaged<PT * [NUM_TIME_LEVELS][2][NP][NP][NUM_LEV  ]> m_v;          // Horizontal velocity
+  ExecViewManaged<PT * [NUM_TIME_LEVELS]   [NP][NP][NUM_LEV_P]> m_w_i;        // Vertical velocity at interfaces
+  ExecViewManaged<PT * [NUM_TIME_LEVELS]   [NP][NP][NUM_LEV  ]> m_vtheta_dp;  // Virtual potential temperature (mass)
+  ExecViewManaged<PT * [NUM_TIME_LEVELS]   [NP][NP][NUM_LEV_P]> m_phinh_i;    // Geopotential used by NH model at interfaces
+  ExecViewManaged<PT * [NUM_TIME_LEVELS]   [NP][NP][NUM_LEV  ]> m_dp3d;       // Delta p on levels
 
-  ExecViewManaged<ScalarValue * [NUM_TIME_LEVELS]   [NP][NP]           > m_ps_v;       // Surface pressure
+  ExecViewManaged<ST * [NUM_TIME_LEVELS]   [NP][NP]           > m_ps_v;       // Surface pressure
 
-  ElementsState() :
+  ElementsStateST() :
     m_num_elems(0)
     , m_policy(get_default_team_policy<ExecSpace>(1))
     , m_tu(m_policy)
@@ -84,6 +86,8 @@ private:
   Kokkos::TeamPolicy<ExecSpace> m_policy;
   TeamUtils<ExecSpace> m_tu;
 };
+
+using ElementsState = ElementsStateST<ScalarValue>;
 
 // Check ElementsState for NaN or incorrectly signed values. The initial check
 // is fast and on device. If everything is fine, the routine returns

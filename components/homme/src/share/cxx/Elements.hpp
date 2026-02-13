@@ -29,15 +29,17 @@ class HybridVCoord;
  *    - ElementsBuffers:      buffers to be used for temporary variables inside kernels
  */
 
-class Elements {
+template<typename ST>
+class ElementsST {
 public:
+  using PT = PackType<ST>;
 
-  ElementsGeometry      m_geometry;
-  ElementsState         m_state;
-  ElementsDerivedState  m_derived;
-  ElementsForcing       m_forcing;
+  ElementsGeometry            m_geometry;
+  ElementsStateST<ST>         m_state;
+  ElementsDerivedStateST<ST>  m_derived;
+  ElementsForcingST<ST>       m_forcing;
 
-  Elements () : m_num_elems(0), m_inited(false) {}
+  ElementsST () : m_num_elems(0), m_inited(false) {}
 
   int num_elems () const { return m_num_elems; }
 
@@ -54,6 +56,8 @@ protected:
   int  m_num_elems;
   bool m_inited;
 };
+
+using Elements = ElementsST<ScalarValue>;
 
 } // Homme
 

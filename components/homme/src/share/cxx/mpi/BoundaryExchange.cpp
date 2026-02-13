@@ -61,10 +61,11 @@ BoundaryExchange::BoundaryExchange()
   m_diagnostics_level = 0;
 
 #ifdef HOMMEXX_ENABLE_FWD_SENS
-  if constexpr (std::is_same_v<ScalarValue,FadType>) {
+  if constexpr (Sacado::IsFad<ScalarValue>::value) {
     // We need a user-defined mpi datatype. Since SFad are
     // contiguous in memory, we can use MPI_Type_contiguous
-    MPI_Type_contiguous(1+HOMMEXX_SFAD_SIZE, MPI_DOUBLE, &m_scalar_dtype);
+    constexpr int fad_sz = sizeof(ScalarValue) / sizeof(Real);
+    MPI_Type_contiguous(fad_sz, MPI_DOUBLE, &m_scalar_dtype);
     MPI_Type_commit(&m_scalar_dtype);
   } else
 #endif

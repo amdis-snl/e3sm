@@ -12,18 +12,14 @@
 
 #include <Sacado.hpp>
 
-//#include <Sacado_Fad_SFad.hpp>
-
 namespace Homme {
 
 // TODO: decide what to do in terms of which Fad to support (SFad, SLFad, DFad, etc)
 template<typename T,int N>
 using SFadN = Sacado::Fad::SFad<T,N>;
 
-template<typename T>
-using SFad = SFadN<T,HOMMEXX_SFAD_SIZE>;
-
-using FadType = SFad<double>;
+constexpr int DpFadSize = HOMMEXX_DP_SFAD_SIZE;
+using DpFadType = SFadN<double,DpFadSize>;
 
 template<typename T, int N>
 KOKKOS_INLINE_FUNCTION
@@ -40,22 +36,21 @@ auto ADValue(const Expr& e)
 } // namespace Homme
 
 namespace ekat {
+// Specialization of ScalarTraits struct for Sacado SFad types
 template<typename T, int N>
 struct ScalarTraits<Homme::SFadN<T,N>>
 {
-  using inner_traits = ScalarTraits<T>;
-
   using value_type  = Homme::SFadN<T,N>;
   using scalar_type = value_type;
 
   static constexpr bool is_simd = false;
 
-  static constexpr bool is_floating_point = inner_traits::is_floating_point;
+  static constexpr bool is_floating_point = ekat::ScalarTraits<T>::is_floating_point;
 
   static constexpr bool specialized = true;
 };
+} // namespace ekat
 
-}
 #endif // HOMMEXX_ENABLE_FAD_TYPES
 
 #endif // HOMMEXX_SACADO_TYPES_HPP

@@ -5,16 +5,18 @@
 
 namespace Homme {
 
-class ElementsForcing {
+template<typename ST>
+class ElementsForcingST {
 public:
+  using PT = PackType<ST>;
 
   // Per Element Forcings
-  ExecViewManaged<Scalar * [3][NP][NP][NUM_LEV]  >  m_fm;       // Momentum forcing
-  ExecViewManaged<Scalar *    [NP][NP][NUM_LEV]  >  m_fvtheta;  // Virtual potential temperature forcing
-  ExecViewManaged<Scalar *    [NP][NP][NUM_LEV]  >  m_ft;       // Temperature forcing
-  ExecViewManaged<Scalar *    [NP][NP][NUM_LEV_P]>  m_fphi;     // Phi (NH) forcing
+  ExecViewManaged<PT * [3][NP][NP][NUM_LEV]  >  m_fm;       // Momentum forcing
+  ExecViewManaged<PT *    [NP][NP][NUM_LEV]  >  m_fvtheta;  // Virtual potential temperature forcing
+  ExecViewManaged<PT *    [NP][NP][NUM_LEV]  >  m_ft;       // Temperature forcing
+  ExecViewManaged<PT *    [NP][NP][NUM_LEV_P]>  m_fphi;     // Phi (NH) forcing
 
-  ElementsForcing() = default;
+  ElementsForcingST() = default;
 
   void init (const int num_elems);
   void randomize (const int seed, const Real min_f = -1.0, const Real max_f = 1.0);
@@ -24,6 +26,8 @@ public:
 private:
   int m_num_elems;
 };
+
+using ElementsForcing = ElementsForcingST<ScalarValue>;
 
 } // namespace Homme
 

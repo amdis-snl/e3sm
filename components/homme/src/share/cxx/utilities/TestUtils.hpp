@@ -27,8 +27,8 @@ void genRandArray(Real *const x, int length, rngAlg &engine, PDF &&pdf) {
   }
 }
 
-template <typename rngAlg, typename PDF>
-void genRandArray(Scalar *const x, int length, rngAlg &engine, PDF &&pdf) {
+template <typename ST, typename rngAlg, typename PDF>
+void genRandArray(PackType<ST> *const x, int length, rngAlg &engine, PDF &&pdf) {
   for (int i = 0; i < length; ++i) {
     for (int j = 0; j < VECTOR_SIZE; ++j) {
       x[i][j] = pdf(engine);
@@ -37,7 +37,7 @@ void genRandArray(Scalar *const x, int length, rngAlg &engine, PDF &&pdf) {
 }
 
 #ifdef HOMMEXX_ENABLE_FAD_TYPES
-template <typename rngAlg, typename PDF>
+template <typename FadType, typename rngAlg, typename PDF>
 void genRandArray(FadType *const x, int length, rngAlg &engine, PDF &&pdf) {
   for (int i = 0; i < length; ++i) {
     x[i] = pdf(engine);

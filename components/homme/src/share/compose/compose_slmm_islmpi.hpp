@@ -99,7 +99,7 @@ namespace islmpi {
 
 #ifdef HOMMEXX_ENABLE_FAD_TYPES
 template<typename T, int N>
-Homme::Real ADValue(const Homme::FadType& x) {return x.val();}
+Homme::Real ADValue(const Homme::DpFadType& x) {return x.val();}
 #endif
 
 // Meta and bulk data for the interpolation SL method with special comm pattern.

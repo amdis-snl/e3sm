@@ -15,18 +15,21 @@ namespace Homme {
 class HybridVCoord;
 
 /* Per element data - specific velocity, temperature, pressure, etc. */
-class ElementsState {
+template<typename ST>
+class ElementsStateST {
 public:
+  using PT = PackType<ST>;
+
   // Velocity in lon lat basis
-  ExecViewManaged<Scalar * [NUM_TIME_LEVELS][2][NP][NP][NUM_LEV]> m_v;
+  ExecViewManaged<PT * [NUM_TIME_LEVELS][2][NP][NP][NUM_LEV]> m_v;
   // Temperature
-  ExecViewManaged<Scalar * [NUM_TIME_LEVELS][NP][NP][NUM_LEV]> m_t;
+  ExecViewManaged<PT * [NUM_TIME_LEVELS][NP][NP][NUM_LEV]> m_t;
   // dp ( it is dp/d\eta * delta(eta)), or pseudodensity
-  ExecViewManaged<Scalar * [NUM_TIME_LEVELS][NP][NP][NUM_LEV]> m_dp3d;
+  ExecViewManaged<PT * [NUM_TIME_LEVELS][NP][NP][NUM_LEV]> m_dp3d;
 
   ExecViewManaged<Real * [NUM_TIME_LEVELS][NP][NP]> m_ps_v;
 
-  ElementsState() : m_num_elems(0) {}
+  ElementsStateST() : m_num_elems(0) {}
 
   void init(const int num_elems);
 
@@ -59,6 +62,8 @@ private:
 // Not implemented.
 void check_print_abort_on_bad_elems(const std::string& label, const int time_level,
                                     const int error_code = -1);
+
+using ElementsState = ElementsStateST<ScalarValue>;
 
 } // Homme
 

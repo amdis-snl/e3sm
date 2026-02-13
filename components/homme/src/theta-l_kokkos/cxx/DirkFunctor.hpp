@@ -7,6 +7,7 @@
 #ifndef HOMMEXX_DIRK_FUNCTOR_HPP
 #define HOMMEXX_DIRK_FUNCTOR_HPP
 
+#include "Elements.hpp"
 #include "Types.hpp"
 #include <memory>
 
@@ -14,7 +15,6 @@ namespace Homme {
 
 class FunctorsBuffersManager;
 class DirkFunctorImpl;
-class Elements;
 class HybridVCoord;
 
 class DirkFunctor {

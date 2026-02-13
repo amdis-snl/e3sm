@@ -155,7 +155,7 @@ int HyperviscosityFunctorImpl::requested_buffer_size () const {
   const int mid_scalars_nelems = 2 + (m_process_nh_vars ? 2 : 0);
 
 #ifdef HOMMEXX_ENABLE_FWD_SENS
-  const int fad_size = Sacado::StaticSize<FadType>::value+1;
+  const int fad_size = 1+DpFadSize;
 #else
   const int fad_size = 1;
 #endif
