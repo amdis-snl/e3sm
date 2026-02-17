@@ -79,8 +79,8 @@ TEST_CASE("col_ops_interpolation", "interpolation") {
     for (int ie=0; ie<num_elems; ++ie) {
       for (int igp=0; igp<NUM_PTS; ++igp) {
         for (int jgp=0; jgp<NUM_PTS; ++jgp) {
-          auto mid_out = unpackView(Homme::subview(h_midpoints_field_out,ie,igp,jgp));
-          auto int_out = unpackView(Homme::subview(h_interface_field_out,ie,igp,jgp));
+          auto mid_out = ekat::scalarize(Homme::subview(h_midpoints_field_out,ie,igp,jgp));
+          auto int_out = ekat::scalarize(Homme::subview(h_interface_field_out,ie,igp,jgp));
 
           // First midpoint should be fine, but first interface should be 0
           REQUIRE (mid_out(0) == 1.0);
@@ -123,8 +123,8 @@ TEST_CASE("col_ops_interpolation", "interpolation") {
     for (int ie=0; ie<num_elems; ++ie) {
       for (int igp=0; igp<NUM_PTS; ++igp) {
         for (int jgp=0; jgp<NUM_PTS; ++jgp) {
-          auto mid_out = unpackView(Homme::subview(h_midpoints_field_out,ie,igp,jgp));
-          auto int_out = unpackView(Homme::subview(h_interface_field_out,ie,igp,jgp));
+          auto mid_out = ekat::scalarize(Homme::subview(h_midpoints_field_out,ie,igp,jgp));
+          auto int_out = ekat::scalarize(Homme::subview(h_interface_field_out,ie,igp,jgp));
 
           // First midpoint should be fine, but first interface should be equal to the first midpoint
           REQUIRE (mid_out(0) == 0.5);
@@ -177,7 +177,7 @@ TEST_CASE("col_ops_interpolation", "interpolation") {
     for (int ie=0; ie<num_elems; ++ie) {
       for (int igp=0; igp<NUM_PTS; ++igp) {
         for (int jgp=0; jgp<NUM_PTS; ++jgp) {
-          auto mid_out = unpackView(Homme::subview(h_midpoints_field_out,ie,igp,jgp));
+          auto mid_out = ekat::scalarize(Homme::subview(h_midpoints_field_out,ie,igp,jgp));
           for (int k=0; k<NUM_PHYSICAL_LEV; ++k) {
 
             REQUIRE (mid_out(k) == (1.0 + (k*k + (k+1)*(k+1))/2.0));
@@ -255,8 +255,8 @@ TEST_CASE("col_ops_reduction", "packed_reduction") {
             // Compute using std functions
 
             // Copy from host view to std vector
-            auto mid_in = unpackView(Homme::subview(h_midpoints_field_in,ie,igp,jgp));
-            auto int_in = unpackView(Homme::subview(h_interface_field_in,ie,igp,jgp));
+            auto mid_in = ekat::scalarize(Homme::subview(h_midpoints_field_in,ie,igp,jgp));
+            auto int_in = ekat::scalarize(Homme::subview(h_interface_field_in,ie,igp,jgp));
             for (int k=0; k<NPL; ++k) {
               mid_data[k] = mid_in(k);
               int_data[k] = int_in(k);
@@ -290,8 +290,8 @@ TEST_CASE("col_ops_reduction", "packed_reduction") {
             }
 
             // Check answer
-            auto mid_out = unpackView(Homme::subview(h_midpoints_field_out,ie,igp,jgp));
-            auto int_out = unpackView(Homme::subview(h_interface_field_out,ie,igp,jgp));
+            auto mid_out = ekat::scalarize(Homme::subview(h_midpoints_field_out,ie,igp,jgp));
+            auto int_out = ekat::scalarize(Homme::subview(h_interface_field_out,ie,igp,jgp));
             REQUIRE (mid_out(0) == sum_mid);
             REQUIRE (int_out(0) == sum_int);
           }
@@ -366,8 +366,8 @@ TEST_CASE("col_ops_scan_sum", "scan_sum") {
           // Compute using std functions
 
           // Copy from host view to std vector
-          auto mid_in = unpackView(Homme::subview(h_midpoints_field_in,ie,igp,jgp));
-          auto int_in = unpackView(Homme::subview(h_interface_field_in,ie,igp,jgp));
+          auto mid_in = ekat::scalarize(Homme::subview(h_midpoints_field_in,ie,igp,jgp));
+          auto int_in = ekat::scalarize(Homme::subview(h_interface_field_in,ie,igp,jgp));
           for (int k=0; k<NPL; ++k) {
             mid_data[k] = mid_in(k);
             int_data[k] = int_in(k);
@@ -381,8 +381,8 @@ TEST_CASE("col_ops_scan_sum", "scan_sum") {
           std::partial_sum(int_data.begin(),int_data.end(),int_sums.begin());
 
           // Check answer
-          auto mid_out = unpackView(Homme::subview(h_midpoints_field_out,ie,igp,jgp));
-          auto int_out = unpackView(Homme::subview(h_interface_field_out,ie,igp,jgp));
+          auto mid_out = ekat::scalarize(Homme::subview(h_midpoints_field_out,ie,igp,jgp));
+          auto int_out = ekat::scalarize(Homme::subview(h_interface_field_out,ie,igp,jgp));
           for (int k=0; k<NUM_PHYSICAL_LEV; ++k) {
             REQUIRE (mid_out(k) == mid_sums[k]);
             REQUIRE (int_out(k) == int_sums[k]);
@@ -428,8 +428,8 @@ TEST_CASE("col_ops_scan_sum", "scan_sum") {
           // Compute using std functions
 
           // Copy from host view to std vector
-          auto mid_in = unpackView(Homme::subview(h_midpoints_field_in,ie,igp,jgp));
-          auto int_in = unpackView(Homme::subview(h_interface_field_in,ie,igp,jgp));
+          auto mid_in = ekat::scalarize(Homme::subview(h_midpoints_field_in,ie,igp,jgp));
+          auto int_in = ekat::scalarize(Homme::subview(h_interface_field_in,ie,igp,jgp));
           for (int k=0; k<NPL; ++k) {
             mid_data[k] = mid_in(k);
             int_data[k] = int_in(k);
@@ -443,8 +443,8 @@ TEST_CASE("col_ops_scan_sum", "scan_sum") {
           std::partial_sum(int_data.rbegin(),int_data.rend(),int_sums.rbegin());
 
           // Check answer
-          auto mid_out = unpackView(Homme::subview(h_midpoints_field_out,ie,igp,jgp));
-          auto int_out = unpackView(Homme::subview(h_interface_field_out,ie,igp,jgp));
+          auto mid_out = ekat::scalarize(Homme::subview(h_midpoints_field_out,ie,igp,jgp));
+          auto int_out = ekat::scalarize(Homme::subview(h_interface_field_out,ie,igp,jgp));
           for (int k=0; k<NUM_PHYSICAL_LEV; ++k) {
             REQUIRE (mid_out(k) == mid_sums[k]);
             REQUIRE (int_out(k) == int_sums[k]);
@@ -490,8 +490,8 @@ TEST_CASE("col_ops_scan_sum", "scan_sum") {
           // Compute using std functions
 
           // Copy from host view to std vector
-          auto mid_in = unpackView(Homme::subview(h_midpoints_field_in,ie,igp,jgp));
-          auto int_in = unpackView(Homme::subview(h_interface_field_in,ie,igp,jgp));
+          auto mid_in = ekat::scalarize(Homme::subview(h_midpoints_field_in,ie,igp,jgp));
+          auto int_in = ekat::scalarize(Homme::subview(h_interface_field_in,ie,igp,jgp));
           for (int k=0; k<NPL; ++k) {
             mid_data[k] = mid_in(k);
             int_data[k] = int_in(k);
@@ -506,8 +506,8 @@ TEST_CASE("col_ops_scan_sum", "scan_sum") {
           std::partial_sum(mid_data.begin(),--mid_data.end(),++mid_sums.begin());
           std::partial_sum(int_data.begin(),--int_data.end(),++int_sums.begin());
     
-          auto mid_out = unpackView(Homme::subview(h_midpoints_field_out,ie,igp,jgp));
-          auto int_out = unpackView(Homme::subview(h_interface_field_out,ie,igp,jgp));
+          auto mid_out = ekat::scalarize(Homme::subview(h_midpoints_field_out,ie,igp,jgp));
+          auto int_out = ekat::scalarize(Homme::subview(h_interface_field_out,ie,igp,jgp));
           for (int k=0; k<NUM_PHYSICAL_LEV; ++k) {
             REQUIRE (mid_out(k) == mid_sums[k]);
             REQUIRE (int_out(k) == int_sums[k]);
@@ -553,8 +553,8 @@ TEST_CASE("col_ops_scan_sum", "scan_sum") {
           // Compute using std functions
 
           // Copy from host view to std vector
-          auto mid_in = unpackView(Homme::subview(h_midpoints_field_in,ie,igp,jgp));
-          auto int_in = unpackView(Homme::subview(h_interface_field_in,ie,igp,jgp));
+          auto mid_in = ekat::scalarize(Homme::subview(h_midpoints_field_in,ie,igp,jgp));
+          auto int_in = ekat::scalarize(Homme::subview(h_interface_field_in,ie,igp,jgp));
           for (int k=0; k<NPL; ++k) {
             mid_data[k] = mid_in(k);
             int_data[k] = int_in(k);
@@ -569,8 +569,8 @@ TEST_CASE("col_ops_scan_sum", "scan_sum") {
           std::partial_sum(mid_data.rbegin(),--mid_data.rend(),++mid_sums.rbegin());
           std::partial_sum(int_data.rbegin(),--int_data.rend(),++int_sums.rbegin());
     
-          auto mid_out = unpackView(Homme::subview(h_midpoints_field_out,ie,igp,jgp));
-          auto int_out = unpackView(Homme::subview(h_interface_field_out,ie,igp,jgp));
+          auto mid_out = ekat::scalarize(Homme::subview(h_midpoints_field_out,ie,igp,jgp));
+          auto int_out = ekat::scalarize(Homme::subview(h_interface_field_out,ie,igp,jgp));
           for (int k=0; k<NUM_PHYSICAL_LEV; ++k) {
             REQUIRE (mid_out(k) == mid_sums[k]);
             REQUIRE (int_out(k) == int_sums[k]);
@@ -608,7 +608,7 @@ TEST_CASE("col_ops_scan_sum", "scan_sum") {
           // Compute manually
 
           // Copy from host view to std vector
-          auto mid_in = unpackView(Homme::subview(h_midpoints_field_in,ie,igp,jgp));
+          auto mid_in = ekat::scalarize(Homme::subview(h_midpoints_field_in,ie,igp,jgp));
           for (int k=0; k<NPL; ++k) {
             mid_data[k] = mid_in(k);
           }
@@ -620,7 +620,7 @@ TEST_CASE("col_ops_scan_sum", "scan_sum") {
           }
 
           // Check answer
-          auto int_out = unpackView(Homme::subview(h_interface_field_out,ie,igp,jgp));
+          auto int_out = ekat::scalarize(Homme::subview(h_interface_field_out,ie,igp,jgp));
           for (int k=0; k<NUM_PHYSICAL_LEV; ++k) {
             REQUIRE (int_out(k) == int_sums[k]);
           }
@@ -662,7 +662,7 @@ TEST_CASE("col_ops_scan_sum", "scan_sum") {
           // Compute manually
 
           // Copy from host view to std vector
-          auto mid_in = unpackView(Homme::subview(h_midpoints_field_in,ie,igp,jgp));
+          auto mid_in = ekat::scalarize(Homme::subview(h_midpoints_field_in,ie,igp,jgp));
           for (int k=0; k<NPL; ++k) {
             mid_data[k] = mid_in(k);
           }
@@ -675,7 +675,7 @@ TEST_CASE("col_ops_scan_sum", "scan_sum") {
           }
 
           // Check answer
-          auto int_out = unpackView(Homme::subview(h_interface_field_out,ie,igp,jgp));
+          auto int_out = ekat::scalarize(Homme::subview(h_interface_field_out,ie,igp,jgp));
           for (int k=NUM_INTERFACE_LEV-1; k>=0; --k) {
             REQUIRE (int_out(k) == int_sums[k]);
           }
@@ -714,7 +714,7 @@ TEST_CASE("col_ops_scan_sum", "scan_sum") {
           // Compute manually
 
           // Copy from host view to std vector
-          auto mid_in = unpackView(Homme::subview(h_midpoints_field_in,ie,igp,jgp));
+          auto mid_in = ekat::scalarize(Homme::subview(h_midpoints_field_in,ie,igp,jgp));
           for (int k=0; k<NPL; ++k) {
             mid_data[k] = mid_in(k);
           }
@@ -726,7 +726,7 @@ TEST_CASE("col_ops_scan_sum", "scan_sum") {
           }
 
           // Check answer
-          auto int_out = unpackView(Homme::subview(h_interface_field_out,ie,igp,jgp));
+          auto int_out = ekat::scalarize(Homme::subview(h_interface_field_out,ie,igp,jgp));
           for (int k=0; k<NUM_INTERFACE_LEV; ++k) {
             REQUIRE (int_out(k) == int_sums[k]);
           }
@@ -768,7 +768,7 @@ TEST_CASE("col_ops_scan_sum", "scan_sum") {
           // Compute manually
 
           // Copy from host view to std vector
-          auto mid_in = unpackView(Homme::subview(h_midpoints_field_in,ie,igp,jgp));
+          auto mid_in = ekat::scalarize(Homme::subview(h_midpoints_field_in,ie,igp,jgp));
           for (int k=0; k<NPL; ++k) {
             mid_data[k] = mid_in(k);
           }
@@ -781,7 +781,7 @@ TEST_CASE("col_ops_scan_sum", "scan_sum") {
           }
 
           // Check answer
-          auto int_out = unpackView(Homme::subview(h_interface_field_out,ie,igp,jgp));
+          auto int_out = ekat::scalarize(Homme::subview(h_interface_field_out,ie,igp,jgp));
           for (int k=0; k<NUM_INTERFACE_LEV; ++k) {
             REQUIRE (int_out(k) == int_sums[k]);
           }

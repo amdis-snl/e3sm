@@ -11,8 +11,6 @@
 #include "utilities/TestUtils.hpp"
 #include "utilities/ViewUtils.hpp"
 
-#include <ekat_pack_kokkos.hpp>
-
 #include <random>
 
 namespace Homme

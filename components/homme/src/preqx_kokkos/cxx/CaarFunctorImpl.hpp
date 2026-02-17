@@ -31,7 +31,9 @@
 
 namespace Homme {
 
-struct CaarFunctorImpl {
+template<typename ST>
+struct CaarFunctorImplST {
+  using PT = PackType<ST>;
 
   struct Buffers {
     static constexpr int num_2d_scalar_buf = 1;
@@ -41,21 +43,21 @@ struct CaarFunctorImpl {
 
     ExecViewUnmanaged<Real*[NP][NP]> sdot_sum;
 
-    ExecViewUnmanaged<Scalar*   [NP][NP][NUM_LEV]> pressure;
-    ExecViewUnmanaged<Scalar*   [NP][NP][NUM_LEV]> temperature_virt;
-    ExecViewUnmanaged<Scalar*   [NP][NP][NUM_LEV]> ephi;
-    ExecViewUnmanaged<Scalar*   [NP][NP][NUM_LEV]> div_vdp;
-    ExecViewUnmanaged<Scalar*   [NP][NP][NUM_LEV]> vorticity;
-    ExecViewUnmanaged<Scalar*   [NP][NP][NUM_LEV]> t_vadv;
-    ExecViewUnmanaged<Scalar*   [NP][NP][NUM_LEV]> omega_p;
+    ExecViewUnmanaged<PT*   [NP][NP][NUM_LEV]> pressure;
+    ExecViewUnmanaged<PT*   [NP][NP][NUM_LEV]> temperature_virt;
+    ExecViewUnmanaged<PT*   [NP][NP][NUM_LEV]> ephi;
+    ExecViewUnmanaged<PT*   [NP][NP][NUM_LEV]> div_vdp;
+    ExecViewUnmanaged<PT*   [NP][NP][NUM_LEV]> vorticity;
+    ExecViewUnmanaged<PT*   [NP][NP][NUM_LEV]> t_vadv;
+    ExecViewUnmanaged<PT*   [NP][NP][NUM_LEV]> omega_p;
 
-    ExecViewUnmanaged<Scalar*[2][NP][NP][NUM_LEV]> pressure_grad;
-    ExecViewUnmanaged<Scalar*[2][NP][NP][NUM_LEV]> energy_grad;
-    ExecViewUnmanaged<Scalar*[2][NP][NP][NUM_LEV]> vdp;
-    ExecViewUnmanaged<Scalar*[2][NP][NP][NUM_LEV]> temperature_grad;
-    ExecViewUnmanaged<Scalar*[2][NP][NP][NUM_LEV]> v_vadv;
+    ExecViewUnmanaged<PT*[2][NP][NP][NUM_LEV]> pressure_grad;
+    ExecViewUnmanaged<PT*[2][NP][NP][NUM_LEV]> energy_grad;
+    ExecViewUnmanaged<PT*[2][NP][NP][NUM_LEV]> vdp;
+    ExecViewUnmanaged<PT*[2][NP][NP][NUM_LEV]> temperature_grad;
+    ExecViewUnmanaged<PT*[2][NP][NP][NUM_LEV]> v_vadv;
 
-    ExecViewUnmanaged<Scalar*   [NP][NP][NUM_LEV_P]> eta_dot_dpdn;
+    ExecViewUnmanaged<PT*   [NP][NP][NUM_LEV_P]> eta_dot_dpdn;
 
     ExecViewManaged<clock_t *> kernel_start_times;
     ExecViewManaged<clock_t *> kernel_end_times;
@@ -63,41 +65,41 @@ struct CaarFunctorImpl {
 
   using deriv_type = ReferenceElement::deriv_type;
 
-  RKStageData           m_data;
-  const int             m_num_elems;
-  const int             m_rsplit;
-  HybridVCoord          m_hvcoord;
-  ElementsState         m_state;
-  ElementsDerivedState  m_derived;
-  ElementsGeometry      m_geometry;
-  Tracers               m_tracers;
-  deriv_type      m_deriv;
-  Buffers               m_buffers;
+  RKStageData                 m_data;
+  const int                   m_num_elems;
+  const int                   m_rsplit;
+  HybridVCoord                m_hvcoord;
+  ElementsStateST<ST>         m_state;
+  ElementsDerivedStateST<ST>  m_derived;
+  ElementsGeometry            m_geometry;
+  TracersST<ST>               m_tracers;
+  deriv_type                  m_deriv;
+  Buffers                     m_buffers;
 
-  SphereOperators       m_sphere_ops;
+  SphereOperatorsST<ST>       m_sphere_ops;
 
   // Policies
   Kokkos::TeamPolicy<ExecSpace, void> m_policy;
 
-  Kokkos::Array<std::shared_ptr<BoundaryExchange>, NUM_TIME_LEVELS> m_bes;
+  Kokkos::Array<std::shared_ptr<BoundaryExchangeST<ST>>, NUM_TIME_LEVELS> m_bes;
 
-  CaarFunctorImpl(const int num_elems, const SimulationParams& params)
+  CaarFunctorImplST(const int num_elems, const SimulationParams& params)
     : m_num_elems(num_elems)
     , m_rsplit(params.rsplit)
     , m_policy (Homme::get_default_team_policy<ExecSpace>(m_num_elems))
   {}
 
-  CaarFunctorImpl(const Elements &elements, const Tracers &tracers,
+  CaarFunctorImplST(const ElementsST<ST> &elements, const TracersST<ST> &tracers,
                   const ReferenceElement &ref_FE, const HybridVCoord &hvcoord,
-                  const SphereOperators &sphere_ops, const SimulationParams& params)
-    : CaarFunctorImpl(elements.num_elems(),params)
+                  const SphereOperatorsST<ST> &sphere_ops, const SimulationParams& params)
+    : CaarFunctorImplST(elements.num_elems(),params)
   {
     setup(elements,tracers,ref_FE,hvcoord,sphere_ops);
   }
 
-  void setup (const Elements &elements, const Tracers &tracers,
+  void setup (const ElementsST<ST> &elements, const TracersST<ST> &tracers,
               const ReferenceElement &ref_FE, const HybridVCoord &hvcoord,
-              const SphereOperators &sphere_ops)
+              const SphereOperatorsST<ST> &sphere_ops)
   {
     m_hvcoord = hvcoord;
     m_state = elements.m_state;
@@ -140,7 +142,7 @@ struct CaarFunctorImpl {
     r_mem += nteams*NP*NP;
 
     // Do 3d fields
-    Scalar* mem = reinterpret_cast<Scalar*>(r_mem);
+    PT* mem = reinterpret_cast<PT*>(r_mem);
 
     constexpr int size_scalar =   NP*NP*NUM_LEV;
     constexpr int size_vector = 2*NP*NP*NUM_LEV;
@@ -189,7 +191,7 @@ struct CaarFunctorImpl {
 
   void init_boundary_exchanges (const std::shared_ptr<MpiBuffersManager>& bm_exchange) {
     for (int tl=0; tl<NUM_TIME_LEVELS; ++tl) {
-      m_bes[tl] = std::make_shared<BoundaryExchange>();
+      m_bes[tl] = std::make_shared<BoundaryExchangeST<ST>>();
       auto& be = *m_bes[tl];
       be.set_buffers_manager(bm_exchange);
       be.set_num_fields(0,0,4);
@@ -248,7 +250,7 @@ struct CaarFunctorImpl {
             m_buffers.pressure_grad(kv.team_idx, 1, igp, jgp, ilev);
 
         // Kinetic energy + PHI (geopotential energy) +
-        Scalar k_energy =
+        PT k_energy =
             0.5 * (m_state.m_v(kv.ie, m_data.n0, 0, igp, jgp, ilev) *
                        m_state.m_v(kv.ie, m_data.n0, 0, igp, jgp, ilev) +
                    m_state.m_v(kv.ie, m_data.n0, 1, igp, jgp, ilev) *
@@ -485,8 +487,8 @@ struct CaarFunctorImpl {
       const int igp = idx / NP;
       const int jgp = idx % NP;
       Kokkos::parallel_for(Kokkos::ThreadVectorRange(kv.team, NUM_LEV), [&] (const int& ilev) {
-        Scalar Qt = m_tracers.qdp(kv.ie, m_data.n0_qdp, 0, igp, jgp, ilev) /
-                    m_state.m_dp3d(kv.ie, m_data.n0, igp, jgp, ilev);
+        PT Qt = m_tracers.qdp(kv.ie, m_data.n0_qdp, 0, igp, jgp, ilev) /
+                m_state.m_dp3d(kv.ie, m_data.n0, igp, jgp, ilev);
         Qt *= (PhysicalConstants::Rwater_vapor / PhysicalConstants::Rgas - 1.0);
         Qt += 1.0;
         m_buffers.temperature_virt(kv.team_idx, igp, jgp, ilev) =
@@ -574,20 +576,20 @@ struct CaarFunctorImpl {
       const int jgp = idx % NP;
 
       Kokkos::parallel_for(Kokkos::ThreadVectorRange(kv.team, NUM_LEV), [&] (const int& ilev) {
-        const Scalar vgrad_t =
+        const PT vgrad_t =
             m_state.m_v(kv.ie, m_data.n0, 0, igp, jgp, ilev) *
                 m_buffers.temperature_grad(kv.team_idx, 0, igp, jgp, ilev) +
             m_state.m_v(kv.ie, m_data.n0, 1, igp, jgp, ilev) *
                 m_buffers.temperature_grad(kv.team_idx, 1, igp, jgp, ilev);
 
-        const Scalar ttens =
+        const PT ttens =
               (rsplit_gt0 ? 0 : -m_buffers.t_vadv(kv.team_idx, igp, jgp,
                                                              ilev)) -
             vgrad_t +
             PhysicalConstants::kappa *
                 m_buffers.temperature_virt(kv.team_idx, igp, jgp, ilev) *
                 m_buffers.omega_p(kv.team_idx, igp, jgp, ilev);
-        Scalar temp_np1 = ttens * m_data.dt +
+        PT temp_np1 = ttens * m_data.dt +
                           m_state.m_t(kv.ie, m_data.nm1, igp, jgp, ilev);
         temp_np1 *= m_geometry.m_spheremp(kv.ie, igp, jgp);
         m_state.m_t(kv.ie, m_data.np1, igp, jgp, ilev) = temp_np1;
@@ -607,7 +609,7 @@ struct CaarFunctorImpl {
       constexpr int last_vec_end = (NUM_PHYSICAL_LEV - 1) % VECTOR_SIZE;
       Kokkos::parallel_for(Kokkos::ThreadVectorRange(kv.team, NUM_LEV),
                            [&](const int &ilev) {
-        Scalar tmp = m_buffers.eta_dot_dpdn(kv.team_idx, igp, jgp, ilev);
+        PT tmp = m_buffers.eta_dot_dpdn(kv.team_idx, igp, jgp, ilev);
         tmp.shift_left(1);
         const int vec_end = ilev==(NUM_LEV-1) ? last_vec_end : VECTOR_SIZE - 1;
         tmp[vec_end] = (ilev + 1 < NUM_LEV)
@@ -850,7 +852,7 @@ private:
             PhysicalConstants::Rgas * t_v * (dp3d * 0.5 / p);
 
         // Integrate
-        Scalar integration_ij;
+        PT integration_ij;
         integration_ij[vec_start] = integration;
         for (int iv = vec_start - 1; iv >= 0; --iv)
           integration_ij[iv] =
@@ -962,7 +964,7 @@ private:
 
       Kokkos::parallel_for(Kokkos::ThreadVectorRange(kv.team, NUM_LEV),
                            [&](const int ilev) {
-        const Scalar vgrad_p =
+        const PT vgrad_p =
             m_state.m_v(kv.ie, m_data.n0, 0, igp, jgp, ilev) *
                 m_buffers.pressure_grad(kv.team_idx, 0, igp, jgp, ilev) +
             m_state.m_v(kv.ie, m_data.n0, 1, igp, jgp, ilev) *
@@ -1004,7 +1006,7 @@ private:
                  ? ((NUM_PHYSICAL_LEV + VECTOR_SIZE - 1) % VECTOR_SIZE)
                  : VECTOR_SIZE - 1);
 
-        const Scalar vgrad_p =
+        const PT vgrad_p =
             m_state.m_v(kv.ie, m_data.n0, 0, igp, jgp, ilev) *
                 m_buffers.pressure_grad(kv.team_idx, 0, igp, jgp, ilev) +
             m_state.m_v(kv.ie, m_data.n0, 1, igp, jgp, ilev) *
@@ -1014,7 +1016,7 @@ private:
         const auto &div_vdp =
             m_buffers.div_vdp(kv.team_idx, igp, jgp, ilev);
 
-        Scalar integration_ij;
+        PT integration_ij;
         integration_ij[0] = integration;
         for (int iv = 0; iv < vector_end; ++iv)
           integration_ij[iv + 1] = integration_ij[iv] + div_vdp[iv];
@@ -1024,6 +1026,8 @@ private:
     });
   }
 };
+
+using CaarFunctorImpl = CaarFunctorImplST<ScalarValue>;
 
 } // Namespace Homme
 

@@ -91,8 +91,8 @@ subroutine get_sens_field(elem,name,field,hvcoord,nt,ntQ)
   integer,                intent(in) :: ntQ
 
   integer :: k, ider
-  real(kind=real_kind), dimension(np,np,nlev) :: sens_vth,sens_Rstar,sens_qv,vth,Rstar
-  real(kind=real_kind), pointer, dimension(:,:,:) :: vthdp,dp,qv
+  real(kind=real_kind), dimension(np,np,nlev) :: sens_vth,sens_Rstar,sens_qv,vth,Rstar,qv
+  real(kind=real_kind), pointer, dimension(:,:,:) :: vthdp,dp
   real(kind=real_kind), pointer, dimension(:,:,:,:) :: sens_dp,sens_vthdp
 
   if (num_sensitivities <= 0) then

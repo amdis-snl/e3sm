@@ -41,6 +41,7 @@ static bool equal (const Real& a, const Real& b,
 #endif
 }
 
+template<typename ST>
 struct LimiterTester {
   static constexpr Real eps { std::numeric_limits<Real>::epsilon() };
 
@@ -62,9 +63,11 @@ struct LimiterTester {
     {}
   };
 
+  using PT = PackType<ST>;
+
   using HostGll = HostViewManaged<Real[NP][NP]>;
-  using HostGllLvl = HostViewManaged<Scalar[NP][NP][NUM_LEV]>;
-  using Host2Lvl = HostViewManaged<Scalar[2][NUM_LEV]>;
+  using HostGllLvl = HostViewManaged<PT[NP][NP][NUM_LEV]>;
+  using Host2Lvl = HostViewManaged<PT[2][NUM_LEV]>;
   using HostPlvl = HostViewManaged<Real[NUM_PHYSICAL_LEV]>;
 
   HostGll sphweights;
@@ -72,9 +75,9 @@ struct LimiterTester {
   Host2Lvl qlim;
 
   using DevGll = ExecViewManaged<Real[NP][NP]>;
-  using DevGllLvl = ExecViewManaged<Scalar[NP][NP][NUM_LEV]>;
-  using Dev2Lvl = ExecViewManaged<Scalar[2][NUM_LEV]>;
-  using Dev2GllLvl = ExecViewManaged<Scalar[2][NP][NP][NUM_LEV]>;
+  using DevGllLvl = ExecViewManaged<PT[NP][NP][NUM_LEV]>;
+  using Dev2Lvl = ExecViewManaged<PT[2][NUM_LEV]>;
+  using Dev2GllLvl = ExecViewManaged<PT[2][NP][NP][NUM_LEV]>;
 
   DevGll sphweights_d;
   DevGllLvl dpmass_d, ptens_d;
@@ -239,18 +242,18 @@ struct LimiterTester {
   }
 
   size_t team_shmem_size (const int team_size) const {
-    return Homme::EulerStepFunctorImpl::limiter_team_shmem_size(team_size);
+    return Homme::EulerStepFunctorImplST<ST>::limiter_team_shmem_size(team_size);
   }
 
   struct Lim8 {};
   KOKKOS_INLINE_FUNCTION void operator() (const Lim8&, const Homme::TeamMember& team) const {
-    Homme::EulerStepFunctorImpl
+    Homme::EulerStepFunctorImplST<ST>
       ::limiter_optim_iter_full(team, sphweights_d, dpmass_d, qlim_d, ptens_d);
   }
 
   struct CAAS {};
   KOKKOS_INLINE_FUNCTION void operator() (const CAAS&, const Homme::TeamMember& team) const {
-    Homme::EulerStepFunctorImpl
+    Homme::EulerStepFunctorImplST<ST>
       ::limiter_clip_and_sum(team, sphweights_d, dpmass_d, qlim_d, ptens_d);
   }
 
@@ -301,23 +304,24 @@ void test_limiter (const int limiter_option, const int impl, const int init) {
   std::cout << "test limiter " << limiter_option << ","
             << (impl == 0 ? " Kokkos impl," : " serial impl,")
             << (init == 0 ? " with feasible\n" : " with early exit\n");
-  LimiterTester lv;
+  using LimTester = LimiterTester<Real>;
+  LimTester lv;
   if (init == 0)
     lv.init_feasible();
   else
     lv.init_to_trigger_cycle();
-  LimiterTester::FortranData fd;
+  LimTester::FortranData fd;
   lv.fill_fortran(fd);
   if (limiter_option == 8) {
     if (impl == 0)
-      Kokkos::parallel_for(Homme::get_default_team_policy<ExecSpace, LimiterTester::Lim8>(1), lv);
+      Kokkos::parallel_for(Homme::get_default_team_policy<ExecSpace, typename LimTester::Lim8>(1), lv);
     else
-      Kokkos::parallel_for(Kokkos::TeamPolicy<ExecSpace, LimiterTester::SerLim8>(1, 1, 1), lv);    
+      Kokkos::parallel_for(Kokkos::TeamPolicy<ExecSpace, typename LimTester::SerLim8>(1, 1, 1), lv);
   } else {
     if (impl == 0)
-      Kokkos::parallel_for(Homme::get_default_team_policy<ExecSpace, LimiterTester::CAAS>(1), lv);
+      Kokkos::parallel_for(Homme::get_default_team_policy<ExecSpace, typename LimTester::CAAS>(1), lv);
     else
-      Kokkos::parallel_for(Kokkos::TeamPolicy<ExecSpace, LimiterTester::SerCAAS>(1, 1, 1), lv);
+      Kokkos::parallel_for(Kokkos::TeamPolicy<ExecSpace, typename LimTester::SerCAAS>(1, 1, 1), lv);
   }
   lv.fromdevice();
   lv.check();
@@ -349,13 +353,14 @@ TEST_CASE("serial CAAS math correctness", "limiter") {
 // that two very different methods that ought to provide 1-norm-minimal
 // corrections have corrections that have the same 1-norm.
 TEST_CASE("1-norm minimal", "limiters") {
-  LimiterTester lv;
+  using LimTester = LimiterTester<Real>;
+  LimTester lv;
   lv.init_feasible();
-  LimiterTester lv_deepcopy;
+  LimTester lv_deepcopy;
   lv_deepcopy.deep_copy(lv);
   std::vector<Real> lim8norm1(NUM_PHYSICAL_LEV), othernorm1(NUM_PHYSICAL_LEV);
 
-  auto get_norm1 = [&] (const LimiterTester& lv, std::vector<Real>& n1s) {
+  auto get_norm1 = [&] (const LimTester& lv, std::vector<Real>& n1s) {
     for (int k = 0; k < NUM_PHYSICAL_LEV; ++k) {
       const int vi = k / VECTOR_SIZE, si = k % VECTOR_SIZE;
       Real n1 = 0;
@@ -366,31 +371,31 @@ TEST_CASE("1-norm minimal", "limiters") {
     }
   };
 
-  Kokkos::parallel_for(Homme::get_default_team_policy<ExecSpace, LimiterTester::Lim8>(1), lv);
+  Kokkos::parallel_for(Homme::get_default_team_policy<ExecSpace, typename LimTester::Lim8>(1), lv);
   lv.fromdevice();
   get_norm1(lv, lim8norm1);
 
-  std::vector<LimiterTester> lts;
+  std::vector<LimTester> lts;
   lts.push_back(lv);
   for (int other = 0; other < (OnGpu<ExecSpace>::value ? 1 : 3); ++other) {
-    lts.push_back(LimiterTester());
+    lts.push_back(LimTester());
     auto& lv_other = lts.back();
     lv_other.deep_copy(lv_deepcopy);
     switch (other) {
     case 0:
-      Kokkos::parallel_for(Homme::get_default_team_policy<ExecSpace, LimiterTester::CAAS>(1), lv_other);
+      Kokkos::parallel_for(Homme::get_default_team_policy<ExecSpace, typename LimTester::CAAS>(1), lv_other);
       break;
     case 1:
-      Kokkos::parallel_for(Kokkos::TeamPolicy<ExecSpace, LimiterTester::SerLim8>(1, 1, 1), lv_other);
+      Kokkos::parallel_for(Kokkos::TeamPolicy<ExecSpace, typename LimTester::SerLim8>(1, 1, 1), lv_other);
       break;
     case 2:
-      Kokkos::parallel_for(Kokkos::TeamPolicy<ExecSpace, LimiterTester::SerCAAS>(1, 1, 1), lv_other);
+      Kokkos::parallel_for(Kokkos::TeamPolicy<ExecSpace, typename LimTester::SerCAAS>(1, 1, 1), lv_other);
       break;
     }
     lv_other.fromdevice();
     get_norm1(lv_other, othernorm1);
     for (int k = 0; k < NUM_PHYSICAL_LEV; ++k)
-      REQUIRE(std::abs(lim8norm1[k] - othernorm1[k]) <= 1e5*LimiterTester::eps*othernorm1[k]);
+      REQUIRE(std::abs(lim8norm1[k] - othernorm1[k]) <= 1e5*LimTester::eps*othernorm1[k]);
   }
 
   if ( ! OnGpu<ExecSpace>::value) {

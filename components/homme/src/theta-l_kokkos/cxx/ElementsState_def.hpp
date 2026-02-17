@@ -18,6 +18,8 @@
 #include "mpi/Connectivity.hpp"
 #include "mpi/Comm.hpp"
 
+#include <ekat_pack_kokkos.hpp>
+
 #include <limits>
 #include <random>
 #include <assert.h>
@@ -99,7 +101,7 @@ void ElementsStateST<ST>::randomize(const int seed,
         std::uniform_real_distribution<Real> random_dist(1.001*phis_ij,100.0*phis_ij);
         for (int itl=0; itl<NUM_TIME_LEVELS; ++itl) {
           // Get column
-          auto phi_col = Homme::unpackView(Homme::subview(m_phinh_i,ie,itl,igp,jgp));
+          auto phi_col = ekat::scalarize(Homme::subview(m_phinh_i,ie,itl,igp,jgp));
 
           // Generate values
           genRandArray(phi_col,engine,random_dist,sort_and_chek);
@@ -150,7 +152,7 @@ void ElementsStateST<ST>::randomize(const int seed,
     for (int itl=0; itl<NUM_TIME_LEVELS; ++itl) {
       for (int igp=0; igp<NP; ++igp) {
         for (int jgp=0; jgp<NP; ++ jgp) {
-          auto col = unpackView(Homme::subview(m_phinh_i,ie,itl,igp,jgp));
+          auto col = ekat::scalarize(Homme::subview(m_phinh_i,ie,itl,igp,jgp));
           genRandArray(col,engine,random_dist,sort_and_chek);
         }
       }
@@ -280,7 +282,7 @@ void ElementsStateST<ST>::randomize(const int seed,
     for (int itl=0; itl<NUM_TIME_LEVELS; ++itl) {
       for (int igp=0; igp<NP; ++igp) {
         for (int jgp=0; jgp<NP; ++ jgp) {
-          auto col = unpackView(Homme::subview(m_phinh_i,ie,itl,igp,jgp));
+          auto col = ekat::scalarize(Homme::subview(m_phinh_i,ie,itl,igp,jgp));
           genRandArray(col,engine,random_dist,sort_and_chek);
         }
       }

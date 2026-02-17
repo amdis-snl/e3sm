@@ -24,7 +24,10 @@
 
 namespace Homme {
 
-struct DirkFunctorImpl {
+template<typename ST>
+struct DirkFunctorImplST {
+  using PT = PackType<ST>;
+
   static constexpr int  packn = VECTOR_SIZE;
   static constexpr int  scaln = NP*NP;
   static constexpr int  npack = (scaln + packn - 1)/packn;
@@ -48,21 +51,21 @@ struct DirkFunctorImpl {
   using MT = typename TeamPolicy::member_type;
 
   using Work
-    = Kokkos::View<Scalar*[num_work][num_lev_aligned][npack],
+    = Kokkos::View<PT*[num_work][num_lev_aligned][npack],
                    Kokkos::LayoutRight, ExecSpace>;
   using WorkSlot
-    = Kokkos::View<Scalar           [num_lev_aligned][npack],
+    = Kokkos::View<PT           [num_lev_aligned][npack],
                    Kokkos::LayoutRight, ExecSpace,
                    Kokkos::MemoryTraits<Kokkos::Unmanaged> >;
   using ConstWorkSlot
-    = Kokkos::View<const Scalar     [num_lev_aligned][npack],
+    = Kokkos::View<const PT     [num_lev_aligned][npack],
                    Kokkos::LayoutRight, ExecSpace,
                    Kokkos::MemoryTraits<Kokkos::Unmanaged> >;
   using LinearSystem
-    = Kokkos::View<Scalar*[4][num_phys_lev][npack],
+    = Kokkos::View<PT*[4][num_phys_lev][npack],
                    Kokkos::LayoutRight, ExecSpace>;
   using LinearSystemSlot
-    = Kokkos::View<Scalar    [num_phys_lev][npack],
+    = Kokkos::View<PT    [num_phys_lev][npack],
                    Kokkos::LayoutRight, ExecSpace,
                    Kokkos::MemoryTraits<Kokkos::Unmanaged> >;
 
@@ -89,7 +92,7 @@ struct DirkFunctorImpl {
   TeamUtils<ExecSpace> m_tu, m_tu_ig;
   int nslot;
 
-  DirkFunctorImpl (const int nelem)
+  DirkFunctorImplST (const int nelem)
     : m_policy(1,1,1), m_ig_policy(1,1,1), m_tu(m_policy), m_tu_ig(m_ig_policy) // throwaway settings
   {
     init(nelem);
@@ -130,14 +133,14 @@ struct DirkFunctorImpl {
   }
 
   void init_buffers (const FunctorsBuffersManager& fbm) {
-    Scalar* mem = reinterpret_cast<Scalar*>(fbm.get_memory());
+    PT* mem = reinterpret_cast<PT*>(fbm.get_memory());
     m_work = Work(mem, nslot);
-    mem += Work::shmem_size(nslot)/sizeof(Scalar);
+    mem += Work::shmem_size(nslot)/sizeof(PT);
     m_ls = LinearSystem(mem, nslot);
   }
 
   void run (int nm1, Real alphadt_nm1, int n0, Real alphadt_n0, int np1, Real dt2,
-            const Elements& e, const HybridVCoord& hvcoord,
+            const ElementsST<ST>& e, const HybridVCoord& hvcoord,
             const bool bfb_solver = default_bfb_solver) {
     if ( ! calc_initial_guess_in_newton_kernel) {
       run_initial_guess(np1, e, hvcoord);
@@ -152,7 +155,7 @@ struct DirkFunctorImpl {
   // function phi_from_eos, below, for discussion. This kernel uses standard
   // Hommexx layout and parallelization approaches to compute the scans
   // optimally.
-  void run_initial_guess (int np1, const Elements& e, const HybridVCoord& hvcoord) {
+  void run_initial_guess (int np1, const ElementsST<ST>& e, const HybridVCoord& hvcoord) {
     using Kokkos::subview;
     using Kokkos::parallel_for;
 
@@ -171,11 +174,11 @@ struct DirkFunctorImpl {
       KernelVariables kv(team, tu);
       const auto ie = kv.ie;
 
-      const ExecViewUnmanaged<Scalar[NP][NP][NUM_LEV_P]>
-        p_i  (reinterpret_cast<Scalar*>(get_work_slot(work, kv.team_idx, 0).data())),
-        phi_i(reinterpret_cast<Scalar*>(get_work_slot(work, kv.team_idx, 2).data()));
-      const ExecViewUnmanaged<Scalar[NP][NP][NUM_LEV  ]>
-        p    (reinterpret_cast<Scalar*>(get_work_slot(work, kv.team_idx, 1).data()));
+      const ExecViewUnmanaged<PT[NP][NP][NUM_LEV_P]>
+        p_i  (reinterpret_cast<PT*>(get_work_slot(work, kv.team_idx, 0).data())),
+        phi_i(reinterpret_cast<PT*>(get_work_slot(work, kv.team_idx, 2).data()));
+      const ExecViewUnmanaged<PT[NP][NP][NUM_LEV  ]>
+        p    (reinterpret_cast<PT*>(get_work_slot(work, kv.team_idx, 1).data()));
 
       const auto f = [&] (const int idx) {
         const int igp = idx / NP, jgp = idx % NP;
@@ -200,7 +203,7 @@ struct DirkFunctorImpl {
   }
 
   void run_newton (int nm1, Real alphadt_nm1, int n0, Real alphadt_n0, int np1, Real dt2,
-                   const Elements& e, const HybridVCoord& hvcoord, const bool bfb_solver) {
+                   const ElementsST<ST>& e, const HybridVCoord& hvcoord, const bool bfb_solver) {
     using Kokkos::subview;
     using Kokkos::parallel_for;
     const auto a = Kokkos::ALL();
@@ -340,7 +343,7 @@ struct DirkFunctorImpl {
       loop_ki(kv, nlev, nvec, [&] (int k, int i) { dphi_n0(k,i) = phi_n0(k+1,i) - phi_n0(k,i); });
 
       int it = 0;
-      ScalarValue deltaerr = 0;
+      ST deltaerr = 0;
       for (; it < maxiter; ++it) { // Newton iteration
         const bool ok = pnh_and_exner_from_eos(kv, hvcoord, vtheta_dp, dp3d,
                                                dphi, pnh, wrk, dpnh_dp_i);
@@ -527,7 +530,7 @@ struct DirkFunctorImpl {
       pkm1 = (k-1) / packn,
       skm1 = (k-1) % packn;
       const auto g = [&] (const int i) {
-        Scalar dp3dk, dp3dkm1, v1k, v2k, v1km1, v2km1, gphis1, gphis2;
+        PT dp3dk, dp3dkm1, v1k, v2k, v1km1, v2km1, gphis1, gphis2;
         for (int s = 0; s < packn; ++s) {
           const auto
           idx = packn*i + s,
@@ -652,55 +655,55 @@ struct DirkFunctorImpl {
   }
 
   KOKKOS_INLINE_FUNCTION
-  static ScalarValue calc_wmax (const KernelVariables& kv, const int nlev, const int nvec,
-                         const WorkSlot& w) {
+  static ST calc_wmax (const KernelVariables& kv, const int nlev, const int nvec,
+                       const WorkSlot& w) {
     using Kokkos::parallel_reduce;
     using Kokkos::TeamThreadRange;
     using Kokkos::ThreadVectorRange;
 
-    const auto f = [&] (int k, ScalarValue& maxval) {
-      const auto g = [&] (int i, ScalarValue& lmaxval) {
+    const auto f = [&] (int k, ST& maxval) {
+      const auto g = [&] (int i, ST& lmaxval) {
         const auto v = w(k,i);
         for (int s = 0; s < packn; ++s) {
           if (scaln % packn != 0 && i*packn + s >= scaln) break;
-          lmaxval = max(lmaxval, abs(v[s]));
+          lmaxval = max(lmaxval, std::abs(v[s]));
         }
       };
-      ScalarValue lmaxval = 0;
+      ST lmaxval = 0;
       const auto vr = ThreadVectorRange(kv.team, nvec);
-      parallel_reduce(vr, g, Kokkos::Max<ScalarValue>(lmaxval));
+      parallel_reduce(vr, g, Kokkos::Max<ST>(lmaxval));
       maxval = max(maxval, lmaxval); // benign write race
     };
-    ScalarValue wmax = 0;
+    ST wmax = 0;
     const auto tr = TeamThreadRange(kv.team, nlev);
-    parallel_reduce(tr, f, Kokkos::Max<ScalarValue>(wmax));
-    return max(ScalarValue(1), wmax);
+    parallel_reduce(tr, f, Kokkos::Max<ST>(wmax));
+    return max(ST(1), wmax);
   }
 
   KOKKOS_INLINE_FUNCTION
   static bool exit_on_step (const KernelVariables& kv, const int nlev, const int nvec,
-                            const ScalarValue& wmax, const Real& deltatol,
-                            const LinearSystemSlot& x, ScalarValue& deltaerr) {
+                            const ST& wmax, const Real& deltatol,
+                            const LinearSystemSlot& x, ST& deltaerr) {
     using Kokkos::parallel_reduce;
     using Kokkos::TeamThreadRange;
     using Kokkos::ThreadVectorRange;
 
     // deltaerr = maxval(abs(x) / wmax
-    const auto f = [&] (int k, ScalarValue& maxval) {
-      const auto g = [&] (int i, ScalarValue& lmaxval) {
+    const auto f = [&] (int k, ST& maxval) {
+      const auto g = [&] (int i, ST& lmaxval) {
         const auto v = x(k,i);
         for (int s = 0; s < packn; ++s) {
           if (scaln % packn != 0 && i*packn + s >= scaln) break;
-          lmaxval = max(lmaxval, abs(v[s]));
+          lmaxval = max(lmaxval, std::abs(v[s]));
         }
       };
-      ScalarValue lmaxval;
+      ST lmaxval;
       const auto vr = ThreadVectorRange(kv.team, nvec);
-      parallel_reduce(vr, g, Kokkos::Max<ScalarValue>(lmaxval));
+      parallel_reduce(vr, g, Kokkos::Max<ST>(lmaxval));
       maxval = max(maxval, lmaxval); // benign write race
     };
     const auto tr = TeamThreadRange(kv.team, nlev);
-    parallel_reduce(tr, f, Kokkos::Max<ScalarValue>(deltaerr));
+    parallel_reduce(tr, f, Kokkos::Max<ST>(deltaerr));
     return deltaerr/wmax < deltatol;
   }
 
@@ -810,7 +813,7 @@ struct DirkFunctorImpl {
           wrk(nlev,i)[s] = 0;
           continue;
         }
-        ScalarValue dx, dw;
+        ST dx, dw;
         if (k < nlev-1) {
           dx =     x(k+1,i)[s] -     x(k,i)[s];
           dw = w_np1(k+1,i)[s] - w_np1(k,i)[s];
@@ -820,7 +823,7 @@ struct DirkFunctorImpl {
         }
         if (dx != 0) {
           // Step length at which dphi(k,i)[s] would = 0.
-          const ScalarValue alpha = -(dphi_n0(k,i)[s] + dt2*grav*dw)/(dt2*grav*dx);
+          const ST alpha = -(dphi_n0(k,i)[s] + dt2*grav*dw)/(dt2*grav*dx);
           // A negative step is irrelevant.
           if (alpha >= 0) wrk(k,i)[s] = alpha;
         }
@@ -835,12 +838,12 @@ struct DirkFunctorImpl {
     const auto f = [&] (int idx) {
       const int i = idx / packn, s = idx % packn;
       if (wrk(nlev,i)[s] == 0) return;
-      const auto g = [&] (int k, ScalarValue& lalpha) { lalpha = min(lalpha, wrk(k,i)[s]); };
-      ScalarValue alpha = 0;
+      const auto g = [&] (int k, ST& lalpha) { lalpha = min(lalpha, wrk(k,i)[s]); };
+      ST alpha = 0;
       const auto vr = ThreadVectorRange(kv.team, nlev);
-      parallel_reduce(vr, g, Kokkos::Min<ScalarValue>(alpha));
+      parallel_reduce(vr, g, Kokkos::Min<ST>(alpha));
       // Step halfway to the distance at which at least one dphi is 0.
-      wrk(2,i)[s] = min(ScalarValue(1), alpha)/2;
+      wrk(2,i)[s] = min(ST(1), alpha)/2;
     };
     const auto tr = TeamThreadRange(kv.team, static_cast<int>(scaln));
     parallel_for(tr, f);
@@ -921,6 +924,8 @@ struct DirkFunctorImpl {
     return good;
   }
 };
+
+using DirkFunctorImpl = DirkFunctorImplST<ScalarValue>;
 
 } // namespace Homme
 

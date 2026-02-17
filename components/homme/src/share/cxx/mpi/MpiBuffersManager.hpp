@@ -20,19 +20,19 @@ namespace Homme
 
 // Forward declarations
 class Connectivity;
-class BoundaryExchange;
+class BoundaryExchangeBase;
 
 /*
- * MpiBuffersManager: a class to handle the buffers needed by BoundaryExchange
+ * MpiBuffersManager: a class to handle the buffers needed by BoundaryExchangeBase
  *
  * This class (BM) is responsible mainly for allocating buffers to be
- * used by the BoundaryExchange (BE) class. A single BM object can
+ * used by the BoundaryExchangeBase (BE) class. A single BM object can
  * be the buffers provider for several different BE objects, which
  * are referred to as 'customers'; in this case, the stored buffers
  * will have a size big enough to accommodate the most demanding needs
  * among those of all the customers. For more details about why one BM
  * may have more than one customer, see the explanation in the header
- * BoundaryExchange.hpp.
+ * BoundaryExchangeBase.hpp.
  *
  * The BM class stores 4 types of buffers, in the form of Kokkos View's:
  *
@@ -76,7 +76,7 @@ class MpiBuffersManager
 {
 public:
 
-  MpiBuffersManager ();
+  MpiBuffersManager () = default;
   MpiBuffersManager (std::shared_ptr<Connectivity> connectivity);
   ~MpiBuffersManager ();
 
@@ -93,9 +93,6 @@ public:
   // Ask the manager to re-check whether there is enough storage for all the BE's
   void check_for_reallocation ();
 
-  // Check that the allocated views can handle the requested number of 2d/3d fields
-  bool check_views_capacity (const int num_1d_fields, const int num_2d_fields, const int num_3d_fields, const int num_3d_interface_fields) const;
-
   // Allocate the buffers (overwriting possibly already allocated ones if needed)
   void allocate_buffers ();
 
@@ -106,35 +103,37 @@ public:
   bool are_buffers_busy () const { return m_buffers_busy; }
   bool are_views_valid () const { return m_views_are_valid; }
 
-  ExecViewUnmanaged<ScalarValue*> get_send_buffer           () const;
-  ExecViewUnmanaged<ScalarValue*> get_recv_buffer           () const;
-  ExecViewUnmanaged<ScalarValue*> get_local_buffer          () const;
-  MPIViewUnmanaged<ScalarValue*>  get_mpi_send_buffer       () const;
-  MPIViewUnmanaged<ScalarValue*>  get_mpi_recv_buffer       () const;
-  ExecViewUnmanaged<ScalarValue*> get_blackhole_send_buffer () const;
-  ExecViewUnmanaged<ScalarValue*> get_blackhole_recv_buffer () const;
+  char* get_send_buffer           () const;
+  char* get_recv_buffer           () const;
+  char* get_local_buffer          () const;
+  char* get_mpi_send_buffer       () const;
+  char* get_mpi_recv_buffer       () const;
+  char* get_blackhole_send_buffer () const;
+  char* get_blackhole_recv_buffer () const;
 
   std::shared_ptr<Connectivity> get_connectivity () const { return m_connectivity; }
 
-private:
-
-  // Make BoundaryExchange a friend, so it can call the next four methods underneath
-  friend class BoundaryExchange;
-
-  // Adds/removes the given BoundaryExchange to/from the list of 'customers' of this class
-  // Note: the only class that should call these methods is BoundaryExchange, so
-  //       it can register/unregister itself as a customer
-  void add_customer (BoundaryExchange* add_me);
-  void remove_customer (BoundaryExchange* remove_me);
   // Deep copy the send/recv buffer to/from the mpi_send/recv buffer
   // Note: these are no-ops if MPIMemSpace=ExecMemSpace
-  void sync_send_buffer (BoundaryExchange* customer);
-  void sync_recv_buffer (BoundaryExchange* customer);
+  void sync_send_buffer (BoundaryExchangeBase* customer);
+  void sync_recv_buffer (BoundaryExchangeBase* customer);
+
+private:
+
+  // Make BoundaryExchangeBase a friend, so it can call the next four methods underneath
+  friend class BoundaryExchangeBase;
+
+  // Adds/removes the given BoundaryExchangeBase to/from the list of 'customers' of this class
+  // Note: the only class that should call these methods is BoundaryExchangeBase, so
+  //       it can register/unregister itself as a customer
+  void add_customer (BoundaryExchangeBase* add_me);
+  void remove_customer (BoundaryExchangeBase* remove_me);
 
   // Small struct, to hold customer's needs. We could use an std::pair, but this is more verbose
   struct CustomerNeeds {
     size_t local_buffer_size;
     size_t mpi_buffer_size;
+    size_t blackhole_buffer_size;
 
     bool operator== (const CustomerNeeds& rhs) {
       return local_buffer_size==rhs.local_buffer_size && mpi_buffer_size==rhs.mpi_buffer_size;
@@ -143,47 +142,49 @@ private:
 
   // If necessary, updates buffers sizes so that there is enough storage to hold the required number of fields.
   // Note: this method does not (re)allocate views
-  void update_requested_sizes (std::map<BoundaryExchange*,CustomerNeeds>::value_type& customer);
+  void update_requested_sizes (BoundaryExchangeBase* customer);
 
   // Computes the required storages
-  void required_buffer_sizes (const int num_1d_fields, const int num_2d_fields,
+  void required_buffer_sizes (const size_t scalar_size,
+                              const int num_1d_fields, const int num_2d_fields,
                               const int num_3d_fields, const int num_3d_interface_fields,
-                              size_t& mpi_buffer_size, size_t& local_buffer_size) const;
+                              size_t& mpi_buffer_size, size_t& local_buffer_size, size_t& blackhole_buffer_size) const;
 
   // The number of customers
-  size_t m_num_customers;
+  size_t m_num_customers = 0;
 
   // The sizes of the buffer
-  size_t m_mpi_buffer_size;
-  size_t m_local_buffer_size;
+  size_t m_blackhole_buffer_size = 0;
+  size_t m_mpi_buffer_size = 0;
+  size_t m_local_buffer_size = 0;
 
   // Used to check whether buffers are busy
-  bool m_buffers_busy;
+  bool m_buffers_busy = false;
 
   // Used to check whether user can still request different sizes
-  bool m_views_are_valid;
+  bool m_views_are_valid = false;
 
   // Customers of this MpiBuffersManager, each with its local and mpi sizes
-  std::map<BoundaryExchange*,CustomerNeeds>  m_customers;
+  std::map<BoundaryExchangeBase*,CustomerNeeds>  m_customers;
 
   // The connectivity (needed to allocate buffers)
   std::shared_ptr<Connectivity> m_connectivity;
 
   // The buffers
-  ExecViewManaged<ScalarValue*>  m_send_buffer;
-  ExecViewManaged<ScalarValue*>  m_recv_buffer;
-  ExecViewManaged<ScalarValue*>  m_local_buffer;
+  ExecViewManaged<char*>  m_send_buffer;
+  ExecViewManaged<char*>  m_recv_buffer;
+  ExecViewManaged<char*>  m_local_buffer;
 
   // The mpi buffers (same as the previous send/recv buffers if MPIMemSpace=ExecMemSpace)
-  MPIViewManaged<ScalarValue*>   m_mpi_send_buffer;
-  MPIViewManaged<ScalarValue*>   m_mpi_recv_buffer;
+  MPIViewManaged<char*>   m_mpi_send_buffer;
+  MPIViewManaged<char*>   m_mpi_recv_buffer;
 
   // The blackhole send/recv buffers (used for missing connections)
-  ExecViewManaged<ScalarValue*>  m_blackhole_send_buffer;
-  ExecViewManaged<ScalarValue*>  m_blackhole_recv_buffer;
+  ExecViewManaged<char*>  m_blackhole_send_buffer;
+  ExecViewManaged<char*>  m_blackhole_recv_buffer;
 };
 
-inline void MpiBuffersManager::sync_send_buffer (BoundaryExchange* customer)
+inline void MpiBuffersManager::sync_send_buffer (BoundaryExchangeBase* customer)
 {
   // Only customers can call this
   assert (m_customers.find(customer)!=m_customers.end());
@@ -191,15 +192,15 @@ inline void MpiBuffersManager::sync_send_buffer (BoundaryExchange* customer)
   const size_t customer_mpi_buffer_size = m_customers.find(customer)->second.mpi_buffer_size;
   if (customer_mpi_buffer_size<m_mpi_buffer_size) {
     // Avoid copying more than we need
-    MPIViewUnmanaged<ScalarValue*>  mpi_send_view(m_mpi_send_buffer.data(),customer_mpi_buffer_size);
-    ExecViewUnmanaged<const ScalarValue*> send_view(m_send_buffer.data(),customer_mpi_buffer_size);
+    MPIViewUnmanaged<char*>  mpi_send_view(m_mpi_send_buffer.data(),customer_mpi_buffer_size);
+    ExecViewUnmanaged<const char*> send_view(m_send_buffer.data(),customer_mpi_buffer_size);
     Kokkos::deep_copy(mpi_send_view, send_view);
   } else {
     Kokkos::deep_copy(m_mpi_send_buffer, m_send_buffer);
   }
 }
 
-inline void MpiBuffersManager::sync_recv_buffer (BoundaryExchange* customer)
+inline void MpiBuffersManager::sync_recv_buffer (BoundaryExchangeBase* customer)
 {
   // Only customers can call this
   assert (m_customers.find(customer)!=m_customers.end());
@@ -207,71 +208,15 @@ inline void MpiBuffersManager::sync_recv_buffer (BoundaryExchange* customer)
   const size_t customer_mpi_buffer_size = m_customers.find(customer)->second.mpi_buffer_size;
   if (customer_mpi_buffer_size<m_mpi_buffer_size) {
     // Avoid copying more than we need
-    MPIViewUnmanaged<const ScalarValue*>  mpi_recv_view(m_mpi_recv_buffer.data(),customer_mpi_buffer_size);
-    ExecViewUnmanaged<ScalarValue*> recv_view(m_recv_buffer.data(),customer_mpi_buffer_size);
+    MPIViewUnmanaged<const char*>  mpi_recv_view(m_mpi_recv_buffer.data(),customer_mpi_buffer_size);
+    ExecViewUnmanaged<char*> recv_view(m_recv_buffer.data(),customer_mpi_buffer_size);
     Kokkos::deep_copy(recv_view, mpi_recv_view);
   } else {
     Kokkos::deep_copy(m_recv_buffer, m_mpi_recv_buffer);
   }
 }
 
-inline ExecViewUnmanaged<ScalarValue*>
-MpiBuffersManager::get_send_buffer () const
-{
-  // We ensure that the buffers are valid
-  assert(m_views_are_valid);
-  return m_send_buffer;
-}
-
-inline ExecViewUnmanaged<ScalarValue*>
-MpiBuffersManager::get_recv_buffer () const
-{
-  // We ensure that the buffers are valid
-  assert(m_views_are_valid);
-  return m_recv_buffer;
-}
-
-inline ExecViewUnmanaged<ScalarValue*>
-MpiBuffersManager::get_local_buffer () const
-{
-  // We ensure that the buffers are valid
-  assert(m_views_are_valid);
-  return m_local_buffer;
-}
-
-inline MPIViewUnmanaged<ScalarValue*>
-MpiBuffersManager::get_mpi_send_buffer() const
-{
-  // We ensure that the buffers are valid
-  assert(m_views_are_valid);
-  return m_mpi_send_buffer;
-}
-
-inline MPIViewUnmanaged<ScalarValue*>
-MpiBuffersManager::get_mpi_recv_buffer() const
-{
-  // We ensure that the buffers are valid
-  assert(m_views_are_valid);
-  return m_mpi_recv_buffer;
-}
-
-inline ExecViewUnmanaged<ScalarValue*>
-MpiBuffersManager::get_blackhole_send_buffer () const
-{
-  // We ensure that the buffers are valid
-  assert(m_views_are_valid);
-  return m_blackhole_send_buffer;
-}
-
-inline ExecViewUnmanaged<ScalarValue*>
-MpiBuffersManager::get_blackhole_recv_buffer () const
-{
-  // We ensure that the buffers are valid
-  assert(m_views_are_valid);
-  return m_blackhole_recv_buffer;
-}
-
-// MpiBuffersManagerMap contains a MpiBuffersManager for each type of BoundaryExchange
+// MpiBuffersManagerMap contains a MpiBuffersManager for each type of BoundaryExchangeBase
 struct MpiBuffersManagerMap {
 public:
   MpiBuffersManagerMap () {

@@ -7,41 +7,41 @@
 #ifndef HOMMEXX_CAAR_FUNCTOR_HPP
 #define HOMMEXX_CAAR_FUNCTOR_HPP
 
+#include "CaarFunctorImpl.hpp"
 #include "Elements.hpp"
 #include "Tracers.hpp"
+#include "SphereOperators.hpp"
 #include "Types.hpp"
 #include "RKStageData.hpp"
 #include <memory>
 
 namespace Homme {
 
-struct CaarFunctorImpl;
-
 class ReferenceElement;
-class SphereOperators;
 class SimulationParams;
 class HybridVCoord;
 
 class MpiBuffersManager;
 struct FunctorsBuffersManager;
 
-class CaarFunctor {
+template<typename ST>
+class CaarFunctorST {
 public:
-  CaarFunctor();
-  CaarFunctor(const Elements &elements, const Tracers &tracers,
-              const ReferenceElement &ref_FE, const HybridVCoord &hvcoord,
-              const SphereOperators &sphere_ops, const SimulationParams& params);
-  CaarFunctor(const int num_elems, const SimulationParams& params);
-  CaarFunctor(const CaarFunctor &) = delete;
+  CaarFunctorST();
+  CaarFunctorST(const ElementsST<ST> &elements, const TracersST<ST> &tracers,
+                const ReferenceElement &ref_FE, const HybridVCoord &hvcoord,
+                const SphereOperatorsST<ST> &sphere_ops, const SimulationParams& params);
+  CaarFunctorST(const int num_elems, const SimulationParams& params);
+  CaarFunctorST(const CaarFunctorST &) = delete;
 
-  ~CaarFunctor();
+  ~CaarFunctorST() = default;
 
-  CaarFunctor &operator=(const CaarFunctor &) = delete;
+  CaarFunctorST &operator=(const CaarFunctorST &) = delete;
 
   bool setup_needed() { return !is_setup; }
-  void setup(const Elements &elements, const Tracers &tracers,
+  void setup(const ElementsST<ST> &elements, const TracersST<ST> &tracers,
              const ReferenceElement &ref_FE, const HybridVCoord &hvcoord,
-             const SphereOperators &sphere_ops);
+             const SphereOperatorsST<ST> &sphere_ops);
 
   int requested_buffer_size () const;
   void init_buffers(const FunctorsBuffersManager& fbm);
@@ -52,9 +52,11 @@ public:
   void run(const RKStageData& data);
 
 private:
-  std::unique_ptr<CaarFunctorImpl> m_caar_impl;
+  std::unique_ptr<CaarFunctorImplST<ST>> m_caar_impl;
   bool is_setup;
 };
+
+using CaarFunctor = CaarFunctorST<ScalarValue>;
 
 } // Namespace Homme
 

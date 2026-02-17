@@ -18,6 +18,7 @@
 #include "utilities/ViewUtils.hpp"
 #include "utilities/MathUtils.hpp"
 
+
 using namespace Homme;
 
 extern "C" {
@@ -264,12 +265,12 @@ TEST_CASE("remap", "remap_testing") {
           Kokkos::deep_copy(h_qdp      , tracers.qdp);
 
           for (int ie=0; ie<num_elems; ++ie) {
-            auto dp3d_cxx      = unpackView(Homme::subview(h_dp3d,ie,np1));
-            auto vtheta_dp_cxx = unpackView(Homme::subview(h_vtheta_dp,ie,np1));
-            auto w_i_cxx       = unpackView(Homme::subview(h_w_i,ie,np1));
-            auto phinh_i_cxx   = unpackView(Homme::subview(h_phinh_i,ie,np1));
-            auto v_cxx         = unpackView(Homme::subview(h_v,ie,np1));
-            auto qdp_cxx       = unpackView(Homme::subview(h_qdp,ie,np1_qdp));
+            auto dp3d_cxx      = ekat::scalarize(Homme::subview(h_dp3d,ie,np1));
+            auto vtheta_dp_cxx = ekat::scalarize(Homme::subview(h_vtheta_dp,ie,np1));
+            auto w_i_cxx       = ekat::scalarize(Homme::subview(h_w_i,ie,np1));
+            auto phinh_i_cxx   = ekat::scalarize(Homme::subview(h_phinh_i,ie,np1));
+            auto v_cxx         = ekat::scalarize(Homme::subview(h_v,ie,np1));
+            auto qdp_cxx       = ekat::scalarize(Homme::subview(h_qdp,ie,np1_qdp));
 
             for (int igp=0; igp<NP; ++igp) {
               for (int jgp=0; jgp<NP; ++jgp) {

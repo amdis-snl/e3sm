@@ -11,6 +11,7 @@
 #include "utilities/SubviewUtils.hpp"
 #include "utilities/SyncUtils.hpp"
 
+
 using namespace Homme;
 
 // ============= EQUATION OF STATE ================ //
@@ -114,7 +115,7 @@ TEST_CASE("eos", "eos") {
       for (int ie=0; ie<num_elems; ++ie) {
         for (int igp=0; igp<NP; ++igp) {
           for (int jgp=0; jgp<NP; ++ jgp) {
-            auto col = unpackView(Homme::subview(phi_i_cxx,ie,igp,jgp));
+            auto col = ekat::scalarize(Homme::subview(phi_i_cxx,ie,igp,jgp));
             genRandArray(col,engine,pdf,sort_and_chek);
           }
         }
@@ -187,9 +188,9 @@ TEST_CASE("eos", "eos") {
       Kokkos::deep_copy(h_dpnh_dp_i,dpnh_dp_i_cxx);
 
       for (int ie=0; ie<num_elems; ++ie) {
-        auto pnh_cxx_ie = unpackView(Homme::subview(h_pnh,ie));
-        auto exner_cxx_ie = unpackView(Homme::subview(h_exner,ie));
-        auto dpnhdp_cxx_ie = unpackView(Homme::subview(h_dpnh_dp_i,ie));
+        auto pnh_cxx_ie = ekat::scalarize(Homme::subview(h_pnh,ie));
+        auto exner_cxx_ie = ekat::scalarize(Homme::subview(h_exner,ie));
+        auto dpnhdp_cxx_ie = ekat::scalarize(Homme::subview(h_dpnh_dp_i,ie));
         for (int igp=0; igp<NP; ++igp) {
           for (int jgp=0; jgp<NP; ++jgp) {
             for (int k=0; k<NUM_PHYSICAL_LEV; ++k) {
@@ -255,7 +256,7 @@ TEST_CASE("eos", "eos") {
     // Now, compare results
     Kokkos::deep_copy(h_phi_i,phi_i_cxx);
     for (int ie=0; ie<num_elems; ++ie) {
-      auto phi_i_cxx_ie = unpackView(Homme::subview(h_phi_i,ie));
+      auto phi_i_cxx_ie = ekat::scalarize(Homme::subview(h_phi_i,ie));
       for (int igp=0; igp<NP; ++igp) {
         for (int jgp=0; jgp<NP; ++jgp) {
           for (int k=0; k<NUM_INTERFACE_LEV; ++k) {
