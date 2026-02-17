@@ -458,7 +458,7 @@ struct CaarFunctorImplST {
     const auto& phis_y = m_geometry.m_gradphis(ie,1,igp,jgp);
 
     // Compute dpnh_dp_i on surface
-    auto dpnh_dp_i = 1 + ( ( (u*phis_x + v*phis_y)/g - w) /
+    ST dpnh_dp_i = 1 + ( ( (u*phis_x + v*phis_y)/g - w) /
                            (g + (phis_x*phis_x+phis_y*phis_y)/(2*g) ) ) / m_data.dt;
 
     // Update w_i on bottom interface
