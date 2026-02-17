@@ -29,8 +29,6 @@
 #include "mpi/MpiBuffersManager.hpp"
 #include "mpi/Connectivity.hpp"
 
-#include <ekat_pack_kokkos.hpp>
-
 #include <cassert>
 
 namespace Homme {

@@ -16,6 +16,7 @@
 #include "Dimensions.hpp"
 
 #include <ekat_pack.hpp>
+#include <ekat_pack_kokkos.hpp>
 #include <ekat_scalar_traits.hpp>
 
 #define __MACRO_STRING(MacroVal) #MacroVal
