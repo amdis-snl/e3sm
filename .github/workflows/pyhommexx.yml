@@ -120,7 +120,7 @@ jobs:
         shell: bash -l {0}
         run: |
           cd ${GITHUB_WORKSPACE}/e3sm/build
-          make -j4 pyhommexx
+          make -j4 pyhommexx VERBOSE=ON
       - name: Upload log files
         if: ${{ always() }}
         uses: actions/upload-artifact@v4
@@ -128,4 +128,5 @@ jobs:
           name: logs
           path: |
             e3sm/build/CMakeCache.txt
+            e3sm/build/**/flags.make
           retention-days: 14

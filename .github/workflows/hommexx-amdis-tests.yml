@@ -112,7 +112,7 @@ jobs:
         shell: bash -l {0}
         run: |
           cd ${GITHUB_WORKSPACE}/e3sm/build
-          make -j4
+          make -j4 VERBOSE=ON
       - name: hommexx-test
         shell: bash -l {0}
         run: |
@@ -126,4 +126,5 @@ jobs:
           path: |
             e3sm/build/CMakeCache.txt
             e3sm/build/Testing/Temporary/Last*
+            e3sm/build/**/flags.make
           retention-days: 14
