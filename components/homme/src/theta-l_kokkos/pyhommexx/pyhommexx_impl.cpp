@@ -110,6 +110,26 @@ void init_session (const bool do_print_to_screen)
   Session::m_throw_instead_of_abort = true;
 }
 
+void enable_scalar_type (const nb::str& dtype)
+{
+  std::string dtype_str(dtype.c_str());
+
+  if (dtype_str=="real") {
+    Session::is_st_enabled<Real>() = true;
+  } else if (dtype_str=="dpfad") {
+#ifdef HOMMEXX_ENABLE_FAD_TYPES
+    Session::is_st_enabled<DpFadType>() = true;
+#else
+    throw std::runtime_error("[pyhommexx] dpfad data type requires homme to be build with HOMMEXX_ENABLE_FAD_TYPES=ON.\n");
+#endif
+  } else {
+  using namespace Errors;
+    runtime_abort("[enable_scalar_type] Error! Unrecognized/unsupported dtupe name.\n"
+                  " - input dtype: " + dtype_str + "\n"
+                  " - valid dtype(s): real, dpfad\n");
+  }
+}
+
 void print_to_screen (const bool enabled)
 {
   print_to_screen_f90 (enabled);

@@ -12,6 +12,7 @@ template<int N>
 using ndarray_t = nb::ndarray<double,nb::ndim<N>>;
 
 void init_session (const bool do_print_to_screen = true);
+void enable_scalar_type (const nb::str& dtype);
 
 void print_to_screen (const bool enabled);
 
