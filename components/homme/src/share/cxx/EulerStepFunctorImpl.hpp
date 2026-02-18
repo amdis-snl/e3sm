@@ -206,7 +206,8 @@ public:
     constexpr int num_scalars = Buffers::num_3d_scalar_mid_buf;
     constexpr int num_vectors = Buffers::num_3d_vector_mid_buf;
 
-    return m_geometry.num_elems() * (num_scalars*size_scalar + num_vectors*size_vector);
+    int scl_sz = sizeof(ST) / sizeof(Real);
+    return m_geometry.num_elems() * (num_scalars*size_scalar + num_vectors*size_vector) * scl_sz;
   }
 
   void init_buffers (const FunctorsBuffersManager& fbm) {

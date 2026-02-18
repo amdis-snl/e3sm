@@ -165,15 +165,11 @@ int HyperviscosityFunctorImplST<ST>::requested_buffer_size () const {
   const int int_scalars_nelems = 0;
   const int mid_scalars_nelems = 2 + (m_process_nh_vars ? 2 : 0);
 
-#ifdef HOMMEXX_ENABLE_FWD_SENS
-  const int fad_size = 1+DpFadSize;
-#else
-  const int fad_size = 1;
-#endif
+  int scl_sz = sizeof(ST) / sizeof(Real);
 
   const int size = m_num_elems*(mid_scalars_nelems*size_mid_scalar +
                                 mid_vectors_nelems*size_mid_vector +
-                                int_scalars_nelems*size_int_scalar)*fad_size;
+                                int_scalars_nelems*size_int_scalar)*scl_sz;
 
   return size;
 }
