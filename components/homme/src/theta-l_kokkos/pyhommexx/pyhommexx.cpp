@@ -31,7 +31,10 @@ NB_MODULE (pyhommexx,m) {
         nb::arg("lat0"),nb::arg("lon0"),
         nb::arg("p_max"),nb::arg("sigma"),
         nb::arg("dtype") = "real");
-  m.def("run_functor",&run_functor);
+  m.def("run_functor",&run_functor,
+      "Perturbs a state variable by multiply by a spatially gaussian factor, centered at given lat/lon"
+      "The dtype arg specifies which instantiation of the functor to use",
+        nb::arg("name"), nb::arg("params"), nb::arg("dtype") = "real");
   m.def("forward",&forward);
   m.def("finalize",&finalize);
 }

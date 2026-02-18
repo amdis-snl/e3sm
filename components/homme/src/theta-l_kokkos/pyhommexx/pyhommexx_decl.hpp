@@ -42,7 +42,7 @@ void perturb_state_var (const nb::str& name,
                         const double p_max, const double sigma,
                         const nb::str& dtype);
 
-void run_functor(const nb::str& name,const nb::dict& params);
+void run_functor(const nb::str& name,const nb::dict& params,const nb::str& dtype);
 void forward(const double dt);
 
 void finalize();
