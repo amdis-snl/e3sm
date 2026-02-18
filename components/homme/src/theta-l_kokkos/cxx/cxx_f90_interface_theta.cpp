@@ -17,6 +17,7 @@
 #include "HommexxEnums.hpp"
 #include "HybridVCoord.hpp"
 #include "HyperviscosityFunctor.hpp"
+#include "Hommexx_Session.hpp"
 #include "LimiterFunctor.hpp"
 #include "ReferenceElement.hpp"
 #include "SimulationParams.hpp"
@@ -35,6 +36,44 @@
 
 namespace Homme
 {
+
+template<typename ST>
+void init_elements_impl (const int& num_elems)
+{
+  auto& c = Context::singleton();
+  const SimulationParams& params = c.get<SimulationParams>();
+  const bool consthv = (params.hypervis_scaling==0.0);
+
+  auto& e = c.create<ElementsST<ST>> ();
+  e.init (num_elems, consthv, /* alloc_gradphis = */ true,
+          params.scale_factor, params.laplacian_rigid_factor,
+          params.alloc_sphere_coords);
+
+  // In the context, we register also Elements[Geometry|State|DerivedState|Forcing],
+  // making sure they store the same views as in the subobjects of Elements.
+  // This allows objects that need only a piece of Elements, to grab it from the Context,
+  // while still knowing that what they grab contains the same views as the object stored in the
+  // Elements inside the Context
+  // WARNING: after this point, you should NOT do things like
+  //             e.m_geometry.m_phis = ...
+  //          since they would NOT be reflected into the ElementsGeometry stored in the Context.
+  //          In other words, you cannot reset the views. If you *really* need to do it,
+  //          you must reset the view in both c.get<Elements>().m_geometry AND
+  //          c.get<ElementsGeometry>()
+
+  if (not c.has<ElementsGeometry>()) {
+    // ElementsGeometry is NOT templated on type, so if we calld this for another ST already,
+    // the ElementsGeometry entry will already be in the context
+    c.create_ref<ElementsGeometry>(e.m_geometry);
+  }
+  c.create_ref<ElementsStateST<ST>>(e.m_state);
+  c.create_ref<ElementsDerivedStateST<ST>>(e.m_derived);
+  c.create_ref<ElementsForcingST<ST>>(e.m_forcing);
+
+  // Init also the tracers structure
+  auto& t = c.create<TracersST<ST>> ();
+  t.init(num_elems,params.qsize);
+}
 
 extern "C"
 {
@@ -383,33 +422,18 @@ void init_elements_c (const int& num_elems)
 {
   auto& c = Context::singleton();
 
-  Elements& e = c.create<Elements> ();
-  const SimulationParams& params = c.get<SimulationParams>();
+  // For sure create elements for ScalarValue
+  init_elements_impl<ScalarValue>(num_elems);
 
-  const bool consthv = (params.hypervis_scaling==0.0);
-  e.init (num_elems, consthv, /* alloc_gradphis = */ true,
-          params.scale_factor, params.laplacian_rigid_factor,
-          params.alloc_sphere_coords);
-
-  // Init also the tracers structure
-  Tracers& t = c.create<Tracers> ();
-  t.init(num_elems,params.qsize);
-
-  // In the context, we register also Elements[Geometry|State|DerivedState|Forcing],
-  // making sure they store the same views as in the subobjects of Elements.
-  // This allows objects that need only a piece of Elements, to grab it from the Context,
-  // while still knowing that what they grab contains the same views as the object stored in the
-  // Elements inside the Context
-  // WARNING: after this point, you should NOT do things like
-  //             e.m_geometry.m_phis = ...
-  //          since they would NOT be reflected into the ElementsGeometry stored in the Context.
-  //          In other words, you cannot reset the views. If you *really* need to do it,
-  //          you must reset the view in both c.get<Elements>().m_geometry AND
-  //          c.get<ElementsGeometry>()
-  c.create_ref<ElementsGeometry>(e.m_geometry);
-  c.create_ref<ElementsState>(e.m_state);
-  c.create_ref<ElementsDerivedState>(e.m_derived);
-  c.create_ref<ElementsForcing>(e.m_forcing);
+  // Next, go through known types, and init their elements/tracers version if enabled
+  if (Session::is_st_enabled<Real>() and not std::is_same_v<Real,ScalarValue>) {
+    init_elements_impl<Real>(num_elems);
+  }
+#ifdef HOMMEXX_ENABLE_FAD_TYPES
+  if (Session::is_st_enabled<DpFadType>() and not std::is_same_v<DpFadType,ScalarValue>) {
+    init_elements_impl<DpFadType>(num_elems);
+  }
+#endif
 }
 
 void init_functors_c (const int& allocate_buffer)
