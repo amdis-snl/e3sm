@@ -596,6 +596,60 @@ void init_dp3d_from_ps ()
   initialize_dp3d_from_ps_c();
 }
 
+void copy_state (const nb::str& from_dtype, const nb::str& to_dtype)
+{
+  auto& c = Context::singleton();
+  const auto& tl = c.get<TimeLevel>();
+  std::string from_dtype_str(from_dtype.c_str());
+  std::string to_dtype_str(to_dtype.c_str());
+  if (from_dtype_str=="real") {
+    const auto& from_st = c.get<ElementsStateST<Real>>();
+    const auto& from_tr = c.get<TracersST<Real>>();
+    if (to_dtype_str=="real") {
+      return;
+    } else if (to_dtype_str=="dpfad") {
+#ifdef HOMMEXX_ENABLE_FAD_TYPES
+      auto& to_st = c.get<ElementsStateST<DpFadType>>();
+      auto& to_tr = c.get<TracersST<DpFadType>>();
+      to_st.import_values(from_st,tl.n0);
+      to_tr.import_values(from_tr,tl.n0_qdp);
+#else
+      throw std::runtime_error("[pyhommexx] dpfad data type requires homme to be build with HOMMEXX_ENABLE_FAD_TYPES=ON.\n");
+#endif
+    } else {
+      throw std::runtime_error(
+        "[copy_state] Error! Unrecognized/unsupported to_dtype name.\n"
+        " - input dtype: " + to_dtype_str + "\n"
+        " - valid dtype(s): real, dpfad\n");
+    }
+  } else if (from_dtype_str=="dpfad") {
+#ifdef HOMMEXX_ENABLE_FAD_TYPES
+    auto& from_st = c.get<ElementsStateST<Real>>();
+    auto& from_tr = c.get<TracersST<Real>>();
+    if (to_dtype_str=="real") {
+      auto& to_st = c.get<ElementsStateST<Real>>();
+      auto& to_tr = c.get<TracersST<Real>>();
+      to_st.import_values(from_st,tl.n0);
+      to_tr.import_values(from_tr,tl.n0_qdp);
+    } else if (to_dtype_str=="dpfad") {
+      return;
+    } else {
+      throw std::runtime_error(
+        "[copy_state] Error! Unrecognized/unsupported to_dtype name.\n"
+        " - input dtype: " + to_dtype_str + "\n"
+        " - valid dtype(s): real, dpfad\n");
+    }
+#else
+      throw std::runtime_error("[pyhommexx] dpfad data type requires homme to be build with HOMMEXX_ENABLE_FAD_TYPES=ON.\n");
+#endif
+  } else {
+    throw std::runtime_error(
+      "[copy_state] Error! Unrecognized/unsupported from_dtupe name.\n"
+      " - input dtype: " + from_dtype_str + "\n"
+      " - valid dtype(s): real, dpfad\n");
+  }
+}
+
 void forward(const double dt)
 {
   int nm1, n0, np1, nstep;
