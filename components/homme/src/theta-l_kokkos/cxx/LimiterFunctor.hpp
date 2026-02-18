@@ -96,7 +96,7 @@ struct LimiterFunctorST {
   void init_buffers (const FunctorsBuffersManager& fbm) {
     Errors::runtime_check(fbm.allocated_size()>=requested_buffer_size(), "Error! Buffers size not sufficient.\n");
 
-    Scalar* mem = reinterpret_cast<Scalar*>(fbm.get_memory());
+    PT* mem = reinterpret_cast<PT*>(fbm.get_memory());
     const int nslots = m_tu.get_num_ws_slots();
 
     // Midpoints scalars
@@ -135,13 +135,13 @@ struct LimiterFunctorST {
         diff(ilev) = (dp(ilev) - m_dp3d_thresh*dp0(ilev))*spheremp;
       });
 
-      ScalarValue min_diff = Kokkos::reduction_identity<ScalarValue>::min();
+      ST min_diff = Kokkos::reduction_identity<ST>::min();
       auto diff_scalarized = ekat::scalarize(diff);
       auto dp_scalarized   = ekat::scalarize(dp);
       auto dp0_scalarized  = ekat::scalarize(dp0);
-      Kokkos::Min<ScalarValue,ExecSpace> reducer(min_diff);
+      Kokkos::Min<ST,ExecSpace> reducer(min_diff);
       Kokkos::parallel_reduce(Kokkos::ThreadVectorRange(kv.team,NUM_PHYSICAL_LEV),
-                              [&](const int k,ScalarValue& result) {
+                              [&](const int k,ST& result) {
 #ifndef HOMMEXX_BFB_TESTING
         if(diff_scalarized(k) < 0){
           Kokkos::printf("WARNING:CAAR: dp3d too small. k=%d, dp3d(k)=%f, dp0=%f \n",
@@ -161,7 +161,7 @@ struct LimiterFunctorST {
         });
 
         // Gotta apply vertical mixing, to prevent levels from getting too thin.
-        ScalarValue mass = 0.0;
+        ST mass = 0.0;
         ColumnOps::column_reduction<NUM_PHYSICAL_LEV>(kv.team,diff,mass);
 
         if (mass<0) {
@@ -173,10 +173,10 @@ struct LimiterFunctorST {
 
         // This loop must be done over physical levels, unless we implement
         // masks, like it has been done in the E3SM/scream project
-        ScalarValue mass_new = 0.0;
+        ST mass_new = 0.0;
         Dispatch<>::parallel_reduce(kv.team,
                                     Kokkos::ThreadVectorRange(kv.team,NUM_PHYSICAL_LEV),
-                                    [&](const int k, ScalarValue& accum) {
+                                    [&](const int k, ST& accum) {
           auto& val = diff_scalarized(k);
           val = (val<0 ? 0.0 : val);
           accum += val;
