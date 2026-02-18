@@ -39,7 +39,8 @@ void copy_state (const nb::str& from_dtype, const nb::str& to_dtype);
 // of the 2d point (lat,lon) from (lat0,lon0).
 void perturb_state_var (const nb::str& name,
                         const double lat0, const double lon0,
-                        const double p_max, const double sigma);
+                        const double p_max, const double sigma,
+                        const nb::str& dtype);
 
 void run_functor(const nb::str& name,const nb::dict& params);
 void forward(const double dt);

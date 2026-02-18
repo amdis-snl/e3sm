@@ -24,7 +24,13 @@ NB_MODULE (pyhommexx,m) {
   m.def("copy_state",&copy_state);
   m.def("init_dp3d_from_ps",&init_dp3d_from_ps);
   m.def("set_state_var",&set_state_var);
-  m.def("perturb_state_var",&perturb_state_var);
+  m.def("perturb_state_var",&perturb_state_var,
+      "Perturbs a state variable by multiply by a spatially gaussian factor, centered at given lat/lon.\n"
+      "The dtype arg specifies which data structure to perturb",
+        nb::arg("name"),
+        nb::arg("lat0"),nb::arg("lon0"),
+        nb::arg("p_max"),nb::arg("sigma"),
+        nb::arg("dtype") = "real");
   m.def("run_functor",&run_functor);
   m.def("forward",&forward);
   m.def("finalize",&finalize);

@@ -411,6 +411,9 @@ void get_state_var_dp_sens (nb::ndarray<double>& arr, const nb::str& name)
 {
 #ifdef HOMMEXX_ENABLE_FAD_TYPES
   const auto& c = Context::singleton();
+  if (not c.has<ElementsStateST<DpFadType>>() or not c.has<TracersST<DpFadType>>()) {
+    throw std::runtime_error("Cannot retrieve dp sensitivities. No DpFadType tracers/state present");
+  }
   const auto& state = c.get<ElementsStateST<DpFadType>> ();
   const auto& tracers = c.get<TracersST<DpFadType>> ();
   const auto& tl = c.get<TimeLevel> ();
@@ -504,15 +507,15 @@ void get_state_var_dp_sens (nb::ndarray<double>& arr, const nb::str& name)
 #endif
 }
 
-void perturb_state_var (const nb::str& name,
-                        const double lat0, const double lon0,
-                        const double p_max, const double sigma)
+template<typename ST>
+void perturb_state_var_impl (const nb::str& name,
+                             const double lat0, const double lon0,
+                             const double p_max, const double sigma)
 {
-#ifdef HOMMEXX_ENABLE_FAD_TYPES
   const auto& c = Context::singleton();
-  const auto& state = c.get<ElementsStateST<DpFadType>> ();
+  const auto& state = c.get<ElementsStateST<ST>> ();
   const auto& geo = c.get<ElementsGeometry> ();
-  const auto& tracers = c.get<TracersST<DpFadType>> ();
+  const auto& tracers = c.get<TracersST<ST>> ();
   const auto& tl = c.get<TimeLevel> ();
 
   const int nelem = state.num_elems();
@@ -551,15 +554,18 @@ void perturb_state_var (const nb::str& name,
   int nlev = (which==flag_phi or which==flag_w) ? NUM_INTERFACE_LEV : NUM_PHYSICAL_LEV;
   using policy_t = Kokkos::MDRangePolicy<ExecSpace,Kokkos::Rank<4>>;
 
-  DpFadType max_p;
-  max_p.val() = p_max;
-  max_p.fastAccessDx(0) = 1;
+  ST max_p = p_max;
+#ifdef HOMMEXX_ENABLE_FAD_TYPES
+  if constexpr (Sacado::IsFad<ST>::value) {
+    max_p.fastAccessDx(0) = 1;
+  }
+#endif
   policy_t p ({0,0,0,0},{nelem,NP,NP,nlev});
   auto copy = KOKKOS_LAMBDA (int ie, int ip, int jp, int k) {
     int lev = k / VECTOR_SIZE;
     int vec = k % VECTOR_SIZE;
     auto d = distance(latlon(ie,ip,jp,0),latlon(ie,ip,jp,1),lat0,lon0);
-    DpFadType factor = 1 + max_p*std::exp(-std::pow(d,2)/(2*std::pow(sigma,2)));
+    ST factor = 1 + max_p*std::exp(-std::pow(d,2)/(2*std::pow(sigma,2)));
 
     switch (which) {
       case flag_u:
@@ -584,11 +590,22 @@ void perturb_state_var (const nb::str& name,
     }
   };
   Kokkos::parallel_for(p,copy);
-#else
-  Errors::runtime_error("pyhommexx::set_state_var_sens not implemented unless HOMMEXX_ENABLE_FAD_TYPES is defined.\n");
-  (void)arr;
-  (void)name;
-#endif
+}
+
+void perturb_state_var (const nb::str& name,
+                        const double lat0, const double lon0,
+                        const double p_max, const double sigma,
+                        const nb::str& dtype)
+{
+  std::string dtype_str(dtype.c_str());
+
+  if (dtype_str=="real") {
+    perturb_state_var_impl<Real>(name,lat0,lon0,p_max,sigma);
+  } else {
+      throw std::runtime_error("[perturb_state_var] Error! Unrecognized/unsupported dtupe name.\n"
+                    " - input dtype: " + dtype_str + "\n"
+                    " - valid dtype(s): real, dpfad\n");
+  }
 }
 
 void init_dp3d_from_ps ()
