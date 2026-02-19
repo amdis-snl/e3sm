@@ -1,5 +1,13 @@
 SET(UNITTESTER_DIR ${CMAKE_CURRENT_SOURCE_DIR} PARENT_SCOPE)
 
+# Compile the catch main file once and store it as a lib
+add_library(homme_catch_main tester.cpp)
+set (CATCH_INCLUDE ${HOMME_SOURCE_DIR}/../../externals/ekat/extern/Catch2/single_include)
+target_include_directories(homme_catch_main PUBLIC "${CATCH_INCLUDE}")
+target_include_directories(homme_catch_main PUBLIC ${HOMME_SOURCE_DIR}/src/share/cxx) # For context/session
+target_include_directories(homme_catch_main PUBLIC ${HOMME_SOURCE_DIR}/src/share/cxx/mpi) # For Comm
+target_link_libraries(homme_catch_main PUBLIC ekat::AllLibs)
+
 function(cxx_unit_test_add_test test_name target_name NUM_CPUS)
   SET(EXTRA_ARGS ${ARGN})
   set(TMP ${USE_MPI_OPTIONS})
@@ -13,7 +21,7 @@ function(cxx_unit_test_add_test test_name target_name NUM_CPUS)
 endfunction()
 
 macro(cxx_unit_test target_name target_f90_srcs target_cxx_srcs include_dirs config_defines NUM_CPUS)
-  ADD_EXECUTABLE(${target_name} ${UNITTESTER_DIR}/tester.cpp ${target_f90_srcs} ${target_cxx_srcs})
+  ADD_EXECUTABLE(${target_name} ${target_f90_srcs} ${target_cxx_srcs})
   #add exec to test_execs ,baseline, and check targets in makefile
   ADD_DEPENDENCIES(test-execs ${target_name})
   ADD_DEPENDENCIES(baseline ${target_name})
@@ -21,6 +29,7 @@ macro(cxx_unit_test target_name target_f90_srcs target_cxx_srcs include_dirs con
 
   cxx_unit_test_add_test(${target_name}_test ${target_name} ${NUM_CPUS})
 
+  TARGET_LINK_LIBRARIES(${target_name} homme_catch_main)
   TARGET_LINK_LIBRARIES(${target_name} timing ${BLAS_LIBRARIES} ${LAPACK_LIBRARIES})
   TARGET_LINK_LIBRARIES(${target_name} ekat::AllLibs)
   IF (HOMME_USE_MKL)
@@ -68,8 +77,6 @@ macro(cxx_unit_test target_name target_f90_srcs target_cxx_srcs include_dirs con
     TARGET_COMPILE_DEFINITIONS(${target_name} PUBLIC HOMME_WITHOUT_PIOLIBRARY)
   ENDIF()
 
-  set (CATCH_INCLUDE ${HOMME_SOURCE_DIR}/../../externals/ekat/extern/Catch2/single_include)
-  TARGET_INCLUDE_DIRECTORIES(${target_name} PUBLIC "${CATCH_INCLUDE}")
   TARGET_INCLUDE_DIRECTORIES(${target_name} PUBLIC "${include_dirs}")
   TARGET_INCLUDE_DIRECTORIES(${target_name} PUBLIC "${SRC_SHARE};${SRC_BASE};${UNITTESTER_DIR}")
   TARGET_INCLUDE_DIRECTORIES(${target_name} PUBLIC "${PIO_INCLUDE_DIRS}")
