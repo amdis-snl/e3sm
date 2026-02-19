@@ -504,6 +504,9 @@ IF (HOMME_USE_KOKKOS)
 
   add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../externals/ekat
                    ${CMAKE_CURRENT_BINARY_DIR}/externals/ekat)
+  set (EKAT_CMAKE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/../../externals/ekat/cmake)
+  list(APPEND CMAKE_MODULE_PATH ${EKAT_CMAKE_PATH})
+
 ENDIF ()
 
 # This folder contains the CMake macro used to build cxx unit tests
