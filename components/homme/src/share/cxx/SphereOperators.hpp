@@ -1165,7 +1165,7 @@ public:
   ExecViewManaged<const Real * [2][2][NP][NP]>  m_d;
   ExecViewManaged<const Real * [2][2][NP][NP]>  m_dinv;
 
-  Real m_scale_factor_inv, m_laplacian_rigid_factor;
+  ST m_scale_factor_inv, m_laplacian_rigid_factor;
 };
 
 using SphereOperators = SphereOperatorsST<ScalarValue>;
