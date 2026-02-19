@@ -39,8 +39,9 @@ struct LimiterFunctorST {
   };
 
   int                       m_np1;
-  const int                 m_num_elems;
-  const bool                m_theta_hydrostatic_mode;
+  int                       m_num_elems;
+  bool                      m_theta_hydrostatic_mode;
+  bool                      m_verbose = true;
 
   HybridVCoord              m_hvcoord;
   ElementsStateST<ST>       m_state;
@@ -139,7 +140,7 @@ struct LimiterFunctorST {
       Kokkos::parallel_reduce(Kokkos::ThreadVectorRange(kv.team,NUM_PHYSICAL_LEV),
                               [&](const int k,ST& result) {
 #ifndef HOMMEXX_BFB_TESTING
-        if(diff_scalarized(k) < 0){
+        if(m_verbose and diff_scalarized(k) < 0){
           Kokkos::printf("WARNING:CAAR: dp3d too small. k=%d, dp3d(k)=%f, dp0=%f \n",
                          k+1,dp_scalarized(k),dp0_scalarized(k));
         }
@@ -199,10 +200,11 @@ struct LimiterFunctorST {
         for (int ivec=0; ivec<VECTOR_SIZE; ++ivec) {
           if ( (vtheta_dp(ilev)[ivec] - m_vtheta_thresh*dp(ilev)[ivec]) < 0) {
 #ifndef HOMMEXX_BFB_TESTING
-            Kokkos::printf("WARNING:CAAR: k=%d,theta(k)=%f<%f=th_thresh, applying limiter \n",
-                           ilev*VECTOR_SIZE+ivec+1,vtheta_dp(ilev)[ivec]/dp(ilev)[ivec],m_vtheta_thresh);
+            if (m_verbose)
+              Kokkos::printf("WARNING:CAAR: k=%d,theta(k)=%f<%f=th_thresh, applying limiter \n",
+                             ilev*VECTOR_SIZE+ivec+1,vtheta_dp(ilev)[ivec]/dp(ilev)[ivec],m_vtheta_thresh);
 #endif
-             vtheta_dp(ilev)[ivec]=m_vtheta_thresh*dp(ilev)[ivec];
+            vtheta_dp(ilev)[ivec]=m_vtheta_thresh*dp(ilev)[ivec];
           }
         }
       });
