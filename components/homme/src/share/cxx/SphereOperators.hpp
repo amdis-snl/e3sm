@@ -131,8 +131,8 @@ public:
 
   KOKKOS_INLINE_FUNCTION void
   gradient_sphere_sl (const KernelVariables &kv,
-                      const ExecViewUnmanaged<const Real    [NP][NP]>& scalar,
-                      const ExecViewUnmanaged<      Real [2][NP][NP]>& grad_s) const
+                      const ExecViewUnmanaged<const ST    [NP][NP]>& scalar,
+                      const ExecViewUnmanaged<      ST [2][NP][NP]>& grad_s) const
   {
     // Make sure the buffers have been created
     assert (vector_buf_sl.size()>0);
@@ -145,7 +145,7 @@ public:
                          [&](const int loop_idx) {
       const int j = loop_idx / NP;
       const int l = loop_idx % NP;
-      Real dsdx(0), dsdy(0);
+      ST dsdx(0), dsdy(0);
       for (int i = 0; i < NP; ++i) {
         dsdx += dvv(l, i) * scalar(j, i);
         dsdy += dvv(l, i) * scalar(i, j);
@@ -169,8 +169,8 @@ public:
 
   KOKKOS_INLINE_FUNCTION void
   gradient_sphere_update_sl (const KernelVariables &kv,
-                             const ExecViewUnmanaged<const Real    [NP][NP]>& scalar,
-                             const ExecViewUnmanaged<      Real [2][NP][NP]>& grad_s) const
+                             const ExecViewUnmanaged<const ST    [NP][NP]>& scalar,
+                             const ExecViewUnmanaged<      ST [2][NP][NP]>& grad_s) const
   {
     // Make sure the buffers have been created
     assert (vector_buf_sl.size()>0);
@@ -182,7 +182,7 @@ public:
                          [&](const int loop_idx) {
       const int j = loop_idx / NP;
       const int l = loop_idx % NP;
-      Real dsdx(0), dsdy(0);
+      ST dsdx(0), dsdy(0);
       for (int i = 0; i < NP; ++i) {
         dsdx += dvv(l, i) * scalar(j, i);
         dsdy += dvv(l, i) * scalar(i, j);
@@ -207,8 +207,8 @@ public:
 
   KOKKOS_INLINE_FUNCTION void
   divergence_sphere_sl (const KernelVariables &kv,
-                        const ExecViewUnmanaged<const Real [2][NP][NP]>& v,
-                        const ExecViewUnmanaged<      Real    [NP][NP]>& div_v) const
+                        const ExecViewUnmanaged<const ST [2][NP][NP]>& v,
+                        const ExecViewUnmanaged<      ST    [NP][NP]>& div_v) const
   {
     // Make sure the buffers have been created
     assert (vector_buf_sl.size()>0);
@@ -233,7 +233,7 @@ public:
                          [&](const int loop_idx) {
       const int igp = loop_idx / NP;
       const int jgp = loop_idx % NP;
-      Real dudx = 0.0, dvdy = 0.0;
+      ST dudx = 0.0, dvdy = 0.0;
       for (int kgp = 0; kgp < NP; ++kgp) {
         dudx += dvv(jgp, kgp) * gv_buf(0, igp, kgp);
         dvdy += dvv(igp, kgp) * gv_buf(1, kgp, jgp);
@@ -246,8 +246,8 @@ public:
 
   KOKKOS_INLINE_FUNCTION void
   divergence_sphere_wk_sl (const KernelVariables &kv,
-                           const ExecViewUnmanaged<const Real [2][NP][NP]>& v,
-                           const ExecViewUnmanaged<      Real    [NP][NP]>& div_v) const
+                           const ExecViewUnmanaged<const ST [2][NP][NP]>& v,
+                           const ExecViewUnmanaged<      ST    [NP][NP]>& div_v) const
   {
     // Make sure the buffers have been created
     assert (vector_buf_sl.size()>0);
@@ -284,7 +284,7 @@ public:
       //       the way the views are accessed.
       const int mgp = loop_idx % NP;
       const int ngp = loop_idx / NP;
-      Real dd = 0.0;
+      ST dd = 0.0;
       for (int jgp = 0; jgp < NP; ++jgp) {
         dd -= (spheremp(ngp, jgp) * gv_buf(0, ngp, jgp) * dvv(jgp, mgp) +
                spheremp(jgp, mgp) * gv_buf(1, jgp, mgp) * dvv(jgp, ngp)) *
@@ -296,13 +296,13 @@ public:
 
   } // end of divergence_sphere_wk_sl
 
-  // Note that divergence_sphere requires scratch space of 3 x NP x NP Reals
+  // Note that divergence_sphere requires scratch space of 3 x NP x NP ST
   // This must be called from the device space
   KOKKOS_INLINE_FUNCTION void
   vorticity_sphere_sl (const KernelVariables &kv,
-                       const ExecViewUnmanaged<const Real [NP][NP]>& u,
-                       const ExecViewUnmanaged<const Real [NP][NP]>& v,
-                       const ExecViewUnmanaged<      Real [NP][NP]>& vort) const
+                       const ExecViewUnmanaged<const ST [NP][NP]>& u,
+                       const ExecViewUnmanaged<const ST [NP][NP]>& v,
+                       const ExecViewUnmanaged<      ST [NP][NP]>& vort) const
   {
     // Make sure the buffers have been created
     assert (vector_buf_sl.size()>0);
@@ -328,8 +328,8 @@ public:
                          [&](const int loop_idx) {
       const int igp = loop_idx / NP;
       const int jgp = loop_idx % NP;
-      Real dudy = 0.0;
-      Real dvdx = 0.0;
+      ST dudy = 0.0;
+      ST dvdx = 0.0;
       for (int kgp = 0; kgp < NP; ++kgp) {
         dvdx += dvv(jgp, kgp) * vcov_buf(1, igp, kgp);
         dudy += dvv(igp, kgp) * vcov_buf(0, kgp, jgp);
@@ -345,8 +345,8 @@ public:
   // Single level implementation
   KOKKOS_INLINE_FUNCTION void
   laplace_wk_sl (const KernelVariables &kv,
-                 const ExecViewUnmanaged<const Real [NP][NP]>& field,
-                 const ExecViewUnmanaged<      Real [NP][NP]>& laplace) const
+                 const ExecViewUnmanaged<const ST [NP][NP]>& field,
+                 const ExecViewUnmanaged<      ST [NP][NP]>& laplace) const
   {
     // Make sure the buffers have been created
     assert (vector_buf_sl.size()>0);
@@ -1150,7 +1150,7 @@ public:
   // memory buffers for multiple things gives performance in mem
   // b/w-limited computations.
 
-  ExecViewManaged<Real   * [NUM_2D_VECTOR_BUFFERS][2][NP][NP]>            vector_buf_sl;
+  ExecViewManaged<ST * [NUM_2D_VECTOR_BUFFERS][2][NP][NP]>                vector_buf_sl;
   ExecViewManaged<PT * [NUM_3D_SCALAR_BUFFERS][NP][NP][MAX_NUM_LEV]>      scalar_buf_ml;
   ExecViewManaged<PT * [NUM_3D_VECTOR_BUFFERS][2][NP][NP][MAX_NUM_LEV]>   vector_buf_ml;
 

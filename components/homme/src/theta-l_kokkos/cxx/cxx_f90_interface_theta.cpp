@@ -691,7 +691,7 @@ void compute_gradphis_c ()
   auto& c = Context::singleton();
   auto& geo = c.get<ElementsGeometry>();
   auto& ref_FE = c.get<ReferenceElement>();
-  SphereOperators sph_op(geo,ref_FE);
+  SphereOperatorsST<Real> sph_op(geo,ref_FE);
   auto p = get_default_team_policy<ExecSpace>(geo.num_elems());
   sph_op.allocate_buffers(p);
   Kokkos::parallel_for(p,KOKKOS_LAMBDA(const TeamMember& team) {
