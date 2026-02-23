@@ -52,6 +52,9 @@ if (NOT TARGET csm_share)
   endif()
   set_target_properties(csm_share PROPERTIES
     Fortran_MODULE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/modules)
+  if(HOMME_BUILD_PYHOMMEXX)
+    set_target_properties(csm_share PROPERTIES POSITION_INDEPENDENT_CODE TRUE)
+  endif()
   target_include_directories(csm_share PUBLIC ${CMAKE_CURRENT_BINARY_DIR}/modules)
 
 endif()

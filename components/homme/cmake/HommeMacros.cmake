@@ -306,6 +306,10 @@ macro(createExecLib libName execType libSrcs inclDirs macroNP
     TARGET_LINK_LIBRARIES(${libName} PUBLIC sundials_nvecserial)
     TARGET_LINK_LIBRARIES(${libName} PUBLIC sundials_fnvecserial)
   ENDIF ()
+  
+  if(HOMME_BUILD_PYHOMMEXX)
+    set_target_properties(${libName} PROPERTIES POSITION_INDEPENDENT_CODE TRUE)
+  endif()
 
 endmacro(createExecLib)
 

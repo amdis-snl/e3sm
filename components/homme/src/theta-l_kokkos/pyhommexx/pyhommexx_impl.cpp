@@ -478,7 +478,7 @@ void get_state_var_dp_sens (nb::ndarray<double>& arr, const nb::str& name)
   };
   Kokkos::parallel_for(p,copy);
 #else
-  Errors::runtime_error("pyhommexx::get_state_var_sens not implemented unless HOMMEXX_ENABLE_FAD_TYPES is defined.\n");
+  Errors::runtime_abort("pyhommexx::get_state_var_sens not implemented unless HOMMEXX_ENABLE_FAD_TYPES is defined.\n");
   (void)arr;
   (void)name;
 #endif
@@ -565,8 +565,8 @@ void perturb_state_var (const nb::str& name,
   };
   Kokkos::parallel_for(p,copy);
 #else
-  Errors::runtime_error("pyhommexx::set_state_var_sens not implemented unless HOMMEXX_ENABLE_FAD_TYPES is defined.\n");
-  (void)arr;
+  Errors::runtime_abort("pyhommexx::set_state_var_sens not implemented unless HOMMEXX_ENABLE_FAD_TYPES is defined.\n");
+//   (void)arr;
   (void)name;
 #endif
 }
