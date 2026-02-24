@@ -165,7 +165,7 @@ class compute_sphere_operator_test {
   ExecViewManaged<Real * [2][NP][NP]>::HostMirror
       vector_output_host;
 
-  SphereOperators     sphere_ops;
+  SphereOperatorsST<Real>     sphere_ops;
 
   // tag for laplace_simple()
   struct TagSimpleLaplace {};

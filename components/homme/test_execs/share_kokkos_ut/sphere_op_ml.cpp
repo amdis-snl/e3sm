@@ -308,7 +308,7 @@ class compute_sphere_operator_test_ml {
   ExecViewManaged<Scalar * [2][NP][NP][NUM_LEV]>::HostMirror
       vector_output_host;
 
-  SphereOperators     sphere_ops;
+  SphereOperatorsST<ScalarValue>     sphere_ops;
 
   Real nu_ratio;
   Real alpha;

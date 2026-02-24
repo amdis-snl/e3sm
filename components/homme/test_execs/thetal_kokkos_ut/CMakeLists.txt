@@ -39,8 +39,15 @@ ADD_LIBRARY(thetal_kokkos_ut_lib
   ${SRC_DIR}/surfaces_mod.F90
   ${SRC_DIR}/test_mod.F90
 )
-TARGET_INCLUDE_DIRECTORIES(thetal_kokkos_ut_lib PUBLIC ${EXEC_INCLUDE_DIRS})
-TARGET_INCLUDE_DIRECTORIES(thetal_kokkos_ut_lib PUBLIC ${CMAKE_CURRENT_BINARY_DIR})
+# Fortran modules
+SET(THETA_LIB_MODULE_DIR ${CMAKE_CURRENT_BINARY_DIR}/thetal_kokkos_ut_lib_modules)
+SET_TARGET_PROPERTIES(thetal_kokkos_ut_lib PROPERTIES Fortran_MODULE_DIRECTORY ${THETA_LIB_MODULE_DIR})
+TARGET_INCLUDE_DIRECTORIES(thetal_kokkos_ut_lib PUBLIC
+  ${EXEC_INCLUDE_DIRS}
+  ${CMAKE_CURRENT_BINARY_DIR}
+  ${SRC_THETA_DIR}
+  ${THETA_LIB_MODULE_DIR}
+  )
 TARGET_COMPILE_DEFINITIONS(thetal_kokkos_ut_lib PUBLIC "HAVE_CONFIG_H")
 TARGET_LINK_LIBRARIES(thetal_kokkos_ut_lib ekat::AllLibs)
 TARGET_LINK_LIBRARIES(thetal_kokkos_ut_lib timing csm_share ${COMPOSE_LIBRARY_CPP} ${BLAS_LIBRARIES} ${LAPACK_LIBRARIES})
@@ -64,9 +71,6 @@ ELSE ()
     TARGET_LINK_LIBRARIES(thetal_kokkos_ut_lib pio)
   ENDIF ()
 ENDIF ()
-# Fortran modules
-SET(THETA_LIB_MODULE_DIR ${CMAKE_CURRENT_BINARY_DIR}/thetal_kokkos_ut_lib_modules)
-SET_TARGET_PROPERTIES(thetal_kokkos_ut_lib PROPERTIES Fortran_MODULE_DIRECTORY ${THETA_LIB_MODULE_DIR})
 
 # Setting this once and for all, good for all unit tests.
 SET (CONFIG_DEFINES HAVE_CONFIG_H)
@@ -362,3 +366,12 @@ if (NOT HOMMEXX_ENABLE_FWD_SENS)
   TARGET_LINK_LIBRARIES(gllfvremap_ut thetal_kokkos_ut_lib)
   cxx_unit_test_add_test(gllfvremap_planar_ut gllfvremap_ut ${NUM_CPUS} "hommexx -planar")
 endif()
+
+include (EkatCreateUnitTest)
+
+# ### Caar sacado derivatives tests
+EkatCreateUnitTest ("caar_sacado_ut"
+  "caar_sacado_ut.cpp;${SHARE_UT_DIR}/geometry_interface.F90;thetal_test_interface.F90"
+  EXCLUDE_MAIN_CPP
+  LIBS thetal_kokkos_ut_lib homme_catch_main
+)

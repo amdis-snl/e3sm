@@ -7,6 +7,7 @@
 #include "Config.hpp"
 #include "Hommexx_Session.hpp"
 #include "ExecSpaceDefs.hpp"
+#include "Types.hpp"
 #include "profiling.hpp"
 #include "mpi/Comm.hpp"
 
@@ -89,6 +90,9 @@ void initialize_hommexx_session ()
     }
 
     Session::m_inited = true;
+
+    // Make sure the default scalar type is marked as "enabled" in the context
+    Session::is_st_enabled<ScalarValue>() = true;
   }
 }
 

@@ -32,6 +32,15 @@ struct Session {
   // In particular, this prevents hommexx from calling
   // kokkos finalization, which may be catastrophic for the host app.
   static bool m_throw_instead_of_abort;
+
+  // Whether a certain scalar type is "enabled" in this hommexx session
+  // Downstream fcn may use this to decide whether to init/use data sturctures
+  // for a certain scalar type
+  template<typename ST>
+  static bool& is_st_enabled () {
+    static bool value = false;
+    return value;
+  }
 };
 
 extern "C" {

@@ -391,8 +391,8 @@ void get_state_var_dp_sens (nb::ndarray<double>& arr, const nb::str& name)
 {
 #ifdef HOMMEXX_ENABLE_FAD_TYPES
   const auto& c = Context::singleton();
-  const auto& state = c.get<ElementsState> ();
-  const auto& tracers = c.get<Tracers> ();
+  const auto& state = c.get<ElementsStateST<DpFadType>> ();
+  const auto& tracers = c.get<TracersST<DpFadType>> ();
   const auto& tl = c.get<TimeLevel> ();
 
   const int nelem = state.num_elems();
@@ -490,9 +490,9 @@ void perturb_state_var (const nb::str& name,
 {
 #ifdef HOMMEXX_ENABLE_FAD_TYPES
   const auto& c = Context::singleton();
-  const auto& state = c.get<ElementsState> ();
+  const auto& state = c.get<ElementsStateST<DpFadType>> ();
   const auto& geo = c.get<ElementsGeometry> ();
-  const auto& tracers = c.get<Tracers> ();
+  const auto& tracers = c.get<TracersST<DpFadType>> ();
   const auto& tl = c.get<TimeLevel> ();
 
   const int nelem = state.num_elems();

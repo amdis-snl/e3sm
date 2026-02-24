@@ -11,6 +11,8 @@
 #include "kokkos_utils.hpp"
 #include "utilities/Hash.hpp"
 
+#include <ekat_pack_kokkos.hpp>
+
 namespace Homme {
 
 class HybridVCoord;
@@ -66,7 +68,7 @@ public:
   void randomize(const int seed, const Real max_pressure, const Real ps0, const Real hyai0,
                  const ExecViewUnmanaged<const Real*[NP][NP]>& phis);
   void randomize(const int seed, const HybridVCoord& hvcoord);
-  
+
   KOKKOS_INLINE_FUNCTION
   int num_elems() const { return m_num_elems; }
 
@@ -81,6 +83,10 @@ public:
 
   HashType hash(const int time_level) const;
 
+  // Copy values from one ElementStateST struct to another. All derivs get set to 0.
+  template<typename RST>
+  void import_values (const ElementsStateST<RST>& rhs, int tl);
+
 private:
   int m_num_elems;
   Kokkos::TeamPolicy<ExecSpace> m_policy;
@@ -88,6 +94,51 @@ private:
 };
 
 using ElementsState = ElementsStateST<ScalarValue>;
+
+// Copy values from one ElementStateST struct to another. All derivs get set to 0.
+template<typename ST>
+template<typename RST>
+void ElementsStateST<ST>::import_values (const ElementsStateST<RST>& rhs, int tl)
+{
+  if constexpr (std::is_same_v<ST,RST>) {
+    const void* lhs_ptr = this;
+    const void* rhs_ptr = &rhs;
+    if (lhs_ptr==rhs_ptr)
+      return;
+  }
+  auto lhs_v = ekat::scalarize(m_v);
+  auto lhs_dp = ekat::scalarize(m_dp3d);
+  auto lhs_phi = ekat::scalarize(m_phinh_i);
+  auto lhs_vth = ekat::scalarize(m_vtheta_dp);
+  auto lhs_w = ekat::scalarize(m_w_i);
+  auto lhs_ps = ekat::scalarize(m_ps_v);
+
+  auto rhs_v = ekat::scalarize(rhs.m_v);
+  auto rhs_dp = ekat::scalarize(rhs.m_dp3d);
+  auto rhs_phi = ekat::scalarize(rhs.m_phinh_i);
+  auto rhs_vth = ekat::scalarize(rhs.m_vtheta_dp);
+  auto rhs_w = ekat::scalarize(rhs.m_w_i);
+  auto rhs_ps = ekat::scalarize(rhs.m_ps_v);
+
+  int nlev = NUM_PHYSICAL_LEV;
+  auto copy = KOKKOS_LAMBDA(int ie, int ip, int jp, int k) {
+    lhs_v(ie,tl,0,ip,jp,k) = ADValue(rhs_v(ie,tl,0,ip,jp,k));
+    lhs_v(ie,tl,1,ip,jp,k) = ADValue(rhs_v(ie,tl,1,ip,jp,k));
+
+    lhs_w(ie,tl,ip,jp,k)   = ADValue(rhs_w(ie,tl,ip,jp,k));
+    lhs_dp(ie,tl,ip,jp,k)  = ADValue(rhs_dp(ie,tl,ip,jp,k));
+    lhs_vth(ie,tl,ip,jp,k) = ADValue(rhs_vth(ie,tl,ip,jp,k));
+    lhs_phi(ie,tl,ip,jp,k) = ADValue(rhs_phi(ie,tl,ip,jp,k));
+
+    if (k==0) {
+      lhs_ps(ie,tl,ip,jp) = ADValue(rhs_ps(ie,tl,ip,jp));
+      lhs_w(ie,tl,ip,jp,nlev) = ADValue(rhs_w(ie,tl,ip,jp,nlev));
+      lhs_phi(ie,tl,ip,jp,nlev) = ADValue(rhs_phi(ie,tl,ip,jp,nlev));
+    }
+  };
+  Kokkos::MDRangePolicy<ExecSpace,Kokkos::Rank<4>> p({0,0,0,0},{m_num_elems,NP,NP,nlev});
+  Kokkos::parallel_for(p,copy);
+}
 
 // Check ElementsState for NaN or incorrectly signed values. The initial check
 // is fast and on device. If everything is fine, the routine returns

@@ -156,13 +156,10 @@ public:
     constexpr int mid_size = NP*NP*NUM_LEV*VECTOR_SIZE;
     constexpr int int_size = NP*NP*NUM_LEV_P*VECTOR_SIZE;
 
+    int scl_sz = sizeof(ST) / sizeof(Real);
+
     // 3 persistent midlayers, 2 non-persistent midlayer, and 1 non-persistent interface
-#ifdef HOMMEXX_ENABLE_FWD_SENS
-    // Multiply by (1+HOMMEXX_DP_SFAD_SIZE)
-    return (1+HOMMEXX_DP_SFAD_SIZE)*(mid_size*(nelems*4+nslots) + int_size*nslots);
-#else
-    return 1*(mid_size*(nelems*4+nslots) + int_size*nslots);
-#endif
+    return scl_sz*(mid_size*(nelems*4+nslots) + int_size*nslots);
   }
 
   void init_buffers (const FunctorsBuffersManager& fbm) {

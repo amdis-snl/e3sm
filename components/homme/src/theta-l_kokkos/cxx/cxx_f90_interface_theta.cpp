@@ -17,6 +17,7 @@
 #include "HommexxEnums.hpp"
 #include "HybridVCoord.hpp"
 #include "HyperviscosityFunctor.hpp"
+#include "Hommexx_Session.hpp"
 #include "LimiterFunctor.hpp"
 #include "ReferenceElement.hpp"
 #include "SimulationParams.hpp"
@@ -35,6 +36,214 @@
 
 namespace Homme
 {
+
+template<typename ST>
+void init_elements_impl (const int& num_elems)
+{
+  auto& c = Context::singleton();
+  const SimulationParams& params = c.get<SimulationParams>();
+  const bool consthv = (params.hypervis_scaling==0.0);
+
+  auto& e = c.create<ElementsST<ST>> ();
+  e.init (num_elems, consthv, /* alloc_gradphis = */ true,
+          params.scale_factor, params.laplacian_rigid_factor,
+          params.alloc_sphere_coords);
+
+  // In the context, we register also Elements[Geometry|State|DerivedState|Forcing],
+  // making sure they store the same views as in the subobjects of Elements.
+  // This allows objects that need only a piece of Elements, to grab it from the Context,
+  // while still knowing that what they grab contains the same views as the object stored in the
+  // Elements inside the Context
+  // WARNING: after this point, you should NOT do things like
+  //             e.m_geometry.m_phis = ...
+  //          since they would NOT be reflected into the ElementsGeometry stored in the Context.
+  //          In other words, you cannot reset the views. If you *really* need to do it,
+  //          you must reset the view in both c.get<Elements>().m_geometry AND
+  //          c.get<ElementsGeometry>()
+
+  if (not c.has<ElementsGeometry>()) {
+    // ElementsGeometry is NOT templated on type, so if we calld this for another ST already,
+    // the ElementsGeometry entry will already be in the context
+    c.create_ref<ElementsGeometry>(e.m_geometry);
+  }
+  c.create_ref<ElementsStateST<ST>>(e.m_state);
+  c.create_ref<ElementsDerivedStateST<ST>>(e.m_derived);
+  c.create_ref<ElementsForcingST<ST>>(e.m_forcing);
+
+  // Init also the tracers structure
+  auto& t = c.create<TracersST<ST>> ();
+  t.init(num_elems,params.qsize);
+}
+
+template<typename ST>
+void create_functors_impl ()
+{
+  auto& c = Context::singleton();
+
+  auto& elems    = c.get<ElementsST<ST>>();
+  auto& tracers  = c.get<TracersST<ST>>();
+  auto& ref_FE   = c.get<ReferenceElement>();
+  auto& hvcoord  = c.get<HybridVCoord>();
+  auto& params   = c.get<SimulationParams>();
+  auto& geometry = c.get<ElementsGeometry>();
+  auto& state    = c.get<ElementsStateST<ST>>();
+  auto& derived  = c.get<ElementsDerivedStateST<ST>>();
+
+  // Check that the above structures have been inited
+  Errors::runtime_check(elems.inited(),    "Error! You must initialize the Elements structure before initializing the functors.\n", -1);
+  Errors::runtime_check(tracers.inited(),  "Error! You must initialize the Tracers structure before initializing the functors.\n", -1);
+  Errors::runtime_check(ref_FE.inited(),   "Error! You must initialize the ReferenceElement structure before initializing the functors.\n", -1);
+  Errors::runtime_check(hvcoord.m_inited,  "Error! You must initialize the HybridVCoord structure before initializing the functors.\n", -1);
+  Errors::runtime_check(params.params_set, "Error! You must initialize the SimulationParams structure before initializing the functors.\n", -1);
+
+  // First, sphere operators, then the others
+  auto& sph_op = c.create<SphereOperatorsST<ST>>(elems.m_geometry,ref_FE);
+  auto& limiter = c.create_if_not_there<LimiterFunctorST<ST>>(elems,hvcoord,params);
+
+  // Some functors might have been previously created, so
+  // use the create_if_not_there() function.
+  auto& caar = c.create_if_not_there<CaarFunctorST<ST>>(elems,tracers,ref_FE,hvcoord,sph_op,params);
+  if (params.transport_alg == 0) c.create_if_not_there<EulerStepFunctorST<ST>>();
+#ifdef HOMME_ENABLE_COMPOSE
+  else                           c.create_if_not_there<ComposeTransport>();
+#endif
+  auto& hvf     = c.create_if_not_there<HyperviscosityFunctorST<ST>>();
+  auto& ff      = c.create_if_not_there<ForcingFunctorST<ST>>();
+  auto& diag    = c.create_if_not_there<Diagnostics> (elems.num_elems(),tracers.num_tracers(),
+                                                      params.theta_hydrostatic_mode);
+  auto& vrm     = c.create_if_not_there<VerticalRemapManager>(elems.num_elems());
+
+  auto& fbm     = c.create_if_not_there<FunctorsBuffersManager>();
+
+//OG why are if-statement here -- above calls define which constructor is called
+
+  // If any Functor was constructed only partially, setup() must be called.
+  // This does not apply to Diagnostics or DirkFunctor since they only
+  // contain one constructor.
+  if (caar.setup_needed()) {
+    caar.setup(elems, tracers, ref_FE, hvcoord, sph_op);
+  }
+  if (params.transport_alg == 0) {
+    auto& esf = c.get<EulerStepFunctorST<ST>>();
+    if (esf.setup_needed()) esf.setup();
+  } else {
+#ifdef HOMME_ENABLE_COMPOSE
+    auto& ct = c.get<ComposeTransport>();
+    if (ct.setup_needed()) ct.setup();
+#endif
+  }
+  if (hvf.setup_needed()) {
+    hvf.setup(geometry, state, derived);
+  }
+  if (ff.setup_needed()) {
+    ff.setup();
+  }
+  if (vrm.setup_needed()) {
+    vrm.setup();
+  }
+
+  const bool need_dirk = (params.time_step_type==TimeStepType::ttype7_imex ||
+                          params.time_step_type==TimeStepType::ttype9_imex ||
+                          params.time_step_type==TimeStepType::ttype10_imex  );
+
+  if (need_dirk) {
+    // Create dirk functor only if needed
+    c.create_if_not_there<DirkFunctorST<ST>>(elems.num_elems());
+  }
+
+  // The SCREAM-side Hommexx interface will initialize GllFvRemap if it's
+  // needed. But it expects the Homme-side Hommexx interface to init buffers, so
+  // do that here.
+  if (c.has<GllFvRemap>()) {
+    auto& gfr = c.get<GllFvRemap>();
+    gfr.setup();
+  }
+}
+
+template<typename ST>
+void request_buffers_impl (FunctorsBuffersManager& fbm)
+{
+  auto& c = Context::singleton();
+  const auto& params = Context::singleton().get<SimulationParams>();
+
+  auto& limiter = c.get<LimiterFunctorST<ST>>();
+  auto& caar    = c.get<CaarFunctorST<ST>>();
+  auto& hvf     = c.get<HyperviscosityFunctorST<ST>>();
+  auto& ff      = c.get<ForcingFunctorST<ST>>();
+  auto& diag    = c.get<Diagnostics> ();
+  auto& vrm     = c.get<VerticalRemapManager>();
+
+  const bool need_dirk = (params.time_step_type==TimeStepType::ttype7_imex ||
+                          params.time_step_type==TimeStepType::ttype9_imex ||
+                          params.time_step_type==TimeStepType::ttype10_imex  );
+
+  // Make the functor request their buffer to the buffers manager
+  // Note: diagnostics also needs buffers
+  fbm.request_size(caar.requested_buffer_size());
+  if (params.transport_alg == 0)
+    fbm.request_size(c.get<EulerStepFunctorST<ST>>().requested_buffer_size());
+#ifdef HOMME_ENABLE_COMPOSE
+  else
+    fbm.request_size(c.get<ComposeTransport>().requested_buffer_size());
+#endif
+  fbm.request_size(hvf.requested_buffer_size());
+  fbm.request_size(diag.requested_buffer_size());
+  fbm.request_size(ff.requested_buffer_size());
+  fbm.request_size(vrm.requested_buffer_size());
+  fbm.request_size(limiter.requested_buffer_size());
+  if (need_dirk) {
+    const auto& dirk = Context::singleton().get<DirkFunctorST<ST>>();
+    fbm.request_size(dirk.requested_buffer_size());
+  }
+}
+
+template<typename ST>
+void init_buffers_impl (FunctorsBuffersManager& fbm)
+{
+  auto& c = Context::singleton();
+  const auto& params = Context::singleton().get<SimulationParams>();
+
+  auto& limiter = c.get<LimiterFunctorST<ST>>();
+  auto& caar    = c.get<CaarFunctorST<ST>>();
+  auto& hvf     = c.get<HyperviscosityFunctorST<ST>>();
+  auto& ff      = c.get<ForcingFunctorST<ST>>();
+
+  const bool need_dirk = (params.time_step_type==TimeStepType::ttype7_imex ||
+                          params.time_step_type==TimeStepType::ttype9_imex ||
+                          params.time_step_type==TimeStepType::ttype10_imex  );
+
+  caar.init_buffers(fbm);
+  if (params.transport_alg == 0)
+    Context::singleton().get<EulerStepFunctorST<ST>>().init_buffers(fbm);
+#ifdef HOMME_ENABLE_COMPOSE
+  else
+    // This is not (yet) templated on ST, so init buffers only once
+    if constexpr (std::is_same_v<ST,ScalarValue>)
+      Context::singleton().get<ComposeTransport>().init_buffers(fbm);
+#endif
+  hvf.init_buffers(fbm);
+  ff.init_buffers(fbm);
+  limiter.init_buffers(fbm);
+  if (need_dirk) {
+    auto& dirk = Context::singleton().get<DirkFunctorST<ST>>();
+    dirk.init_buffers(fbm);
+  }
+
+  // These are not (yet) templated on ST, so init buffers only once
+  if constexpr (std::is_same_v<ST,ScalarValue>) {
+    auto& diag    = c.get<Diagnostics> ();
+    auto& vrm     = c.get<VerticalRemapManager>();
+    diag.init_buffers(fbm);
+    vrm.init_buffers(fbm);
+    // The SCREAM-side Hommexx interface will initialize GllFvRemap if it's
+    // needed. But it expects the Homme-side Hommexx interface to init buffers, so
+    // do that here.
+    if (c.has<GllFvRemap>()) {
+      auto& gfr = c.get<GllFvRemap>();
+      gfr.init_buffers(fbm);
+    }
+  }
+}
 
 extern "C"
 {
@@ -383,179 +592,67 @@ void init_elements_c (const int& num_elems)
 {
   auto& c = Context::singleton();
 
-  Elements& e = c.create<Elements> ();
-  const SimulationParams& params = c.get<SimulationParams>();
+  // For sure create elements for ScalarValue
+  init_elements_impl<ScalarValue>(num_elems);
 
-  const bool consthv = (params.hypervis_scaling==0.0);
-  e.init (num_elems, consthv, /* alloc_gradphis = */ true,
-          params.scale_factor, params.laplacian_rigid_factor,
-          params.alloc_sphere_coords);
-
-  // Init also the tracers structure
-  Tracers& t = c.create<Tracers> ();
-  t.init(num_elems,params.qsize);
-
-  // In the context, we register also Elements[Geometry|State|DerivedState|Forcing],
-  // making sure they store the same views as in the subobjects of Elements.
-  // This allows objects that need only a piece of Elements, to grab it from the Context,
-  // while still knowing that what they grab contains the same views as the object stored in the
-  // Elements inside the Context
-  // WARNING: after this point, you should NOT do things like
-  //             e.m_geometry.m_phis = ...
-  //          since they would NOT be reflected into the ElementsGeometry stored in the Context.
-  //          In other words, you cannot reset the views. If you *really* need to do it,
-  //          you must reset the view in both c.get<Elements>().m_geometry AND
-  //          c.get<ElementsGeometry>()
-  c.create_ref<ElementsGeometry>(e.m_geometry);
-  c.create_ref<ElementsState>(e.m_state);
-  c.create_ref<ElementsDerivedState>(e.m_derived);
-  c.create_ref<ElementsForcing>(e.m_forcing);
+  // Next, go through known types, and init their elements/tracers version if enabled
+  if (Session::is_st_enabled<Real>() and not std::is_same_v<Real,ScalarValue>) {
+    init_elements_impl<Real>(num_elems);
+  }
+#ifdef HOMMEXX_ENABLE_FAD_TYPES
+  if (Session::is_st_enabled<DpFadType>() and not std::is_same_v<DpFadType,ScalarValue>) {
+    init_elements_impl<DpFadType>(num_elems);
+  }
+#endif
 }
 
 void init_functors_c (const int& allocate_buffer)
 {
-  auto& c = Context::singleton();
-
-  // We init all the functors in the Context, so that every call to
-  // Context::singleton().get<[FunctorName]>()
-  // will return a functor already initialized.
-  // This avoids the risk of having a class doing
-  //   FunctorName f = Context::singleton().get<FunctorName>();
-  //   f.init(some_args);
-  // and then, somewhere else, we find
-  //   FunctorName f = Context::singleton().get<FunctorName>(some_args);
-  // The problem is that the first call created an uninitialized functor,
-  // *copied it*, and initialized the copy. The second call to get,
-  // sees that there is *already* an object of type FunctorName in the
-  // Context, and therefore does *not* create a FunctorName object.
-  // A solution would be to use a reference in the first call, or to always
-  // use the get method with the initialization arguments. However, if the functor
-  // is already init-ed, what do we do? Ignore: there's the risk that the user thinks
-  // that the functor was created with the inputs he/she provided Throw: we create
-  // the headache of first finding out if a functor already exists, and, if not,
-  // create it and init it.
-  // It is way easier to create all functors here once and for all,
-  // so that the user does not have to initialize them when calling them.
-
-  auto& elems    = c.get<Elements>();
-  auto& tracers  = c.get<Tracers>();
-  auto& ref_FE   = c.get<ReferenceElement>();
-  auto& hvcoord  = c.get<HybridVCoord>();
-  auto& params   = c.get<SimulationParams>();
-  auto& geometry = c.get<ElementsGeometry>();
-  auto& state    = c.get<ElementsState>();
-  auto& derived  = c.get<ElementsDerivedState>();
-
-  // Check that the above structures have been inited
-  Errors::runtime_check(elems.inited(),    "Error! You must initialize the Elements structure before initializing the functors.\n", -1);
-  Errors::runtime_check(tracers.inited(),  "Error! You must initialize the Tracers structure before initializing the functors.\n", -1);
-  Errors::runtime_check(ref_FE.inited(),   "Error! You must initialize the ReferenceElement structure before initializing the functors.\n", -1);
-  Errors::runtime_check(hvcoord.m_inited,  "Error! You must initialize the HybridVCoord structure before initializing the functors.\n", -1);
-  Errors::runtime_check(params.params_set, "Error! You must initialize the SimulationParams structure before initializing the functors.\n", -1);
-
-  // First, sphere operators, then the others
-  auto& sph_op = c.create<SphereOperators>(elems.m_geometry,ref_FE);
-  auto& limiter = c.create_if_not_there<LimiterFunctor>(elems,hvcoord,params);
-
-  // Some functors might have been previously created, so
-  // use the create_if_not_there() function.
-  auto& caar = c.create_if_not_there<CaarFunctor>(elems,tracers,ref_FE,hvcoord,sph_op,params);
-  if (params.transport_alg == 0) c.create_if_not_there<EulerStepFunctor>();
-#ifdef HOMME_ENABLE_COMPOSE
-  else                           c.create_if_not_there<ComposeTransport>();
+  // 1. Create functors
+  create_functors_impl<ScalarValue>();
+  if (Session::is_st_enabled<Real>() and not std::is_same_v<Real,ScalarValue>)
+  {
+    create_functors_impl<Real>();
+  }
+#ifdef HOMMEXX_ENABLE_FAD_TYPES
+  if (Session::is_st_enabled<DpFadType>() and not std::is_same_v<DpFadType,ScalarValue>)
+  {
+    create_functors_impl<DpFadType>();
+  }
 #endif
-  auto& hvf     = c.create_if_not_there<HyperviscosityFunctor>();
-  auto& ff      = c.create_if_not_there<ForcingFunctor>();
-  auto& diag    = c.create_if_not_there<Diagnostics> (elems.num_elems(),tracers.num_tracers(),
-                                                      params.theta_hydrostatic_mode);
-  auto& vrm     = c.create_if_not_there<VerticalRemapManager>(elems.num_elems());
 
-  auto& fbm     = c.create_if_not_there<FunctorsBuffersManager>();
-
-//OG why are if-statement here -- above calls define which constructor is called
-
-  // If any Functor was constructed only partially, setup() must be called.
-  // This does not apply to Diagnostics or DirkFunctor since they only
-  // contain one constructor.
-  if (caar.setup_needed()) {
-    caar.setup(elems, tracers, ref_FE, hvcoord, sph_op);
-  }
-  if (params.transport_alg == 0) {
-    auto& esf = c.get<EulerStepFunctor>();
-    if (esf.setup_needed()) esf.setup();
-  } else {
-#ifdef HOMME_ENABLE_COMPOSE
-    auto& ct = c.get<ComposeTransport>();
-    if (ct.setup_needed()) ct.setup();
-#endif
-  }
-  if (hvf.setup_needed()) {
-    hvf.setup(geometry, state, derived);
-  }
-  if (ff.setup_needed()) {
-    ff.setup();
-  }
-  if (vrm.setup_needed()) {
-    vrm.setup();
-  }
-
-  const bool need_dirk = (params.time_step_type==TimeStepType::ttype7_imex ||
-                          params.time_step_type==TimeStepType::ttype9_imex ||
-                          params.time_step_type==TimeStepType::ttype10_imex  );
-
-  if (need_dirk) {
-    // Create dirk functor only if needed
-    c.create_if_not_there<DirkFunctor>(elems.num_elems());
-  }
-
-  // If memory in the buffer manager was previously allocated, skip allocation here
   if (allocate_buffer) {
-    // Make the functor request their buffer to the buffers manager
-    // Note: diagnostics also needs buffers
-    fbm.request_size(caar.requested_buffer_size());
-    if (params.transport_alg == 0)
-      fbm.request_size(c.get<EulerStepFunctor>().requested_buffer_size());
-#ifdef HOMME_ENABLE_COMPOSE
-    else
-      fbm.request_size(c.get<ComposeTransport>().requested_buffer_size());
-#endif
-    fbm.request_size(hvf.requested_buffer_size());
-    fbm.request_size(diag.requested_buffer_size());
-    fbm.request_size(ff.requested_buffer_size());
-    fbm.request_size(vrm.requested_buffer_size());
-    fbm.request_size(limiter.requested_buffer_size());
-    if (need_dirk) {
-      const auto& dirk = Context::singleton().get<DirkFunctor>();
-      fbm.request_size(dirk.requested_buffer_size());
+    auto& c = Context::singleton();
+    auto& fbm     = c.get<FunctorsBuffersManager>();
+
+    // 2. Request buffers size
+    request_buffers_impl<ScalarValue>(fbm);
+    if (Session::is_st_enabled<Real>() and not std::is_same_v<Real,ScalarValue>)
+    {
+      request_buffers_impl<Real>(fbm);
     }
-
-    // Allocate the buffers in the FunctorsBuffersManager, then tell the functors to grab their buffers
-    fbm.allocate();
-  }
-
-  caar.init_buffers(fbm);
-  if (params.transport_alg == 0)
-    Context::singleton().get<EulerStepFunctor>().init_buffers(fbm);
-#ifdef HOMME_ENABLE_COMPOSE
-  else
-    Context::singleton().get<ComposeTransport>().init_buffers(fbm);
+#ifdef HOMMEXX_ENABLE_FAD_TYPES
+    if (Session::is_st_enabled<DpFadType>() and not std::is_same_v<DpFadType,ScalarValue>)
+    {
+      request_buffers_impl<DpFadType>(fbm);
+    }
 #endif
-  hvf.init_buffers(fbm);
-  diag.init_buffers(fbm);
-  ff.init_buffers(fbm);
-  vrm.init_buffers(fbm);
-  limiter.init_buffers(fbm);
-  if (need_dirk) {
-    auto& dirk = Context::singleton().get<DirkFunctor>();
-    dirk.init_buffers(fbm);
-  }
-  // The SCREAM-side Hommexx interface will initialize GllFvRemap if it's
-  // needed. But it expects the Homme-side Hommexx interface to init buffers, so
-  // do that here.
-  if (c.has<GllFvRemap>()) {
-    auto& gfr = c.get<GllFvRemap>();
-    gfr.setup();
-    gfr.init_buffers(fbm);
+
+    // 3. Allcate the buffer in the fbm
+    fbm.allocate();
+
+    // 4. Provide each functor with the buffer
+    init_buffers_impl<ScalarValue>(fbm);
+    if (Session::is_st_enabled<Real>() and not std::is_same_v<Real,ScalarValue>)
+    {
+      init_buffers_impl<Real>(fbm);
+    }
+#ifdef HOMMEXX_ENABLE_FAD_TYPES
+    if (Session::is_st_enabled<DpFadType>() and not std::is_same_v<DpFadType,ScalarValue>)
+    {
+      init_buffers_impl<DpFadType>(fbm);
+    }
+#endif
   }
 }
 
@@ -567,12 +664,12 @@ void init_elements_2d_c (const int& ie,
                          double* sphere_cart_vec, double* sphere_latlon_vec)
 {
   auto& c = Context::singleton();
-  Elements& e = c.get<Elements> ();
+  ElementsGeometry& geo = c.get<ElementsGeometry> ();
   const SimulationParams& params = c.get<SimulationParams>();
 
   const bool consthv = (params.hypervis_scaling==0.0);
-  e.m_geometry.set_elem_data(ie,D,Dinv,fcor,spheremp,rspheremp,metdet,metinv,tensorvisc,
-                             vec_sph2cart,consthv,sphere_cart_vec,sphere_latlon_vec);
+  geo.set_elem_data(ie,D,Dinv,fcor,spheremp,rspheremp,metdet,metinv,tensorvisc,
+                    vec_sph2cart,consthv,sphere_cart_vec,sphere_latlon_vec);
 }
 
 void init_geopotential_c (const int& ie,
@@ -594,7 +691,7 @@ void compute_gradphis_c ()
   auto& c = Context::singleton();
   auto& geo = c.get<ElementsGeometry>();
   auto& ref_FE = c.get<ReferenceElement>();
-  SphereOperators sph_op(geo,ref_FE);
+  SphereOperatorsST<Real> sph_op(geo,ref_FE);
   auto p = get_default_team_policy<ExecSpace>(geo.num_elems());
   sph_op.allocate_buffers(p);
   Kokkos::parallel_for(p,KOKKOS_LAMBDA(const TeamMember& team) {
