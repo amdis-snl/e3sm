@@ -4,6 +4,8 @@
 #include "ElementsGeometry.hpp"
 #include "ElementsState.hpp"
 #include "Hommexx_Session.hpp"
+#include "HybridVCoord.hpp"
+#include "KernelVariables.hpp"
 #include "PhysicalConstants.hpp"
 #include "TimeLevel.hpp"
 #include "Tracers.hpp"
@@ -16,6 +18,22 @@
 namespace pyhommexx {
 
 using namespace Homme;
+
+void init_dp3d_from_ps ()
+{
+  auto& c = Context::singleton();
+  auto state = c.get<ElementsState>();
+  auto hvcoord = c.get<HybridVCoord>();
+  int n0 = c.get<TimeLevel>().n0;
+
+  auto p = get_default_team_policy<ExecSpace>(state.num_elems());
+  auto init_dp = KOKKOS_LAMBDA(const TeamMember& team) {
+    KernelVariables kv(team);
+    hvcoord.compute_dp_ref (kv,Homme::subview(state.m_ps_v,kv.ie,n0),
+                               Homme::subview(state.m_dp3d,kv.ie,n0));
+  };
+  Kokkos::parallel_for(p,init_dp);
+}
 
 KOKKOS_INLINE_FUNCTION
 Real distance (const Real lat, const Real lon, const Real lat0, const Real lon0)
