@@ -73,8 +73,8 @@ void get_state_var (nb::ndarray<double>& arr, const nb::str& name)
   const auto& tl = c.get<TimeLevel> ();
 
   const int nelem = state.num_elems();
-  const int n0 = tl.n0;
-  const int qn0 = tl.n0_qdp;
+  const int np1 = tl.np1;
+  const int qnp1 = tl.np1_qdp;
 
   std::vector<int> vector3dm_shape = {nelem,2,NP,NP,NUM_PHYSICAL_LEV};
   std::vector<int> scalar3dm_shape = {nelem,  NP,NP,NUM_PHYSICAL_LEV};
@@ -133,22 +133,22 @@ void get_state_var (nb::ndarray<double>& arr, const nb::str& name)
     int vec = k % VECTOR_SIZE;
     switch (which) {
       case flag_u:
-        scl_mid_v(ie,ip,jp,k) = ADValue(uv(ie,n0,0,ip,jp,lev)[vec]); break;
+        scl_mid_v(ie,ip,jp,k) = ADValue(uv(ie,np1,0,ip,jp,lev)[vec]); break;
       case flag_v:
-        scl_mid_v(ie,ip,jp,k) = ADValue(uv(ie,n0,1,ip,jp,lev)[vec]); break;
+        scl_mid_v(ie,ip,jp,k) = ADValue(uv(ie,np1,1,ip,jp,lev)[vec]); break;
       case flag_uv:
-        vec_mid_v(ie,0,ip,jp,k) = ADValue(uv(ie,n0,0,ip,jp,lev)[vec]);
-        vec_mid_v(ie,1,ip,jp,k) = ADValue(uv(ie,n0,1,ip,jp,lev)[vec]); break;
+        vec_mid_v(ie,0,ip,jp,k) = ADValue(uv(ie,np1,0,ip,jp,lev)[vec]);
+        vec_mid_v(ie,1,ip,jp,k) = ADValue(uv(ie,np1,1,ip,jp,lev)[vec]); break;
       case flag_vth:
-        scl_mid_v(ie,ip,jp,k) = ADValue(vth(ie,n0,ip,jp,lev)[vec]); break;
+        scl_mid_v(ie,ip,jp,k) = ADValue(vth(ie,np1,ip,jp,lev)[vec]); break;
       case flag_dp:
-        scl_mid_v(ie,ip,jp,k) = ADValue(dp(ie,n0,ip,jp,lev)[vec]); break;
+        scl_mid_v(ie,ip,jp,k) = ADValue(dp(ie,np1,ip,jp,lev)[vec]); break;
       case flag_w:
-        scl_int_v(ie,ip,jp,k) = ADValue(w(ie,n0,ip,jp,lev)[vec]); break;
+        scl_int_v(ie,ip,jp,k) = ADValue(w(ie,np1,ip,jp,lev)[vec]); break;
       case flag_phi:
-        scl_int_v(ie,ip,jp,k) = ADValue(phi(ie,n0,ip,jp,lev)[vec]); break;
+        scl_int_v(ie,ip,jp,k) = ADValue(phi(ie,np1,ip,jp,lev)[vec]); break;
       case flag_qv:
-        scl_mid_v(ie,ip,jp,k) = ADValue(qv(ie,qn0,ip,jp,lev)[vec]); break;
+        scl_mid_v(ie,ip,jp,k) = ADValue(qv(ie,qnp1,ip,jp,lev)[vec]); break;
       default:
         Kokkos::abort("Unsupported value for 'which' in get_state_var.\n");
     }
@@ -259,8 +259,8 @@ void get_state_var_dp_sens (nb::ndarray<double>& arr, const nb::str& name)
   const auto& tl = c.get<TimeLevel> ();
 
   const int nelem = state.num_elems();
-  const int n0 = tl.n0;
-  const int qn0 = tl.n0_qdp;
+  const int np1 = tl.np1;
+  const int qnp1 = tl.np1_qdp;
 
   std::vector<int> vector3dm_shape = {nelem,2,NP,NP,NUM_PHYSICAL_LEV,HOMMEXX_DP_SFAD_SIZE};
   std::vector<int> scalar3dm_shape = {nelem,  NP,NP,NUM_PHYSICAL_LEV,HOMMEXX_DP_SFAD_SIZE};
@@ -319,22 +319,22 @@ void get_state_var_dp_sens (nb::ndarray<double>& arr, const nb::str& name)
     int vec = k % VECTOR_SIZE;
     switch (which) {
       case flag_u:
-        scl_mid_v(ie,ip,jp,k,ider) = uv(ie,n0,0,ip,jp,lev)[vec].fastAccessDx(ider); break;
+        scl_mid_v(ie,ip,jp,k,ider) = uv(ie,np1,0,ip,jp,lev)[vec].fastAccessDx(ider); break;
       case flag_v:
-        scl_mid_v(ie,ip,jp,k,ider) = uv(ie,n0,1,ip,jp,lev)[vec].fastAccessDx(ider); break;
+        scl_mid_v(ie,ip,jp,k,ider) = uv(ie,np1,1,ip,jp,lev)[vec].fastAccessDx(ider); break;
       case flag_uv:
-        vec_mid_v(ie,0,ip,jp,k,ider) = uv(ie,n0,0,ip,jp,lev)[vec].fastAccessDx(ider);
-        vec_mid_v(ie,1,ip,jp,k,ider) = uv(ie,n0,1,ip,jp,lev)[vec].fastAccessDx(ider); break;
+        vec_mid_v(ie,0,ip,jp,k,ider) = uv(ie,np1,0,ip,jp,lev)[vec].fastAccessDx(ider);
+        vec_mid_v(ie,1,ip,jp,k,ider) = uv(ie,np1,1,ip,jp,lev)[vec].fastAccessDx(ider); break;
       case flag_vth:
-        scl_mid_v(ie,ip,jp,k,ider) = vth(ie,n0,ip,jp,lev)[vec].fastAccessDx(ider); break;
+        scl_mid_v(ie,ip,jp,k,ider) = vth(ie,np1,ip,jp,lev)[vec].fastAccessDx(ider); break;
       case flag_dp:
-        scl_mid_v(ie,ip,jp,k,ider) = dp(ie,n0,ip,jp,lev)[vec].fastAccessDx(ider); break;
+        scl_mid_v(ie,ip,jp,k,ider) = dp(ie,np1,ip,jp,lev)[vec].fastAccessDx(ider); break;
       case flag_w:
-        scl_int_v(ie,ip,jp,k,ider) = w(ie,n0,ip,jp,lev)[vec].fastAccessDx(ider); break;
+        scl_int_v(ie,ip,jp,k,ider) = w(ie,np1,ip,jp,lev)[vec].fastAccessDx(ider); break;
       case flag_phi:
-        scl_int_v(ie,ip,jp,k,ider) = phi(ie,n0,ip,jp,lev)[vec].fastAccessDx(ider); break;
+        scl_int_v(ie,ip,jp,k,ider) = phi(ie,np1,ip,jp,lev)[vec].fastAccessDx(ider); break;
       case flag_qv:
-        scl_mid_v(ie,ip,jp,k,ider) = qv(ie,qn0,ip,jp,lev)[vec].fastAccessDx(ider); break;
+        scl_mid_v(ie,ip,jp,k,ider) = qv(ie,qnp1,ip,jp,lev)[vec].fastAccessDx(ider); break;
       default:
         Kokkos::abort("Unsupported value for 'which' in get_state_var.\n");
     }
