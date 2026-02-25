@@ -1,32 +1,17 @@
-#include "pyhommexx_decl.hpp"
-#include "pyhommexx_c2f.hpp"
+#include "pyhommexx.hpp"
 
 #include "Context.hpp"
-#include "CaarFunctor.hpp"
 #include "ElementsGeometry.hpp"
 #include "ElementsState.hpp"
-#include "ErrorDefs.hpp"
 #include "Hommexx_Session.hpp"
 #include "PhysicalConstants.hpp"
-#include "RKStageData.hpp"
-#include "SimulationParams.hpp"
 #include "TimeLevel.hpp"
 #include "Tracers.hpp"
 #include "Types.hpp"
-#include "mpi/Comm.hpp"
-#include "utilities/ViewUtils.hpp"
+
+#include <ekat_assert.hpp>
 
 #include <nanobind/ndarray.h>
-
-#include <fstream>
-
-namespace Homme {
-extern "C" {
-void prim_run_subcycle_c (const Real& dt, int& nstep, int& nm1, int& n0, int& np1,
-                          const int& next_output_step, const int& nsplit_iteration);
-void initialize_dp3d_from_ps_c ();
-}
-}
 
 namespace pyhommexx {
 
@@ -44,32 +29,6 @@ Real distance (const Real lat, const Real lon, const Real lat0, const Real lon0)
   return PhysicalConstants::rearth0 * c;
 }
 
-struct OutputRedirection {
-  void toggle (bool on) {
-    if (on) {
-      std::cout.rdbuf(cout);
-      std::cerr.rdbuf(cerr);
-    } else {
-      std::cout.rdbuf(blackhole.rdbuf());
-      std::cerr.rdbuf(blackhole.rdbuf());
-    }
-  }
-  static OutputRedirection& instance() {
-    static OutputRedirection out_red;
-    return out_red;
-  }
-protected:
-  OutputRedirection ()
-   : cout (std::cout.rdbuf())
-   , cerr (std::cerr.rdbuf())
-   , blackhole("/dev/null")
-  {}
-
-  std::streambuf* cout;
-  std::streambuf* cerr;
-
-  std::ofstream blackhole;
-};
 double* vp2dp (void* p)
 {
   return reinterpret_cast<double*>(p);
@@ -79,20 +38,6 @@ const double* vp2cdp (void* p)
   return reinterpret_cast<const double*>(p);
 }
 
-template<typename T, int N1, int N2, int N3, int N4>
-ExecViewUnmanaged<T*[N2][N3][N4]> sv_1(const ExecViewUnmanaged<T*[N1][N2][N3][N4]>& v, int k)
-{
-  constexpr auto ALL = Kokkos::ALL();
-  return Kokkos::subview(v,ALL,k,ALL,ALL,ALL);
-}
-
-template<typename T, int N1, int N2, int N3, int N4, int N5>
-ExecViewUnmanaged<T*[N2][N3][N4][N5]> sv_1(const ExecViewUnmanaged<T*[N1][N2][N3][N4][N5]>& v, int k)
-{
-  constexpr auto ALL = Kokkos::ALL();
-  return Kokkos::subview(v,ALL,k,ALL,ALL,ALL,ALL);
-}
-
 template<typename NBArrayT>
 void check_shape(const NBArrayT& arr, const std::vector<int>& shape)
 {
@@ -100,129 +45,6 @@ void check_shape(const NBArrayT& arr, const std::vector<int>& shape)
   for (size_t i=0; i<shape.size(); ++i) {
     assert (static_cast<int>(arr.shape(i))==shape[i]);
   }
-}
-
-void init_session (const bool do_print_to_screen)
-{
-  print_to_screen(do_print_to_screen);
-  init_parallel_f90();
-  // Throw, so we can use try blocks in py
-  Session::m_throw_instead_of_abort = true;
-}
-
-void enable_scalar_type (const nb::str& dtype)
-{
-  std::string dtype_str(dtype.c_str());
-
-  if (dtype_str=="real") {
-    Session::is_st_enabled<Real>() = true;
-  } else if (dtype_str=="dpfad") {
-#ifdef HOMMEXX_ENABLE_FAD_TYPES
-    Session::is_st_enabled<DpFadType>() = true;
-#else
-    throw std::runtime_error("[pyhommexx] dpfad data type requires homme to be build with HOMMEXX_ENABLE_FAD_TYPES=ON.\n");
-#endif
-  } else {
-  using namespace Errors;
-    runtime_abort("[enable_scalar_type] Error! Unrecognized/unsupported dtype name.\n"
-                  " - input dtype: " + dtype_str + "\n"
-                  " - valid dtype(s): real, dpfad\n");
-  }
-}
-
-void print_to_screen (const bool enabled)
-{
-  print_to_screen_f90 (enabled);
-  OutputRedirection::instance().toggle(enabled);
-}
-
-void read_params (const nb::str& nml_filename)
-{
-  auto nml_filename_c = nml_filename.c_str();
-  read_params_f90(nml_filename_c);
-}
-void model_init ()
-{
-  model_init_f90();
-}
-
-nb::dict get_params()
-{
-  const auto& c = Context::singleton();
-  const auto& s = c.get<SimulationParams>();
-
-  nb::dict params;
-
-  params["rsplit"] = s.rsplit;
-  params["qsplit"] = s.qsplit;
-  params["qsize"] = s.qsize;
-  params["qsize_d"] = QSIZE_D;
-  params["np"] = NP;
-  params["nlev"] = NUM_PHYSICAL_LEV;
-  params["hydrostatic"] = s.theta_hydrostatic_mode;
-  params["nu"] = s.nu;
-  params["ne"] = s.ne;
-
-  return params;
-}
-void set_params(const nb::dict& params)
-{
-  using namespace Errors;
-
-  auto& c = Context::singleton();
-  auto& s = c.get<SimulationParams>();
-
-  for (const auto& [key,value] : params) {
-    runtime_check(nb::isinstance<nb::str>(key),
-                  "Error! Functor params dict keys should be strings.\n");
-
-    std::string key_str(nb::cast<nb::str>(key).c_str());
-    if (key_str=="alloc_sphere_coords") {
-      runtime_check(nb::isinstance<bool>(value),
-                    "Error! Functor param 'alloc_sphere_coords' should be a boolean.\n");
-      s.alloc_sphere_coords = nb::cast<bool>(value);
-    } else {
-      runtime_abort("[ERROR] Invalid key for set_params.\n"
-                    " - key: " + key_str + "\n" +
-                    " - valid keys: alloc_sphere_coords\n");
-    }
-  }
-}
-
-int get_nelemd ()
-{
-  const auto& c = Context::singleton();
-  const auto& e = c.get<ElementsState>();
-  return e.num_elems();
-}
-
-void get_num_unique_pts (nb::ndarray<int>& n)
-{
-  const auto& c = Context::singleton();
-  const auto& state = c.get<ElementsState> ();
-  int num_elems = state.num_elems();
-  assert(n.ndim()==1);
-  assert(n.shape(0)==num_elems);
-  int* data = n.data();
-  get_num_unique_pts_f90(data);
-}
-void get_unique_pts (nb::ndarray<int>& ia,
-                     nb::ndarray<int>& ja)
-{
-  const auto& c = Context::singleton();
-  const auto& state = c.get<ElementsState> ();
-  int num_elems = state.num_elems();
-  assert(ia.ndim()==2);
-  assert(ia.shape(0)==num_elems);
-  assert(ia.shape(1)==NP*NP);
-  assert(ja.ndim()==2);
-  assert(ja.shape(0)==num_elems);
-  assert(ja.shape(1)==NP*NP);
-
-  int* ia_ptr = ia.data();
-  int* ja_ptr = ja.data();
-  get_unique_pts_f90(ia_ptr,ja_ptr);
-
 }
 
 void get_state_var (nb::ndarray<double>& arr, const nb::str& name)
@@ -268,7 +90,7 @@ void get_state_var (nb::ndarray<double>& arr, const nb::str& name)
   } else if (n=="phi" or n=="w") {
     check_shape(arr,scalar3di_shape);
   } else {
-    throw std::runtime_error("Unrecognized/unsupported state var '" + n + "'.\n");
+    EKAT_ERROR_MSG("Unrecognized/unsupported state var '" + n + "'.\n");
   }
   assert ((int)arr.dtype().bits==64);
 
@@ -359,7 +181,7 @@ void set_state_var (const nb::ndarray<double>& arr, const nb::str& name)
   } else if (n=="phi" or n=="w") {
     check_shape(arr,scalar3di_shape);
   } else {
-    throw std::runtime_error("Unrecognized/unsupported state var '" + n + "'.\n");
+    EKAT_ERROR_MSG("Unrecognized/unsupported state var '" + n + "'.\n");
   }
   assert ((int)arr.dtype().bits==64);
 
@@ -412,7 +234,7 @@ void get_state_var_dp_sens (nb::ndarray<double>& arr, const nb::str& name)
 #ifdef HOMMEXX_ENABLE_FAD_TYPES
   const auto& c = Context::singleton();
   if (not c.has<ElementsStateST<DpFadType>>() or not c.has<TracersST<DpFadType>>()) {
-    throw std::runtime_error("Cannot retrieve dp sensitivities. No DpFadType tracers/state present");
+    EKAT_ERROR_MSG("Cannot retrieve dp sensitivities. No DpFadType tracers/state present");
   }
   const auto& state = c.get<ElementsStateST<DpFadType>> ();
   const auto& tracers = c.get<TracersST<DpFadType>> ();
@@ -454,7 +276,7 @@ void get_state_var_dp_sens (nb::ndarray<double>& arr, const nb::str& name)
   } else if (n=="phi" or n=="w") {
     check_shape(arr,scalar3di_shape);
   } else {
-    throw std::runtime_error("Unrecognized/unsupported state var '" + n + "'.\n");
+    EKAT_ERROR_MSG("Unrecognized/unsupported state var '" + n + "'.\n");
   }
   assert ((int)arr.dtype().bits==64);
 
@@ -501,7 +323,7 @@ void get_state_var_dp_sens (nb::ndarray<double>& arr, const nb::str& name)
   };
   Kokkos::parallel_for(p,copy);
 #else
-  Errors::runtime_error("pyhommexx::get_state_var_sens not implemented unless HOMMEXX_ENABLE_FAD_TYPES is defined.\n");
+  EKAT_ERROR_MSG("[pyhommexx::get_state_var_sens] not implemented unless HOMMEXX_ENABLE_FAD_TYPES is defined.\n");
   (void)arr;
   (void)name;
 #endif
@@ -602,15 +424,10 @@ void perturb_state_var (const nb::str& name,
   if (dtype_str=="real") {
     perturb_state_var_impl<Real>(name,lat0,lon0,p_max,sigma);
   } else {
-      throw std::runtime_error("[perturb_state_var] Error! Unrecognized/unsupported dtupe name.\n"
+      EKAT_ERROR_MSG("[perturb_state_var] Error! Unrecognized/unsupported dtupe name.\n"
                     " - input dtype: " + dtype_str + "\n"
                     " - valid dtype(s): real, dpfad\n");
   }
-}
-
-void init_dp3d_from_ps ()
-{
-  initialize_dp3d_from_ps_c();
 }
 
 void copy_state (const nb::str& from_dtype, const nb::str& to_dtype)
@@ -631,10 +448,10 @@ void copy_state (const nb::str& from_dtype, const nb::str& to_dtype)
       to_st.import_values(from_st,tl.n0);
       to_tr.import_values(from_tr,tl.n0_qdp);
 #else
-      throw std::runtime_error("[pyhommexx] dpfad data type requires homme to be build with HOMMEXX_ENABLE_FAD_TYPES=ON.\n");
+      EKAT_ERROR_MSG("[pyhommexx] dpfad data type requires homme to be built with HOMMEXX_ENABLE_FAD_TYPES=ON.\n");
 #endif
     } else {
-      throw std::runtime_error(
+      EKAT_ERROR_MSG(
         "[copy_state] Error! Unrecognized/unsupported to_dtype name.\n"
         " - input dtype: " + to_dtype_str + "\n"
         " - valid dtype(s): real, dpfad\n");
@@ -651,116 +468,20 @@ void copy_state (const nb::str& from_dtype, const nb::str& to_dtype)
     } else if (to_dtype_str=="dpfad") {
       return;
     } else {
-      throw std::runtime_error(
+      EKAT_ERROR_MSG(
         "[copy_state] Error! Unrecognized/unsupported to_dtype name.\n"
         " - input dtype: " + to_dtype_str + "\n"
         " - valid dtype(s): real, dpfad\n");
     }
 #else
-      throw std::runtime_error("[pyhommexx] dpfad data type requires homme to be build with HOMMEXX_ENABLE_FAD_TYPES=ON.\n");
+      EKAT_ERROR_MSG("[pyhommexx] dpfad data type requires homme to be built with HOMMEXX_ENABLE_FAD_TYPES=ON.\n");
 #endif
   } else {
-    throw std::runtime_error(
+    EKAT_ERROR_MSG(
       "[copy_state] Error! Unrecognized/unsupported from_dtupe name.\n"
       " - input dtype: " + from_dtype_str + "\n"
       " - valid dtype(s): real, dpfad\n");
   }
-}
-
-void forward(const double dt)
-{
-  int nm1, n0, np1, nstep;
-  prim_run_subcycle_c(dt,nstep,nm1,n0,np1,-1,1);
-}
-
-template<typename ST>
-void run_caar_functor (const nb::dict& params)
-{
-  using namespace Errors;
-
-  auto& c = Context::singleton();
-  auto& tl = c.get<TimeLevel>();
-
-  // Set RK stage parameters, then modify if input dict contains some
-  RKStageData data;
-  data.nm1 = tl.nm1;
-  data.n0  = tl.n0;
-  data.np1 = tl.np1;
-  data.n0_qdp = 0;
-  data.scale1 = 1;
-  data.scale2 = 0;
-  data.scale3 = 1;
-  data.eta_ave_w = 0;
-
-  for (const auto& [key, value] : params) {
-    runtime_check(nb::isinstance<nb::str>(key),
-                  "Error! Functor params dict keys should be strings.\n");
-
-    std::string key_str(nb::cast<nb::str>(key).c_str());
-    if (key_str=="dt") {
-      runtime_check(nb::isinstance<double>(value),
-                    "Error! Functor param 'dt' should be a double.\n");
-      data.dt = nb::cast<double>(value);
-    } else if (key_str=="eta_ave_w") {
-      runtime_check(nb::isinstance<double>(value),
-                    "Error! Functor param 'eta_ave_w' should be a double.\n");
-      data.eta_ave_w = nb::cast<double>(value);
-    } else if (key_str=="scale1") {
-      runtime_check(nb::isinstance<double>(value),
-                    "Error! Functor param 'scale1' should be a double.\n");
-      data.scale1 = nb::cast<double>(value);
-    } else if (key_str=="scale2") {
-      runtime_check(nb::isinstance<double>(value),
-                    "Error! Functor param 'scale2' should be a double.\n");
-      data.scale2 = nb::cast<double>(value);
-    } else if (key_str=="scale3") {
-      runtime_check(nb::isinstance<double>(value),
-                    "Error! Functor param 'scale3' should be a double.\n");
-      data.scale3 = nb::cast<double>(value);
-    } else {
-      runtime_abort("[ERROR] Invalid key for caar functor params.\n"
-                    " - key: " + key_str + "\n" +
-                    " - valid keys: dt, eta_ave_w, scale1, scale2, scale3\n");
-    }
-  }
-
-  auto& f = c.get<CaarFunctorST<ST>>();
-  auto& state = c.get<ElementsStateST<ST>>();
-  f.run(data);
-}
-
-void run_functor(const nb::str& name, const nb::dict& params, const nb::str& dtype)
-{
-  using namespace Errors;
-
-  std::string dtype_str(dtype.c_str());
-
-  std::string name_str (name.c_str());
-  if (name_str=="caar") {
-    std::cout << "running functor " << name_str << ", with dtype=" << dtype_str << "\n";
-
-    if (dtype_str=="real") {
-      run_caar_functor<Real>(params);
-    } else if (dtype_str=="dpfad") {
-#ifdef HOMMEXX_ENABLE_FAD_TYPES
-      run_caar_functor<DpFadType>(params);
-#else
-      throw std::runtime_error("[pyhommexx] dpfad data type requires homme to be build with HOMMEXX_ENABLE_FAD_TYPES=ON.\n");
-#endif
-    } else {
-      throw std::runtime_error("[run_functor] Error! Unrecognized/unsupported dtupe name.\n"
-                  " - input dtype: " + dtype_str + "\n"
-                  " - valid dtype(s): real, dpfad\n");
-    }
-  } else {
-    throw std::runtime_error("[run_functor] Unrecognized/unsupported fucntor name.\n"
-                  " - input name: " + name_str + "\n"
-                  " - valid name(s): caar\n");
-  }
-}
-void finalize()
-{
-  prim_finalize_f90();
 }
 
 } // namespace pyhommexx

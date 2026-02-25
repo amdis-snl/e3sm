@@ -1,5 +1,5 @@
-#ifndef PYHOMMEXX_DECL_HPP
-#define PYHOMMEXX_DECL_HPP
+#ifndef PYHOMMEXX_HPP
+#define PYHOMMEXX_HPP
 
 #include <nanobind/nanobind.h>
 #include <nanobind/ndarray.h>
@@ -8,26 +8,24 @@ namespace pyhommexx {
 
 namespace nb = nanobind;
 
-template<int N>
-using ndarray_t = nb::ndarray<double,nb::ndim<N>>;
-
+// General session functions
 void init_session (const bool do_print_to_screen = true);
 void enable_scalar_type (const nb::str& dtype);
-
 void print_to_screen (const bool enabled);
+void finalize();
 
+// Input parameters utilities
 void read_params (const nb::str& nml_filename);
-
 nb::dict get_params();
 void set_params(const nb::dict& params);
+
+// Model geometry utilities
 int get_nelemd();
-
-void model_init ();
-
 void get_num_unique_pts (nb::ndarray<int>& n);
 void get_unique_pts (nb::ndarray<int>& ia,
                      nb::ndarray<int>& ja);
 
+// State handling utils
 void get_state_var (nb::ndarray<double>& arr, const nb::str& name);
 void get_state_var_dp_sens (nb::ndarray<double>& arr, const nb::str& name);
 void set_state_var (const nb::ndarray<double>& arr, const nb::str& name);
@@ -42,11 +40,11 @@ void perturb_state_var (const nb::str& name,
                         const double p_max, const double sigma,
                         const nb::str& dtype);
 
+// Init/run a functor or the whole model
 void run_functor(const nb::str& name,const nb::dict& params,const nb::str& dtype);
+void model_init ();
 void forward(const double dt);
-
-void finalize();
 
 } // namespace pyhommexx
 
-#endif // PYHOMMEXX_UTILS_HPP
+#endif // PYHOMMEXX_HPP

@@ -42,8 +42,14 @@ find_package(nanobind REQUIRED)
 
 nanobind_add_module(pyhommexx
   pyhommexx.cpp
-  pyhommexx_impl.cpp
-  pyhommexx_mod.F90
+  impl/pyhommexx_mod.F90
+  impl/pyhommexx_functors.cpp
+  impl/pyhommexx_grid.cpp
+  impl/pyhommexx_params.cpp
+  impl/pyhommexx_session.cpp
+  impl/pyhommexx_state.cpp
+  impl/pyhommexx_theta_model.cpp
 )
 
 target_link_libraries(pyhommexx PUBLIC ${hommeLib})
+target_include_directories(pyhommexx PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
