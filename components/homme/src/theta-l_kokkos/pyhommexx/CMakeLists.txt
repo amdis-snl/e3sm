@@ -1,6 +1,6 @@
 # First, create a theta-l_kokkos target library with the requested compile-time specs
 set(PYHOMMEXX_NLEV 128 CACHE STRING "Number of levs used to build the py interface")
-set(PYHOMMEXX_QSIZE 128 CACHE STRING "Number of levs used to build the py interface")
+set(PYHOMMEXX_QSIZE 10 CACHE STRING "Upper limit to qsize in the tracers array")
 
 THETAL_KOKKOS_SETUP()
 
