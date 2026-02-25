@@ -258,7 +258,7 @@ macro(createExecLib libName execType libSrcs inclDirs macroNP
   endif()
 
   target_link_libraries(${libName} PUBLIC csm_share)
-  if (NOT HOMME_BUILD_SCORPIO)
+  if(NOT BUILD_HOMME_WITHOUT_PIOLIBRARY AND HOMME_USE_SCORPIO)
     # Needed for netcdf.mod usage in mesh_mod.F90.
     target_link_libraries(${libName} PUBLIC piof)
   endif()
