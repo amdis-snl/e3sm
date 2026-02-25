@@ -245,6 +245,32 @@ void init_buffers_impl (FunctorsBuffersManager& fbm)
   }
 }
 
+template<typename ST>
+void init_boundary_exchanges_impl ()
+{
+  auto& c = Context::singleton();
+
+  auto& params = c.get<SimulationParams>();
+  auto& bmm    = c.get<MpiBuffersManagerMap>();
+
+  if (params.qsize > 0) {
+    if (params.transport_alg == 0) {
+      // Euler BEs
+      auto& esf = c.get<EulerStepFunctorST<ST>>();
+      esf.reset(params);
+      esf.init_boundary_exchanges();
+    }
+  }
+
+  // RK stages BE's
+  auto& cf = c.get<CaarFunctorST<ST>>();
+  cf.init_boundary_exchanges(bmm[MPI_EXCHANGE]);
+
+  // HyperviscosityFunctor's BE's
+  auto& hvf = c.get<HyperviscosityFunctorST<ST>>();
+  hvf.init_boundary_exchanges();
+}
+
 extern "C"
 {
 
@@ -786,13 +812,9 @@ void init_boundary_exchanges_c ()
     bmm[MPI_EXCHANGE_MIN_MAX]->set_connectivity(connectivity);
   }
 
+  // Not templated on scalar type, init just once
   if (params.qsize > 0) {
-    if (params.transport_alg == 0) {
-      // Euler BEs
-      auto& esf = c.get<EulerStepFunctor>();
-      esf.reset(params);
-      esf.init_boundary_exchanges();
-    } else {
+    if (params.transport_alg != 0) {
 #ifdef HOMME_ENABLE_COMPOSE
       auto& ct = c.get<ComposeTransport>();
       ct.reset(params);
@@ -801,19 +823,21 @@ void init_boundary_exchanges_c ()
     }
   }
 
-  // RK stages BE's
-  auto& cf = c.get<CaarFunctor>();
-  cf.init_boundary_exchanges(bmm[MPI_EXCHANGE]);
-
-  // HyperviscosityFunctor's BE's
-  auto& hvf = c.get<HyperviscosityFunctor>();
-  hvf.init_boundary_exchanges();
-
   if (c.has<GllFvRemap>()) {
     auto& gfr = c.get<GllFvRemap>();
     gfr.reset(params);
     gfr.init_boundary_exchanges();
   }
+
+  // Init BE structs for templated functors
+  if (Session::is_st_enabled<Real>()) {
+    init_boundary_exchanges_impl<Real>();
+  }
+#ifdef HOMMEXX_ENABLE_FAD_TYPES
+  if (Session::is_st_enabled<DpFadType>()) {
+    init_boundary_exchanges_impl<DpFadType>();
+  }
+#endif
 }
 
 void push_test_state_to_c (
