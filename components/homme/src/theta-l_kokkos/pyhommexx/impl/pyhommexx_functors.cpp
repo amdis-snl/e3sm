@@ -85,10 +85,10 @@ void run_functor(const nb::str& name, const nb::dict& params, const nb::str& dty
 #ifdef HOMMEXX_ENABLE_FAD_TYPES
       run_caar_functor<DpFadType>(params);
 #else
-      EKAT_ERROR_MSG("[pyhommexx] dpfad data type requires homme to be build with HOMMEXX_ENABLE_FAD_TYPES=ON.\n");
+      EKAT_ERROR_MSG("[pyhommexx] dpfad data type requires homme to be built with HOMMEXX_ENABLE_FAD_TYPES=ON.\n");
 #endif
     } else {
-      EKAT_ERROR_MSG("[run_functor] Error! Unrecognized/unsupported dtupe name.\n"
+      EKAT_ERROR_MSG("[run_functor] Error! Unrecognized/unsupported dtype name.\n"
           " - input dtype: " + dtype_str + "\n"
           " - valid dtype(s): real, dpfad\n");
     }

@@ -123,7 +123,7 @@ void get_state_var_impl (nb::ndarray<double>& arr, const nb::str& name, const in
         "[pyhommexx::set_state_var] Invalid time slice.\n"
         " - state var: " + n + "\n"
         " = time slice: " + std::to_string(which_tl) + "\n"
-        " - valid values: 0\n");
+        " - valid values: -1, 0, 1\n");
     slice = which_tl==0 ? tl.n0 : (which_tl==-1 ? tl.nm1 : tl.np1);
   }
 
@@ -249,7 +249,7 @@ void set_state_var_impl (const nb::ndarray<double>& arr, const nb::str& name, co
         "[pyhommexx::set_state_var] Invalid time slice.\n"
         " - state var: " + n + "\n"
         " = time slice: " + std::to_string(which_tl) + "\n"
-        " - valid values: 0\n");
+        " - valid values: -1, 0, 1\n");
     slice = which_tl==0 ? tl.n0 : (which_tl==-1 ? tl.nm1 : tl.np1);
   }
 

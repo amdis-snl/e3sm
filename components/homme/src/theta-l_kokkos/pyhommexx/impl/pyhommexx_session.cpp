@@ -38,7 +38,7 @@ void enable_scalar_type (const nb::str& dtype)
 #ifdef HOMMEXX_ENABLE_FAD_TYPES
     Session::is_st_enabled<DpFadType>() = true;
 #else
-    EKAT_ERROR_MSG("[pyhommexx] dpfad data type requires homme to be build with HOMMEXX_ENABLE_FAD_TYPES=ON.\n");
+    EKAT_ERROR_MSG("[pyhommexx] dpfad data type requires homme to be built with HOMMEXX_ENABLE_FAD_TYPES=ON.\n");
 #endif
   } else {
     EKAT_ERROR_MSG("[pyhommexx] Error! Unrecognized/unsupported dtype name.\n"
