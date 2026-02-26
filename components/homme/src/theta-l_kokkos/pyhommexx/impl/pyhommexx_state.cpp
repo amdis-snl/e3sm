@@ -424,7 +424,7 @@ void perturb_state_var_impl (const nb::str& name,
   auto copy = KOKKOS_LAMBDA (int ie, int ip, int jp, int k) {
     int lev = k / VECTOR_SIZE;
     int vec = k % VECTOR_SIZE;
-    auto d = distance(latlon(ie,ip,jp,0),latlon(ie,ip,jp,1),lat0,lon0);
+    auto d = distance(latlon(ie,ip,jp,0),latlon(ie,ip,jp,1),lat0,lon0) / 1000;
     ST factor = 1 + max_p*std::exp(-std::pow(d,2)/(2*std::pow(sigma,2)));
 
     switch (which) {
@@ -461,8 +461,14 @@ void perturb_state_var (const nb::str& name,
 
   if (dtype_str=="real") {
     perturb_state_var_impl<Real>(name,lat0,lon0,p_max,sigma);
+  } else if (dtype_str=="dpfad") {
+#ifdef HOMMEXX_ENABLE_FAD_TYPES
+    perturb_state_var_impl<DpFadType>(name,lat0,lon0,p_max,sigma);
+#else
+    EKAT_ERROR_MSG("[pyhommexx] dpfad data type requires homme to be built with HOMMEXX_ENABLE_FAD_TYPES=ON.\n");
+#endif
   } else {
-      EKAT_ERROR_MSG("[perturb_state_var] Error! Unrecognized/unsupported dtupe name.\n"
+      EKAT_ERROR_MSG("[perturb_state_var] Error! Unrecognized/unsupported dtype name.\n"
                     " - input dtype: " + dtype_str + "\n"
                     " - valid dtype(s): real, dpfad\n");
   }
@@ -516,7 +522,7 @@ void copy_state (const nb::str& from_dtype, const nb::str& to_dtype)
 #endif
   } else {
     EKAT_ERROR_MSG(
-      "[copy_state] Error! Unrecognized/unsupported from_dtupe name.\n"
+      "[copy_state] Error! Unrecognized/unsupported from_dtype name.\n"
       " - input dtype: " + from_dtype_str + "\n"
       " - valid dtype(s): real, dpfad\n");
   }
