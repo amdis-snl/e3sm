@@ -65,6 +65,8 @@ void init_elements_impl (const int& num_elems)
     // ElementsGeometry is NOT templated on type, so if we calld this for another ST already,
     // the ElementsGeometry entry will already be in the context
     c.create_ref<ElementsGeometry>(e.m_geometry);
+  } else {
+    e.m_geometry = c.get<ElementsGeometry>();
   }
   c.create_ref<ElementsStateST<ST>>(e.m_state);
   c.create_ref<ElementsDerivedStateST<ST>>(e.m_derived);
