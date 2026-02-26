@@ -41,6 +41,10 @@ struct Session {
     static bool value = false;
     return value;
   }
+
+  static bool m_screen_output_enabled;
+
+  static void toggle_screen_output (const bool enabled);
 };
 
 extern "C" {

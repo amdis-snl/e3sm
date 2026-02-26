@@ -13,7 +13,7 @@ NB_MODULE (pyhommexx,m) {
         "Initialize the session. If do_print_to_screen is True, print to screen.",
         nb::arg("do_print_to_screen") = true);
   m.def("enable_scalar_type",&enable_scalar_type);
-  m.def("print_to_screen",&print_to_screen);
+  m.def("toggle_screen_output",&toggle_screen_output);
   m.def("finalize",&finalize);
 
   // Input parameters utilities

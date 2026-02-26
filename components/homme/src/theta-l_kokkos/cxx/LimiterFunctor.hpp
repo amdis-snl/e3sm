@@ -11,6 +11,7 @@
 #include "Elements.hpp"
 #include "ColumnOps.hpp"
 #include "FunctorsBuffersManager.hpp"
+#include "Hommexx_Session.hpp"
 #include "HybridVCoord.hpp"
 #include "KernelVariables.hpp"
 #include "ReferenceElement.hpp"
@@ -42,6 +43,7 @@ struct LimiterFunctorST {
   int                       m_num_elems;
   bool                      m_theta_hydrostatic_mode;
   bool                      m_verbose = true;
+  bool                      m_output_to_screen;
 
   HybridVCoord              m_hvcoord;
   ElementsStateST<ST>       m_state;
@@ -107,6 +109,7 @@ struct LimiterFunctorST {
   {
     GPTLstart("caar limiter");
     m_np1 = tl;
+    m_output_to_screen = Session::m_screen_output_enabled;
     Kokkos::parallel_for("caar loop dp3d limiter", m_policy_dp3d_lim, *this);
     Kokkos::fence();
     GPTLstop("caar limiter");
@@ -140,7 +143,7 @@ struct LimiterFunctorST {
       Kokkos::parallel_reduce(Kokkos::ThreadVectorRange(kv.team,NUM_PHYSICAL_LEV),
                               [&](const int k,ST& result) {
 #ifndef HOMMEXX_BFB_TESTING
-        if(m_verbose and diff_scalarized(k) < 0){
+        if(m_verbose and m_output_to_screen and diff_scalarized(k) < 0){
           Kokkos::printf("WARNING:CAAR: dp3d too small. k=%d, dp3d(k)=%f, dp0=%f \n",
                          k+1,dp_scalarized(k),dp0_scalarized(k));
         }
@@ -200,7 +203,7 @@ struct LimiterFunctorST {
         for (int ivec=0; ivec<VECTOR_SIZE; ++ivec) {
           if ( (vtheta_dp(ilev)[ivec] - m_vtheta_thresh*dp(ilev)[ivec]) < 0) {
 #ifndef HOMMEXX_BFB_TESTING
-            if (m_verbose)
+            if(m_verbose and m_output_to_screen)
               Kokkos::printf("WARNING:CAAR: k=%d,theta(k)=%f<%f=th_thresh, applying limiter \n",
                              ilev*VECTOR_SIZE+ivec+1,vtheta_dp(ilev)[ivec]/dp(ilev)[ivec],m_vtheta_thresh);
 #endif

@@ -23,14 +23,50 @@
 #include <ekat_kokkos_session.hpp>
 
 #include <iostream>
+#include <fstream>
 
 namespace Homme
 {
+
+struct OutputRedirection {
+  void toggle (bool on) {
+    if (on) {
+      std::cout.rdbuf(cout);
+      std::cerr.rdbuf(cerr);
+    } else {
+      std::cout.rdbuf(blackhole.rdbuf());
+      std::cerr.rdbuf(blackhole.rdbuf());
+    }
+  }
+
+  static OutputRedirection& instance() {
+    static OutputRedirection out_red;
+    return out_red;
+  }
+protected:
+  OutputRedirection ()
+   : cout (std::cout.rdbuf())
+   , cerr (std::cerr.rdbuf())
+   , blackhole("/dev/null")
+  {}
+
+  std::streambuf* cout;
+  std::streambuf* cerr;
+
+  std::ofstream blackhole;
+};
 
 // Default settings for homme's session
 bool Session::m_inited = false;
 bool Session::m_handle_kokkos = true;
 bool Session::m_throw_instead_of_abort = false;
+bool Session::m_screen_output_enabled = true;
+
+void Session::toggle_screen_output (const bool enabled)
+{
+  OutputRedirection::instance().toggle(enabled);
+  m_screen_output_enabled = enabled;
+}
 
 void print_homme_config_settings () {
   // Print configure-time settings.

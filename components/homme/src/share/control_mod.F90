@@ -280,6 +280,7 @@ module control_mod
   logical,               protected :: case_planar_bubble = .FALSE.
 
   public :: set_planar_defaults
+  public :: toggle_screen_output_f90
 
 contains
 
@@ -722,5 +723,24 @@ use physical_constants, only: Lx, Ly, Sx, Sy, dd_pi, rearth
     end if
 
 end subroutine set_planar_defaults
+
+subroutine toggle_screen_output_f90(enabled) bind(c)
+  use iso_c_binding, only: c_bool
+  use iso_fortran_env, only: output_unit, error_unit
+
+  ! Inputs
+  logical(kind=c_bool), intent(in), value :: enabled
+
+  if (enabled) then
+    ! Redirect standard output and error to the terminal
+    open(unit=output_unit, file='/dev/tty', status='unknown')
+    open(unit=error_unit,  file='/dev/tty', status='unknown')
+  else
+    ! Redirect standard output and error to /dev/null to suppress output
+    open(unit=output_unit, file='/dev/null', status='unknown')
+    open(unit=error_unit,  file='/dev/null', status='unknown')
+  endif
+end subroutine toggle_screen_output_f90
+
 
 end module control_mod

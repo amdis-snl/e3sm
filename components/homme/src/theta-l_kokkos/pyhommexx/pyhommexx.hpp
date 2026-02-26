@@ -11,7 +11,7 @@ namespace nb = nanobind;
 // General session functions
 void init_session (const bool do_print_to_screen = true);
 void enable_scalar_type (const nb::str& dtype);
-void print_to_screen (const bool enabled);
+void toggle_screen_output (const bool enabled);
 void finalize();
 
 // Input parameters utilities
