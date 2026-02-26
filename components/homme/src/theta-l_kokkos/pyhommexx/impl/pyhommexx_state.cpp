@@ -653,8 +653,8 @@ void copy_state (const nb::str& from_dtype, const nb::str& to_dtype)
     }
   } else if (from_dtype_str=="dpfad") {
 #ifdef HOMMEXX_ENABLE_FAD_TYPES
-    auto& from_st = c.get<ElementsStateST<Real>>();
-    auto& from_tr = c.get<TracersST<Real>>();
+    auto& from_st = c.get<ElementsStateST<DpFadType>>();
+    auto& from_tr = c.get<TracersST<DpFadType>>();
     if (to_dtype_str=="real") {
       auto& to_st = c.get<ElementsStateST<Real>>();
       auto& to_tr = c.get<TracersST<Real>>();
