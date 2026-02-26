@@ -26,9 +26,10 @@ void get_unique_pts (nb::ndarray<int>& ia,
                      nb::ndarray<int>& ja);
 
 // State handling utils
-void get_state_var (nb::ndarray<double>& arr, const nb::str& name, const nb::str& dtype);
+void get_state_var (nb::ndarray<double>& arr, const nb::str& name, const nb::str& dtype, const int tl);
 void get_state_var_dp_sens (nb::ndarray<double>& arr, const nb::str& name);
-void set_state_var (const nb::ndarray<double>& arr, const nb::str& name);
+void set_state_var (const nb::ndarray<double>& arr, const nb::str& name, const nb::str& dtype, const int tl);
+void set_state_var_value (const double value, const nb::str& name, const nb::str& dtype, const int tl);
 void init_dp3d_from_ps ();
 void copy_state (const nb::str& from_dtype, const nb::str& to_dtype);
 

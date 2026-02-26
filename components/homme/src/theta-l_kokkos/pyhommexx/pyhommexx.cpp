@@ -28,14 +28,32 @@ NB_MODULE (pyhommexx,m) {
 
   // State handling utils
   m.def("get_state_var",&get_state_var,
-      "Retrieves a state variable from the data structure with the given scalar type.\n",
+      "Retrieves a state variable from the data structure with the given scalar type, at the given time slice.\n"
+      "The time slice value can be -1 (nm1) 0 (n0) or 1 (np1) for state vars, and 0 for tracers (no time slices).\n"
+      "By default, we retrieve slice np1 for states",
         nb::arg("arr"),
         nb::arg("name"),
-        nb::arg("dtype") = "real");
+        nb::arg("dtype") = "real",
+        nb::arg("tl") = 1);
   m.def("get_state_var_dp_sens",&get_state_var_dp_sens);
   m.def("copy_state",&copy_state);
   m.def("init_dp3d_from_ps",&init_dp3d_from_ps);
-  m.def("set_state_var",&set_state_var);
+  m.def("set_state_var",&set_state_var,
+      "Sets a state variable in the data structure with the given scalar type, at the given time slice.\n"
+      "The time slice value can be -1 (nm1) 0 (n0) or 1 (np1) for state vars, and 0 for tracers (no time slices).\n"
+      "By default, we set slice n0 for states",
+        nb::arg("arr"),
+        nb::arg("name"),
+        nb::arg("dtype") = "real",
+        nb::arg("tl") = 0);
+  m.def("set_state_var_value",&set_state_var_value,
+      "Sets a state variable in the data structure with the given scalar type, at the given time slice.\n"
+      "The time slice value can be -1 (nm1) 0 (n0) or 1 (np1) for state vars, and 0 for tracers (no time slices).\n"
+      "By default, we set slice n0 for states",
+        nb::arg("value"),
+        nb::arg("name"),
+        nb::arg("dtype") = "real",
+        nb::arg("tl") = 0);
   m.def("perturb_state_var",&perturb_state_var,
       "Perturbs a state variable by multiply by a spatially gaussian factor, centered at given lat/lon.\n"
       "The dtype arg specifies which data structure to perturb",
