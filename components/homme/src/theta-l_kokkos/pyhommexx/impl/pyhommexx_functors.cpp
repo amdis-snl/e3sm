@@ -67,7 +67,6 @@ void run_caar_functor (const nb::dict& params)
   }
 
   auto& f = c.get<CaarFunctorST<ST>>();
-  auto& state = c.get<ElementsStateST<ST>>();
   f.run(data);
 }
 
