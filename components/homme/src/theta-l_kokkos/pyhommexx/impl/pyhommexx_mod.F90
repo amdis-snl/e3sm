@@ -29,7 +29,6 @@ module pyhommexx_mod
 
   ! Functions callable from C, mostly to detect whether some parts were already inited
   public :: init_parallel_f90
-  public :: print_to_screen_f90
   public :: model_init_f90
 
 contains
@@ -79,26 +78,6 @@ contains
     iam  = par%rank
     masterproc = par%masterproc
   end subroutine init_parallel_f90
-
-  subroutine print_to_screen_f90(enabled) bind(c)
-    use iso_c_binding, only: c_bool
-    use iso_fortran_env, only: output_unit, error_unit
-
-    ! Inputs
-    logical(kind=c_bool), intent(in), value :: enabled
-
-    if (enabled) then
-      if (.not. output_to_screen) then
-        open(unit=output_unit,file='/dev/tty',status='replace')
-        open(unit=error_unit,file='/dev/tty',status='replace')
-      endif
-    else
-      if (output_to_screen) then
-        open(unit=output_unit,file='/dev/null',status='replace')
-        open(unit=error_unit,file='/dev/null',status='replace')
-      endif
-    endif
-  end subroutine print_to_screen_f90
 
   subroutine get_num_unique_pts_f90 (num_ptr) bind(c)
     use iso_c_binding,  only: c_ptr, c_f_pointer, c_int
