@@ -575,6 +575,7 @@ void perturb_state_var_impl (const nb::str& name,
   auto copy = KOKKOS_LAMBDA (int ie, int ip, int jp, int k) {
     int lev = k / VECTOR_SIZE;
     int vec = k % VECTOR_SIZE;
+    // distance() returns meters; convert to kilometers to match sigma units.
     auto d = distance(latlon(ie,ip,jp,0),latlon(ie,ip,jp,1),lat0,lon0) / 1000;
     ST factor = 1 + max_p*std::exp(-std::pow(d,2)/(2*std::pow(sigma,2)));
 
