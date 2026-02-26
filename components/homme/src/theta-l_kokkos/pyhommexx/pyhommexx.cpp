@@ -27,7 +27,11 @@ NB_MODULE (pyhommexx,m) {
   m.def("get_unique_pts",&get_unique_pts);
 
   // State handling utils
-  m.def("get_state_var",&get_state_var);
+  m.def("get_state_var",&get_state_var,
+      "Retrieves a state variable from the data structure with the given scalar type.\n",
+        nb::arg("arr"),
+        nb::arg("name"),
+        nb::arg("dtype") = "real");
   m.def("get_state_var_dp_sens",&get_state_var_dp_sens);
   m.def("copy_state",&copy_state);
   m.def("init_dp3d_from_ps",&init_dp3d_from_ps);

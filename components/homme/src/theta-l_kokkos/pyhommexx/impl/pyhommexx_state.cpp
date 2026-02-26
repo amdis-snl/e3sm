@@ -65,11 +65,12 @@ void check_shape(const NBArrayT& arr, const std::vector<int>& shape)
   }
 }
 
-void get_state_var (nb::ndarray<double>& arr, const nb::str& name)
+template<typename ST>
+void get_state_var_impl (nb::ndarray<double>& arr, const nb::str& name)
 {
   const auto& c = Context::singleton();
-  const auto& state = c.get<ElementsState> ();
-  const auto& tracers = c.get<Tracers> ();
+  const auto& state = c.get<ElementsStateST<ST>> ();
+  const auto& tracers = c.get<TracersST<ST>> ();
   const auto& tl = c.get<TimeLevel> ();
 
   const int nelem = state.num_elems();
@@ -154,6 +155,25 @@ void get_state_var (nb::ndarray<double>& arr, const nb::str& name)
     }
   };
   Kokkos::parallel_for(p,copy);
+}
+
+void get_state_var (nb::ndarray<double>& arr, const nb::str& name, const nb::str& dtype)
+{
+  std::string dtype_str(dtype.c_str());
+
+  if (dtype_str=="real") {
+    get_state_var_impl<Real>(arr,name);
+  } else if (dtype_str=="dpfad") {
+#ifdef HOMMEXX_ENABLE_FAD_TYPES
+    get_state_var_impl<DpFadType>(arr,name);
+#else
+    EKAT_ERROR_MSG("[pyhommexx] dpfad data type requires homme to be built with HOMMEXX_ENABLE_FAD_TYPES=ON.\n");
+#endif
+  } else {
+      EKAT_ERROR_MSG("[perturb_state_var] Error! Unrecognized/unsupported dtype name.\n"
+                    " - input dtype: " + dtype_str + "\n"
+                    " - valid dtype(s): real, dpfad\n");
+  }
 }
 
 void set_state_var (const nb::ndarray<double>& arr, const nb::str& name)
@@ -241,7 +261,7 @@ void set_state_var (const nb::ndarray<double>& arr, const nb::str& name)
       case flag_qv:
         qv(ie,n0,ip,jp,lev)[vec] = scl_mid_v(ie,ip,jp,k); break;
       default:
-        Kokkos::abort("Unsupported value for 'which' in get_state_var.\n");
+        Kokkos::abort("Unsupported value for 'which' in set_state_var.\n");
     }
   };
   Kokkos::parallel_for(p,copy);
