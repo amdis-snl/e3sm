@@ -1,4 +1,5 @@
 #include "pyhommexx.hpp"
+#include "pyhommexx_utils.hpp"
 
 #include "Context.hpp"
 #include "ElementsGeometry.hpp"
@@ -48,6 +49,29 @@ void get_unique_pts (nb::ndarray<int>& ia,
   int* ia_ptr = ia.data();
   int* ja_ptr = ja.data();
   get_unique_pts_f90(ia_ptr,ja_ptr);
+}
+
+void get_dyn_latlon (nb::ndarray<double>& lat,
+                     nb::ndarray<double>& lon)
+{
+  const auto& c = Context::singleton();
+  const auto& geo = c.get<ElementsGeometry> ();
+  const int nelem = geo.num_elems();
+
+  auto latlon_h = Kokkos::create_mirror_view(geo.m_sphere_latlon);
+  Kokkos::deep_copy(latlon_h,geo.m_sphere_latlon);
+
+  ExecViewUnmanaged<double***> lat_v (vp2dp(lat.data()),nelem,NP,NP);
+  ExecViewUnmanaged<double***> lon_v (vp2dp(lon.data()),nelem,NP,NP);
+
+  for (int ie=0; ie<nelem; ++ie) {
+    for (int ip=0; ip<NP; ++ip) {
+      for (int jp=0; jp<NP; ++jp) {
+        lat_v(ie,ip,jp) = latlon_h(ie,ip,jp,0);
+        lon_v(ie,ip,jp) = latlon_h(ie,ip,jp,1);
+      }
+    }
+  }
 }
 
 } // namespace pyhommexx

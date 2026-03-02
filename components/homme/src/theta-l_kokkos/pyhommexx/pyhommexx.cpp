@@ -26,6 +26,7 @@ NB_MODULE (pyhommexx,m) {
   m.def("get_nelemd",&get_nelemd);
   m.def("get_num_unique_pts",&get_num_unique_pts);
   m.def("get_unique_pts",&get_unique_pts);
+  m.def("get_dyn_latlon",&get_dyn_latlon);
 
   // State handling utils
   m.def("get_state_var",&get_state_var,

@@ -25,6 +25,8 @@ int get_nelemd();
 void get_num_unique_pts (nb::ndarray<int>& n);
 void get_unique_pts (nb::ndarray<int>& ia,
                      nb::ndarray<int>& ja);
+void get_dyn_latlon (nb::ndarray<double>& lat,
+                     nb::ndarray<double>& lon);
 
 // State handling utils
 void get_state_var (nb::ndarray<double>& arr, const nb::str& name, const nb::str& dtype, const int tl);
