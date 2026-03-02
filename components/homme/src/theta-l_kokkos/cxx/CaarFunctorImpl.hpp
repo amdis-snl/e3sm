@@ -340,10 +340,22 @@ struct CaarFunctorImplST {
     m_scale2g_last_int_pack[ColInfo<NUM_INTERFACE_LEV>::LastPackEnd] = m_data.scale1*g;
   }
 
+  void run_pre_exchange (const RKStageData& data)
+  {
+    set_rk_stage_data(data);
+
+    GPTLstart("caar compute");
+    int nerr;
+    Kokkos::parallel_reduce("caar loop pre-boundary exchange", m_policy_pre, *this, nerr);
+    Kokkos::fence();
+    GPTLstop("caar compute");
+    if (nerr > 0)
+      check_print_abort_on_bad_elems("CaarFunctorImpl::run TagPreExchange", data.n0);
+  }
+
   void run (const RKStageData& data)
   {
-
-    auto& limiter  = Context::singleton().get<LimiterFunctor>();
+    auto& limiter  = Context::singleton().get<LimiterFunctorST<ST>>();
 
     set_rk_stage_data(data);
 
@@ -368,7 +380,290 @@ struct CaarFunctorImplST {
     }
 
     limiter.run(data.np1);
+  }
 
+  template<typename MyST = ST>
+  std::enable_if_t<not std::is_same_v<MyST,DxFadTypeCaar>>
+  run_JV (const RKStageData& data, ElementsStateST<Real>& adj_state) = delete;
+
+  template<typename MyST = ST>
+  std::enable_if_t<std::is_same_v<MyST,DxFadTypeCaar>>
+  run_JV (const RKStageData& data, ElementsStateST<Real>& adj_state)
+  {
+    // For d/dx we use a column-compressed Fad, since levels more than 2 below or 1 above
+    // will not interact with each other, while we have full NPxNP coupling in the horiz direction.
+    // Moreover, For each gauss point, we don't need the derivs of ALL vars at all 4 levels of the
+    // stencil. In fact, the state at k-th level (midpoint or interface) depends only on
+    // [u_prev, u_curr, v_prev, v_curr,
+    //  vth_prev, vth_curr, vth_next,
+    //  dp_prev, dp_curr, dp_next,
+    //  phi_prev2, phi_prev, phi_curr, phi_next,
+    //  w_curr, w_next]
+    // So the stencil_sz is 16. To compress columns, we interpret the derivs as follows. Let
+    //  - kmN_M = (k - N) % M (which is computed via (k+M-N) % M)
+    //  - k0_M = k % M
+    //  - kpN_M = (k+N) % M
+    // and for state X let X_blah=X(blah). Then the stencil is
+    // [u_km1_2, u_k0_2, v_km1_2, v_k0_2,
+    //  vth_km1_3, vth_k0_3, vth_kp1_3,
+    //  dp_km1_3, dp_k0_3, dp_kp1_3,
+    //  phi_km2_4, phi_km1_3, phi_k0_4, phi_kp1_4,
+    //  w_k0_2, w_kp1_2]
+    constexpr int stencil_sz = 16;
+
+    int offset_u   = 0;
+    int offset_v   = 2;
+    int offset_vth = 4;
+    int offset_dp  = 7;
+    int offset_phi = 10;
+    int offset_w   = 14;
+
+    using md_range_t = Kokkos::MDRangePolicy<ExecSpace,Kokkos::Rank<4>>;
+    auto p4_mid = md_range_t({0,0,0,0},{m_num_elems,NP,NP,NUM_PHYSICAL_LEV});
+    auto p4_int = md_range_t({0,0,0,0},{m_num_elems,NP,NP,NUM_INTERFACE_LEV});
+
+    // First, init d/dx derivs
+    auto dvdx_v = ekat::scalarize(m_state.m_v);
+    auto dvthdx_v = ekat::scalarize(m_state.m_vtheta_dp);
+    auto ddpdx_v = ekat::scalarize(m_state.m_dp3d);
+    auto dphidx_v = ekat::scalarize(m_state.m_phinh_i);
+    auto dwdx_v = ekat::scalarize(m_state.m_w_i);
+
+    int n0 = data.n0;
+    auto init_dx_mid = KOKKOS_LAMBDA (int ie, int ip, int jp, int k) {
+      int pt_offset = ip*NP*16 + jp*16;
+
+      auto& dudx   = dvdx_v  (ie,n0,0,ip,jp,k);
+      auto& dvdx   = dvdx_v  (ie,n0,1,ip,jp,k);
+      auto& dvthdx = dvthdx_v(ie,n0,  ip,jp,k);
+      auto& ddpdx  = ddpdx_v (ie,n0,  ip,jp,k);
+
+      dudx.zero();
+      dvdx.zero();
+      dvthdx.zero();
+      ddpdx.zero();
+
+      dudx.fastAccessDx   (pt_offset + offset_u   + k%2) = 1;
+      dvdx.fastAccessDx   (pt_offset + offset_v   + k%2) = 1;
+      dvthdx.fastAccessDx (pt_offset + offset_vth + k%3) = 1;
+      ddpdx.fastAccessDx  (pt_offset + offset_dp  + k%3) = 1;
+    };
+    auto init_dx_int = KOKKOS_LAMBDA (int ie, int ip, int jp, int k) {
+      int pt_offset = ip*NP*16 + jp*16;
+
+      auto& dphidx = dphidx_v(ie,n0,  ip,jp,k);
+      auto& dwdx   = dwdx_v  (ie,n0,  ip,jp,k);
+
+      dphidx.zero();
+      dwdx.zero();
+
+      dphidx.fastAccessDx(pt_offset + offset_phi + k%4) = 1;
+      dwdx.fastAccessDx  (pt_offset + offset_w   + k%2) = 1;
+    };
+
+    Kokkos::parallel_for(p4_mid,init_dx_mid);
+    Kokkos::parallel_for(p4_mid,init_dx_int);
+
+    // Run pre-exchange phase of CAAR
+    run_pre_exchange(data);
+
+    // Then compute dxnew/dp = dxnew/dxold * dxold/dp
+    int np1 = data.np1;
+
+    auto l_V = ekat::scalarize(adj_state.m_v);
+    auto l_vth = ekat::scalarize(adj_state.m_vtheta_dp);
+    auto l_dp = ekat::scalarize(adj_state.m_dp3d);
+    auto l_phi = ekat::scalarize(adj_state.m_phinh_i);
+    auto l_w = ekat::scalarize(adj_state.m_w_i);
+    
+    auto prod_rule_mid = KOKKOS_LAMBDA (const int ie, const int ipt, const int jpt, const int k) {
+      const auto& l_u_old   = Homme::subview(l_V,ie,n0,0);
+      const auto& l_v_old   = Homme::subview(l_V,ie,n0,1);
+      const auto& l_vth_old = Homme::subview(l_vth,ie,n0);
+      const auto& l_dp_old  = Homme::subview(l_dp,ie,n0);
+      const auto& l_phi_old = Homme::subview(l_phi,ie,n0);
+      const auto& l_w_old   = Homme::subview(l_w,ie,n0);
+
+      auto& l_u_new   = l_V(ie,np1,0,ipt,jpt,k);
+      auto& l_v_new   = l_V(ie,np1,1,ipt,jpt,k);
+      auto& l_vth_new = l_vth(ie,np1,ipt,jpt,k);
+      auto& l_dp_new  = l_dp(ie,np1,ipt,jpt,k);
+
+      // Jacobians
+      const auto& Ju   = dvdx_v(ie,np1,0,ipt,jpt,k).dx();
+      const auto& Jv   = dvdx_v(ie,np1,1,ipt,jpt,k).dx();
+      const auto& Jvth = dvthdx_v(ie,np1,ipt,jpt,k).dx();
+      const auto& Jdp  = ddpdx_v(ie,np1,ipt,jpt,k).dx();
+      const auto& Jphi = dphidx_v(ie,np1,ipt,jpt,k).dx();
+      const auto& Jw   = dwdx_v(ie,np1,ipt,jpt,k).dx();
+
+      l_u_new = 0;
+      l_v_new = 0;
+      l_dp_new = 0;
+      l_vth_new = 0;
+
+      // offsets of each var in the deriv vector
+      int u_prev    = offset_u   + (k+2-1) % 2;
+      int u_curr    = offset_u   + k % 2;
+      int v_prev    = offset_v   + (k+2-1) % 2;
+      int v_curr    = offset_v   + k % 2;
+      int vth_prev  = offset_vth + (k+3-1) % 3;
+      int vth_curr  = offset_vth + k % 3;
+      int vth_next  = offset_vth + (k+1) % 3;
+      int dp_prev   = offset_dp  + (k+3-1) % 3;
+      int dp_curr   = offset_dp  + k % 3;
+      int dp_next   = offset_dp  + (k+1) % 3;
+      int phi_prev2 = offset_phi + (k+4-2) % 4;
+      int phi_prev  = offset_phi + (k+4-1) % 4;
+      int phi_curr  = offset_phi + k % 4;
+      int phi_next  = offset_phi +(k+1) % 4;
+      int w_curr    = offset_w   + k % 2;
+      int w_next    = offset_w   + (k+1) % 2;
+
+      for (int mpt=0; mpt<NP; ++mpt) {
+        for (int npt=0; npt<NP; ++npt) {
+          int pt_offset = mpt*NP*stencil_sz + npt*stencil_sz;
+
+          auto pt_Ju   = Ju   + pt_offset;
+          auto pt_Jv   = Jv   + pt_offset;
+          auto pt_Jvth = Jvth + pt_offset;
+          auto pt_Jdp  = Jdp  + pt_offset;
+
+          // Dependencies on k quantities
+          l_u_new += pt_Ju[u_curr]   * l_u_old  (mpt,npt,k)  // du(k)/du(k)
+                   + pt_Ju[v_curr]   * l_v_old  (mpt,npt,k)  // du(k)/dv(k)
+                   + pt_Ju[vth_curr] * l_vth_old(mpt,npt,k)  // du(k)/dvth(k)
+                   + pt_Ju[dp_curr]  * l_dp_old (mpt,npt,k)  // du(k)/ddp(k)
+                   + pt_Ju[phi_curr] * l_phi_old(mpt,npt,k)  // du(k)/dphi(k)
+                   + pt_Ju[w_curr]   * l_w_old  (mpt,npt,k); // du(k)/dw(k)
+
+          l_v_new += pt_Jv[u_curr]   * l_u_old  (mpt,npt,k)  // dv(k)/du(k)
+                   + pt_Jv[v_curr]   * l_v_old  (mpt,npt,k)  // dv(k)/dv(k)
+                   + pt_Jv[vth_curr] * l_vth_old(mpt,npt,k)  // dv(k)/dvth(k)
+                   + pt_Jv[dp_curr]  * l_dp_old (mpt,npt,k)  // dv(k)/ddp(k)
+                   + pt_Jv[phi_curr] * l_phi_old(mpt,npt,k)  // dv(k)/dphi(k)
+                   + pt_Jv[w_curr]   * l_w_old  (mpt,npt,k); // dv(k)/dw(k)
+
+          l_vth_new += pt_Jvth[u_curr]   * l_u_old  (mpt,npt,k)  // dvth(k)/du(k)
+                     + pt_Jvth[v_curr]   * l_v_old  (mpt,npt,k)  // dvth(k)/dv(k)
+                     + pt_Jvth[vth_curr] * l_vth_old(mpt,npt,k)  // dvth(k)/dvth(k)
+                     + pt_Jvth[dp_curr]  * l_dp_old (mpt,npt,k); // dvth(k)/ddp(k)
+
+          l_dp_new += pt_Jdp[u_curr]  * l_u_old  (mpt,npt,k)  // ddp(k)/du(k)
+                    + pt_Jdp[v_curr]  * l_v_old  (mpt,npt,k)  // ddp(k)/dv(k)
+                    + pt_Jdp[dp_curr] * l_dp_old (mpt,npt,k); // ddp(k)/dp(k)
+
+          // Dependencies on k-1 quantities
+          if (k>0) {
+            l_u_new += pt_Ju[vth_prev] * l_vth_old(mpt,npt,k-1)  // du(k)/dvth(k-1)
+                     + pt_Ju[dp_prev]  * l_dp_old (mpt,npt,k-1)  // du(k)/ddp(k-1)
+                     + pt_Ju[phi_prev] * l_phi_old(mpt,npt,k-1); // du(k)/dphi(k-1)
+
+            l_v_new += pt_Jv[vth_prev] * l_vth_old(mpt,npt,k-1)  // dv(k)/dvth(k-1)
+                     + pt_Jv[dp_prev]  * l_dp_old (mpt,npt,k-1)  // dv(k)/ddp(k-1)
+                     + pt_Jv[phi_prev] * l_phi_old(mpt,npt,k-1); // dv(k)/dphi(k-1)
+
+            if (k>1) {
+              // Dependency on k-2 quantities
+              l_u_new += pt_Ju[phi_prev2] * l_phi_old(mpt,npt,k-2); // du(k)/dphi(k-2)
+
+              l_v_new += pt_Jv[phi_prev2] * l_phi_old(mpt,npt,k-2); // dv(k)/dphi(k-2)
+            }
+          }
+
+          // Dependencies on k+1 quantities
+          if (k<NUM_PHYSICAL_LEV-1) {
+            l_u_new += pt_Ju[vth_next] * l_vth_old(mpt,npt,k+1); // du(k)/dvth(k+1)
+                     + pt_Ju[dp_next]  * l_dp_old (mpt,npt,k+1); // du(k)/ddp(k+1)
+                     + pt_Ju[phi_next] * l_phi_old(mpt,npt,k+1); // du(k)/dphi(k+1)
+
+            l_v_new += pt_Jv[vth_next] * l_vth_old(mpt,npt,k+1); // dv(k)/dvth(k+1)
+                     + pt_Jv[dp_next]  * l_dp_old (mpt,npt,k+1); // dv(k)/ddp(k+1)
+                     + pt_Jv[phi_next] * l_phi_old(mpt,npt,k+1); // dv(k)/dphi(k+1)
+          } else {
+            l_u_new += pt_Ju[phi_next] * l_phi_old(mpt,npt,k+1); // du(k)/dphi(k+1)
+
+            l_v_new += pt_Jv[phi_next] * l_phi_old(mpt,npt,k+1); // dv(k)/dphi(k+1)
+          }
+        }
+      }
+    };
+
+    auto prod_rule_int = KOKKOS_LAMBDA (const int ie, const int ipt, const int jpt, const int k) {
+      const auto& l_u_old   = Homme::subview(l_V,ie,n0,0);
+      const auto& l_v_old   = Homme::subview(l_V,ie,n0,1);
+      const auto& l_vth_old = Homme::subview(l_vth,ie,n0);
+      const auto& l_dp_old  = Homme::subview(l_dp,ie,n0);
+      const auto& l_phi_old = Homme::subview(l_phi,ie,n0);
+      const auto& l_w_old   = Homme::subview(l_w,ie,n0);
+
+      auto& l_phi_new = l_phi(ie,np1,ipt,jpt,k);
+      auto& l_w_new   = l_w(ie,np1,ipt,jpt,k);
+
+      // Jacobians
+      const auto& Jphi = dphidx_v(ie,np1,ipt,jpt,k).dx();
+      const auto& Jw   = dwdx_v(ie,np1,ipt,jpt,k).dx();
+
+      l_phi_new = 0;
+      l_w_new = 0;
+
+      // offsets of each var in the deriv vector
+      int u_prev    = offset_u + (k+2-1) % 2;
+      int u_curr    = offset_u + k % 2;
+      int v_prev    = offset_v + (k+2-1) % 2;
+      int v_curr    = offset_v + k % 2;
+      int vth_prev  = offset_vth +(k+3-1) % 3;
+      int vth_curr  = offset_vth +k % 3;
+      int dp_prev   = offset_dp +(k+3-1) % 3;
+      int dp_curr   = offset_dp +k % 3;
+      int phi_prev2 = offset_phi +(k+4-2) % 4;
+      int phi_prev  = offset_phi +(k+4-1) % 4;
+      int phi_curr  = offset_phi +k % 4;
+      int w_curr    = offset_w + k % 2;
+
+      for (int mpt=0; mpt<NP; ++mpt) {
+        for (int npt=0; npt<NP; ++npt) {
+          int pt_offset = mpt*NP*stencil_sz + npt*stencil_sz;
+
+          auto pt_Jphi = Jphi + pt_offset;
+          auto pt_Jw   = Jw   + pt_offset;
+
+          // Dependencies on k quantities
+          l_phi_new += pt_Jphi[u_curr]   * l_u_old  (mpt,npt,k)  // dphi(k)/du(k)
+                     + pt_Jphi[v_curr]   * l_v_old  (mpt,npt,k)  // dphi(k)/dv(k)
+                     + pt_Jphi[dp_curr]  * l_dp_old (mpt,npt,k)  // dphi(k)/ddp(k)
+                     + pt_Jphi[phi_curr] * l_phi_old(mpt,npt,k); // dphi(k)/dphi(k)
+
+          l_w_new += pt_Jw[u_curr]   * l_u_old  (mpt,npt,k)  // dw(k)/du(k)
+                   + pt_Jw[v_curr]   * l_v_old  (mpt,npt,k)  // dw(k)/dv(k)
+                   + pt_Jw[vth_curr] * l_vth_old(mpt,npt,k)  // dw(k)/dvth(k)
+                   + pt_Jw[dp_curr]  * l_dp_old (mpt,npt,k)  // dw(k)/ddp(k)
+                   + pt_Jw[phi_curr] * l_phi_old(mpt,npt,k)  // dw(k)/dphi(k)
+                   + pt_Jw[w_curr]   * l_w_old  (mpt,npt,k); // dw(k)/dw(k)
+
+          // Dependencies on k-1 quantities
+          if (k>0) {
+            l_phi_new += pt_Jphi[u_prev]  * l_u_old  (mpt,npt,k-1)  // dphi(k)/du(k-1)
+                       + pt_Jphi[v_prev]  * l_v_old  (mpt,npt,k-1)  // dphi(k)/dv(k-1)
+                       + pt_Jphi[dp_prev] * l_dp_old (mpt,npt,k-1); // dphi(k)/ddp(k-1)
+
+            l_w_new += pt_Jw[u_prev]    * l_u_old   (mpt,npt,k-1)  // dw(k)/du(k-1)
+                     + pt_Jw[v_prev]    * l_v_old   (mpt,npt,k-1)  // dw(k)/dv(k-1)
+                     + pt_Jw[vth_prev]  * l_vth_old (mpt,npt,k-1); // dw(k)/dvth(k-1)
+                     + pt_Jw[dp_prev]   * l_dp_old  (mpt,npt,k-1); // dw(k)/ddp(k-1)
+                     + pt_Jw[phi_prev]  * l_phi_old (mpt,npt,k-1); // dw(k)/dphi(k-1)
+
+            if (k>1) {
+              // Dependency on k-2 quantities
+              l_w_new += pt_Jw[phi_prev2] * l_w_old  (mpt,npt,k-2); // dw(k)/dphi(k-2)
+            }
+          }
+        }
+      }
+    };
+
+    Kokkos::parallel_for(p4_mid,prod_rule_mid);
+    Kokkos::parallel_for(p4_int,prod_rule_int);
   }
 
   KOKKOS_INLINE_FUNCTION
@@ -887,7 +1182,7 @@ struct CaarFunctorImplST {
 
         // Compute w_tens
         PT v_grad = v_i(0,igp,jgp,ilev)*grad_w_i(0,igp,jgp,ilev)
-                      + v_i(1,igp,jgp,ilev)*grad_w_i(1,igp,jgp,ilev);
+                  + v_i(1,igp,jgp,ilev)*grad_w_i(1,igp,jgp,ilev);
         if (m_rsplit==0) {
           w_tens(ilev) += v_grad;
         } else {
