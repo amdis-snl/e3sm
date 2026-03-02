@@ -14,6 +14,7 @@ NB_MODULE (pyhommexx,m) {
         nb::arg("do_print_to_screen") = true);
   m.def("enable_scalar_type",&enable_scalar_type);
   m.def("toggle_screen_output",&toggle_screen_output);
+  m.def("get_phys_constant",&get_phys_constant);
   m.def("finalize",&finalize);
 
   // Input parameters utilities
@@ -25,6 +26,7 @@ NB_MODULE (pyhommexx,m) {
   m.def("get_nelemd",&get_nelemd);
   m.def("get_num_unique_pts",&get_num_unique_pts);
   m.def("get_unique_pts",&get_unique_pts);
+  m.def("get_dyn_latlon",&get_dyn_latlon);
 
   // State handling utils
   m.def("get_state_var",&get_state_var,
@@ -55,11 +57,12 @@ NB_MODULE (pyhommexx,m) {
         nb::arg("dtype") = "real",
         nb::arg("tl") = 0);
   m.def("perturb_state_var",&perturb_state_var,
-      "Perturbs a state variable by multiply by a spatially gaussian factor, centered at given lat/lon.\n"
-      "The dtype arg specifies which data structure to perturb",
+      "Perturbs the given variable of the given scalar type by multiply it by a given perturbation field.\n"
+      "For 'dpfad' scalar, initialize the 1st dx/dp fad deriv, following x = x*(1+p*delta)\n"
+      "The input relative perturbation field 'delta' must have the same shape as the state we perturb\n",
         nb::arg("name"),
-        nb::arg("lat0"),nb::arg("lon0"),
-        nb::arg("p_max"),nb::arg("sigma"),
+        nb::arg("delta"),
+        nb::arg("factor"),
         nb::arg("dtype") = "real");
 
   // Init/run a functor or the whole model

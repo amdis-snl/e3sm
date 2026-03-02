@@ -12,6 +12,7 @@ namespace nb = nanobind;
 void init_session (const bool do_print_to_screen = true);
 void enable_scalar_type (const nb::str& dtype);
 void toggle_screen_output (const bool enabled);
+double get_phys_constant (const nb::str& name);
 void finalize();
 
 // Input parameters utilities
@@ -24,6 +25,8 @@ int get_nelemd();
 void get_num_unique_pts (nb::ndarray<int>& n);
 void get_unique_pts (nb::ndarray<int>& ia,
                      nb::ndarray<int>& ja);
+void get_dyn_latlon (nb::ndarray<double>& lat,
+                     nb::ndarray<double>& lon);
 
 // State handling utils
 void get_state_var (nb::ndarray<double>& arr, const nb::str& name, const nb::str& dtype, const int tl);
@@ -37,8 +40,8 @@ void copy_state (const nb::str& from_dtype, const nb::str& to_dtype);
 // and C(lat,lon) = p_max*exp(-d/2*sigma^2), where d is the distance
 // of the 2d point (lat,lon) from (lat0,lon0).
 void perturb_state_var (const nb::str& name,
-                        const double lat0, const double lon0,
-                        const double p_max, const double sigma,
+                        const nb::ndarray<double>& delta,
+                        const double factor,
                         const nb::str& dtype);
 
 // Init/run a functor or the whole model

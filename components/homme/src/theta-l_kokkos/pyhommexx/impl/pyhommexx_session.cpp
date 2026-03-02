@@ -2,12 +2,14 @@
 
 #include "Context.hpp"
 #include "Hommexx_Session.hpp"
+#include "PhysicalConstants.hpp"
 #include "Types.hpp"
 
 #include <ekat_assert.hpp>
 
 #include <nanobind/ndarray.h>
 
+#include <limits>
 #include <fstream>
 
 extern "C" {
@@ -51,6 +53,24 @@ void toggle_screen_output (const bool enabled)
 {
   Session::toggle_screen_output (enabled);
   toggle_screen_output_f90 (enabled);
+}
+
+double get_phys_constant (const nb::str& name)
+{
+  std::string name_str(name.c_str());
+
+  if (name_str=="rearth") {
+    return PhysicalConstants::rearth0;
+  } else if (name_str=="rgas") {
+    return PhysicalConstants::Rgas;
+  } else {
+      EKAT_ERROR_MSG(
+          "[get_phys_constant] Error! Unrecognized/unsupported constant name.\n"
+          " - input name: " + name_str + "\n"
+          " - valid name(s): rearth, rgas\n");
+  }
+
+  return std::numeric_limits<Real>::quiet_NaN();
 }
 
 void finalize()
