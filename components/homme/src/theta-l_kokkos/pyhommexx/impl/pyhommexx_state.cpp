@@ -1,4 +1,5 @@
 #include "pyhommexx.hpp"
+#include "pyhommexx_utils.hpp"
 
 #include "Context.hpp"
 #include "ElementsGeometry.hpp"
@@ -6,7 +7,6 @@
 #include "Hommexx_Session.hpp"
 #include "HybridVCoord.hpp"
 #include "KernelVariables.hpp"
-#include "PhysicalConstants.hpp"
 #include "TimeLevel.hpp"
 #include "Tracers.hpp"
 #include "Types.hpp"
@@ -45,24 +45,6 @@ Real distance (const Real lat, const Real lon, const Real lat0, const Real lon0)
   double c = 2 * asin(sqrt(a));
 
   return PhysicalConstants::rearth0 * c;
-}
-
-double* vp2dp (void* p)
-{
-  return reinterpret_cast<double*>(p);
-}
-const double* vp2cdp (void* p)
-{
-  return reinterpret_cast<const double*>(p);
-}
-
-template<typename NBArrayT>
-void check_shape(const NBArrayT& arr, const std::vector<int>& shape)
-{
-  assert (arr.ndim()==shape.size());
-  for (size_t i=0; i<shape.size(); ++i) {
-    assert (static_cast<int>(arr.shape(i))==shape[i]);
-  }
 }
 
 template<typename ST>
