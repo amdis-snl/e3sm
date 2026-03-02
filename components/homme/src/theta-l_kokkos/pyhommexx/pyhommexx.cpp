@@ -57,11 +57,12 @@ NB_MODULE (pyhommexx,m) {
         nb::arg("dtype") = "real",
         nb::arg("tl") = 0);
   m.def("perturb_state_var",&perturb_state_var,
-      "Perturbs a state variable by multiply by a spatially gaussian factor, centered at given lat/lon.\n"
-      "The dtype arg specifies which data structure to perturb",
+      "Perturbs the given variable of the given scalar type by multiply it by a given perturbation field.\n"
+      "For 'dpfad' scalar, initialize the 1st dx/dp fad deriv, following x = x*(1+p*delta)\n"
+      "The input relative perturbation field 'delta' must have the same shape as the state we perturb\n",
         nb::arg("name"),
-        nb::arg("lat0"),nb::arg("lon0"),
-        nb::arg("p_max"),nb::arg("sigma"),
+        nb::arg("delta"),
+        nb::arg("factor"),
         nb::arg("dtype") = "real");
 
   // Init/run a functor or the whole model

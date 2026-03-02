@@ -40,8 +40,8 @@ void copy_state (const nb::str& from_dtype, const nb::str& to_dtype);
 // and C(lat,lon) = p_max*exp(-d/2*sigma^2), where d is the distance
 // of the 2d point (lat,lon) from (lat0,lon0).
 void perturb_state_var (const nb::str& name,
-                        const double lat0, const double lon0,
-                        const double p_max, const double sigma,
+                        const nb::ndarray<double>& delta,
+                        const double factor,
                         const nb::str& dtype);
 
 // Init/run a functor or the whole model

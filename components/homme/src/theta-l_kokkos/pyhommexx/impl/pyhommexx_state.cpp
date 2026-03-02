@@ -35,18 +35,6 @@ void init_dp3d_from_ps ()
   Kokkos::parallel_for(p,init_dp);
 }
 
-KOKKOS_INLINE_FUNCTION
-Real distance (const Real lat, const Real lon, const Real lat0, const Real lon0)
-{
-  auto dx = lat - lat0;
-  auto dy = fmod(lon-lon0+M_PI,2*M_PI) - M_PI;
-
-  auto a = sin(dx/2)*sin(dx/2) + cos(lat)*cos(lat0)*sin(dy/2)*sin(dy/2);
-  double c = 2 * asin(sqrt(a));
-
-  return PhysicalConstants::rearth0 * c;
-}
-
 template<typename ST>
 void get_state_var_impl (nb::ndarray<double>& arr, const nb::str& name, const int which_tl)
 {
@@ -167,7 +155,7 @@ void get_state_var (nb::ndarray<double>& arr, const nb::str& name, const nb::str
     EKAT_ERROR_MSG("[pyhommexx] dpfad data type requires homme to be built with HOMMEXX_ENABLE_FAD_TYPES=ON.\n");
 #endif
   } else {
-      EKAT_ERROR_MSG("[perturb_state_var] Error! Unrecognized/unsupported dtype name.\n"
+      EKAT_ERROR_MSG("[get_state_var] Error! Unrecognized/unsupported dtype name.\n"
                     " - input dtype: " + dtype_str + "\n"
                     " - valid dtype(s): real, dpfad\n");
   }
@@ -375,7 +363,7 @@ void set_state_var (const nb::ndarray<double>& arr, const nb::str& name, const n
     EKAT_ERROR_MSG("[pyhommexx] dpfad data type requires homme to be built with HOMMEXX_ENABLE_FAD_TYPES=ON.\n");
 #endif
   } else {
-      EKAT_ERROR_MSG("[perturb_state_var] Error! Unrecognized/unsupported dtype name.\n"
+      EKAT_ERROR_MSG("[set_state_var] Error! Unrecognized/unsupported dtype name.\n"
                     " - input dtype: " + dtype_str + "\n"
                     " - valid dtype(s): real, dpfad\n");
   }
@@ -394,7 +382,7 @@ void set_state_var_value (const double value, const nb::str& name, const nb::str
     EKAT_ERROR_MSG("[pyhommexx] dpfad data type requires homme to be built with HOMMEXX_ENABLE_FAD_TYPES=ON.\n");
 #endif
   } else {
-      EKAT_ERROR_MSG("[perturb_state_var] Error! Unrecognized/unsupported dtype name.\n"
+      EKAT_ERROR_MSG("[set_state_var_value] Error! Unrecognized/unsupported dtype name.\n"
                     " - input dtype: " + dtype_str + "\n"
                     " - valid dtype(s): real, dpfad\n");
   }
@@ -502,8 +490,8 @@ void get_state_var_dp_sens (nb::ndarray<double>& arr, const nb::str& name)
 
 template<typename ST>
 void perturb_state_var_impl (const nb::str& name,
-                             const double lat0, const double lon0,
-                             const double p_max, const double sigma)
+                             const nb::ndarray<double>& delta,
+                             const double factor)
 {
   const auto& c = Context::singleton();
   const auto& state = c.get<ElementsStateST<ST>> ();
@@ -540,64 +528,65 @@ void perturb_state_var_impl (const nb::str& name,
   auto w   = state.m_w_i;
   auto phi = state.m_phinh_i;
   auto qv  = tracers.Q;
-  auto latlon = geo.m_sphere_latlon;
 
   std::string n (name.c_str());
   auto which = which_map.at(n);
   int nlev = (which==flag_phi or which==flag_w) ? NUM_INTERFACE_LEV : NUM_PHYSICAL_LEV;
   using policy_t = Kokkos::MDRangePolicy<ExecSpace,Kokkos::Rank<4>>;
 
-  ST max_p = p_max;
+  auto ptr = vp2cdp(delta.data());
+  ExecViewUnmanaged<const double*****> vec_mid (ptr,nelem,2,NP,NP,NUM_PHYSICAL_LEV);
+  ExecViewUnmanaged<const double****>  scl_mid (ptr,nelem,  NP,NP,NUM_PHYSICAL_LEV);
+  ExecViewUnmanaged<const double****>  scl_int (ptr,nelem,  NP,NP,NUM_INTERFACE_LEV);
+
+  ST p = factor;
 #ifdef HOMMEXX_ENABLE_FAD_TYPES
   if constexpr (Sacado::IsFad<ST>::value) {
-    max_p.fastAccessDx(0) = 1;
+    p.fastAccessDx(0) = 1;
   }
 #endif
-  policy_t p ({0,0,0,0},{nelem,NP,NP,nlev});
+  policy_t policy ({0,0,0,0},{nelem,NP,NP,nlev});
   auto copy = KOKKOS_LAMBDA (int ie, int ip, int jp, int k) {
     int lev = k / VECTOR_SIZE;
     int vec = k % VECTOR_SIZE;
-    // distance() returns meters; convert to kilometers to match sigma units.
-    auto d = distance(latlon(ie,ip,jp,0),latlon(ie,ip,jp,1),lat0,lon0) / 1000;
-    ST factor = 1 + max_p*std::exp(-std::pow(d,2)/(2*std::pow(sigma,2)));
 
     switch (which) {
       case flag_u:
-        uv(ie,n0,0,ip,jp,lev)[vec] *= factor; break;
+        uv(ie,n0,0,ip,jp,lev)[vec] *= (1+p*scl_mid(ie,ip,jp,k)); break;
       case flag_v:
-        uv(ie,n0,1,ip,jp,lev)[vec] *= factor; break;
+        uv(ie,n0,1,ip,jp,lev)[vec] *= (1+p*scl_mid(ie,ip,jp,k)); break;
       case flag_uv:
-        uv(ie,n0,0,ip,jp,lev)[vec] *= factor; break;
-        uv(ie,n0,1,ip,jp,lev)[vec] *= factor; break;
+        uv(ie,n0,0,ip,jp,lev)[vec] *= (1+p*vec_mid(ie,0,ip,jp,k)); break;
+        uv(ie,n0,1,ip,jp,lev)[vec] *= (1+p*vec_mid(ie,1,ip,jp,k)); break;
       case flag_vth:
-        vth(ie,n0,ip,jp,lev)[vec] *= factor;  break;
+        vth(ie,n0,ip,jp,lev)[vec]  *= (1+p*scl_mid(ie,ip,jp,k)); break;
       case flag_dp:
-        dp(ie,n0,ip,jp,lev)[vec] *= factor;   break;
+        dp(ie,n0,ip,jp,lev)[vec]   *= (1+p*scl_mid(ie,ip,jp,k)); break;
       case flag_w:
-        w(ie,n0,ip,jp,lev)[vec] *= factor;    break;
+        w(ie,n0,ip,jp,lev)[vec]    *= (1+p*scl_int(ie,ip,jp,k)); break;
       case flag_phi:
-        phi(ie,n0,ip,jp,lev)[vec] *= factor;  break;
+        phi(ie,n0,ip,jp,lev)[vec]  *= (1+p*scl_int(ie,ip,jp,k)); break;
       case flag_qv:
-        qv(ie,n0,ip,jp,lev)[vec] *= factor;   break;
+        qv(ie,n0,ip,jp,lev)[vec]   *= (1+p*scl_mid(ie,ip,jp,k)); break;
       default:
         Kokkos::abort("Unsupported value for 'which' in get_state_var.\n");
     }
   };
-  Kokkos::parallel_for(p,copy);
+  Kokkos::parallel_for(policy,copy);
 }
 
 void perturb_state_var (const nb::str& name,
-                        const double lat0, const double lon0,
-                        const double p_max, const double sigma,
+                        const nb::ndarray<double>& delta,
+                        const double factor,
                         const nb::str& dtype)
 {
   std::string dtype_str(dtype.c_str());
 
   if (dtype_str=="real") {
-    perturb_state_var_impl<Real>(name,lat0,lon0,p_max,sigma);
+    perturb_state_var_impl<Real>(name,delta,factor);
   } else if (dtype_str=="dpfad") {
 #ifdef HOMMEXX_ENABLE_FAD_TYPES
-    perturb_state_var_impl<DpFadType>(name,lat0,lon0,p_max,sigma);
+    perturb_state_var_impl<DpFadType>(name,delta,factor);
 #else
     EKAT_ERROR_MSG("[pyhommexx] dpfad data type requires homme to be built with HOMMEXX_ENABLE_FAD_TYPES=ON.\n");
 #endif
