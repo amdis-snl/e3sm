@@ -12,6 +12,7 @@ namespace nb = nanobind;
 void init_session (const bool do_print_to_screen = true);
 void enable_scalar_type (const nb::str& dtype);
 void toggle_screen_output (const bool enabled);
+double get_phys_constant (const nb::str& name);
 void finalize();
 
 // Input parameters utilities

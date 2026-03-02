@@ -14,6 +14,7 @@ NB_MODULE (pyhommexx,m) {
         nb::arg("do_print_to_screen") = true);
   m.def("enable_scalar_type",&enable_scalar_type);
   m.def("toggle_screen_output",&toggle_screen_output);
+  m.def("get_phys_constant",&get_phys_constant);
   m.def("finalize",&finalize);
 
   // Input parameters utilities
