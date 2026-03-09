@@ -462,7 +462,7 @@ struct CaarFunctorImplST {
     };
 
     Kokkos::parallel_for(p4_mid,init_dx_mid);
-    Kokkos::parallel_for(p4_mid,init_dx_int);
+    Kokkos::parallel_for(p4_int,init_dx_int);
 
     // Run pre-exchange phase of CAAR
     run_pre_exchange(data);
