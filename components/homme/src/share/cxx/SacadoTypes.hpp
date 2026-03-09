@@ -33,6 +33,16 @@ auto ADValue(const Expr& e)
   return e.val();
 }
 
+template<typename T>
+struct DerivSz {
+  static constexpr int value = 0;
+};
+
+template<typename T, int N>
+struct DerivSz<SFadN<T,N>> {
+  static constexpr int value = N;
+};
+
 } // namespace Homme
 
 namespace ekat {
