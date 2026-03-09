@@ -1165,7 +1165,12 @@ public:
   ExecViewManaged<const Real * [2][2][NP][NP]>  m_d;
   ExecViewManaged<const Real * [2][2][NP][NP]>  m_dinv;
 
+#ifdef HOMMEXX_SPHERE_OP_ST_FACTORS
+  // For some Sacado unit tests, we use a multiplicative factor to Rearth as our "parameter".
   ST m_scale_factor_inv, m_laplacian_rigid_factor;
+#else
+  Real m_scale_factor_inv, m_laplacian_rigid_factor;
+#endif
 };
 
 using SphereOperators = SphereOperatorsST<ScalarValue>;
