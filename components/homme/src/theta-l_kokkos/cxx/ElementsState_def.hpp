@@ -330,7 +330,7 @@ void ElementsStateST<ST>::randomize_derivs(const int seed, const int itl)
     return;
   } else {
 
-    EKAT_REQUIRE_MSG (itl>=0 and itl<=NUM_TIME_LEVELS,
+    EKAT_REQUIRE_MSG (itl>=0 and itl<NUM_TIME_LEVELS,
         "Error! Invalid time level index (" + std::to_string(itl) + ")\n");
 
     constexpr int nder = DerivSz<ST>::value;
@@ -345,6 +345,11 @@ void ElementsStateST<ST>::randomize_derivs(const int seed, const int itl)
     std::mt19937_64 engine(seed);
     std::uniform_real_distribution<Real> pdf(-1.0,1.0);
     genRandArray(dv, engine, pdf);
+    genRandArray(dvth, engine, pdf);
+    genRandArray(ddp, engine, pdf);
+    genRandArray(dphi, engine, pdf);
+    genRandArray(dw, engine, pdf);
+    genRandArray(dps, engine, pdf);
 
     auto v = m_v;
     auto vth = m_vtheta_dp;
@@ -357,18 +362,19 @@ void ElementsStateST<ST>::randomize_derivs(const int seed, const int itl)
       int ivec = k % VECTOR_SIZE;
 
       v(ie,itl,0,igp,jgp,ilev)[ivec].fastAccessDx(ider) = dv(ie,0,igp,jgp,k,ider);
-      v(ie,itl,1,igp,jgp,ilev)[ivec].fastAccessDx(ider) = dv(ie,0,igp,jgp,k,ider);
+      v(ie,itl,1,igp,jgp,ilev)[ivec].fastAccessDx(ider) = dv(ie,1,igp,jgp,k,ider);
       vth(ie,itl,igp,jgp,ilev)[ivec].fastAccessDx(ider) = dvth(ie,igp,jgp,k,ider);
       dp(ie,itl,igp,jgp,ilev)[ivec].fastAccessDx (ider) = ddp(ie,igp,jgp,k,ider);
       phi(ie,itl,igp,jgp,ilev)[ivec].fastAccessDx(ider) = dphi(ie,igp,jgp,k,ider);
       w(ie,itl,igp,jgp,ilev)[ivec].fastAccessDx  (ider) = dw(ie,igp,jgp,k,ider);
 
-      if (k==NUM_PHYSICAL_LEV-1) {
+      if (k==0) {
+        // Handle last interface and ps only once (you could pick any k in the if above)
         int last_lev = NUM_PHYSICAL_LEV / VECTOR_SIZE;
         int last_vec = NUM_PHYSICAL_LEV % VECTOR_SIZE;
 
-        phi(ie,itl,igp,jgp,ilev)[ivec].fastAccessDx(ider) = dphi(ie,igp,jgp,NUM_PHYSICAL_LEV,ider);
-        w(ie,itl,igp,jgp,ilev)[ivec].fastAccessDx  (ider) = dw(ie,igp,jgp,NUM_PHYSICAL_LEV,ider);
+        phi(ie,itl,igp,jgp,last_lev)[last_vec].fastAccessDx(ider) = dphi(ie,igp,jgp,NUM_PHYSICAL_LEV,ider);
+        w(ie,itl,igp,jgp,last_lev)[last_vec].fastAccessDx  (ider) = dw(ie,igp,jgp,NUM_PHYSICAL_LEV,ider);
 
         ps(ie,itl,igp,jgp).fastAccessDx (ider) = dps(ie,igp,jgp,ider);
       }
