@@ -514,10 +514,16 @@ TEST_CASE("caar_dx_check") {
           for (int igp=0; igp<NP; ++igp) {
             for (int jgp=0; jgp<NP; ++jgp) {
               for (int k=0; k<NUM_PHYSICAL_LEV; ++k) {
+                CheckWithinTol (v_JV_h(ie,np1,0,igp,jgp,k), v_dp_h(ie,np1,0,igp,jgp,k).dx(0));
+                CheckWithinTol (v_JV_h(ie,np1,1,igp,jgp,k), v_dp_h(ie,np1,1,igp,jgp,k).dx(0));
+                CheckWithinTol (vth_JV_h(ie,np1,igp,jgp,k), vth_dp_h(ie,np1,igp,jgp,k).dx(0));
                 CheckWithinTol (dp_JV_h(ie,np1,igp,jgp,k), dp_dp_h(ie,np1,igp,jgp,k).dx(0));
                 CheckWithinTol (phi_JV_h(ie,np1,igp,jgp,k), phi_dp_h(ie,np1,igp,jgp,k).dx(0));
                 CheckWithinTol (w_JV_h(ie,np1,igp,jgp,k), w_dp_h(ie,np1,igp,jgp,k).dx(0));
               }
+              int k = NUM_PHYSICAL_LEV;
+              CheckWithinTol (phi_JV_h(ie,np1,igp,jgp,k), phi_dp_h(ie,np1,igp,jgp,k).dx(0));
+              CheckWithinTol (w_JV_h(ie,np1,igp,jgp,k), w_dp_h(ie,np1,igp,jgp,k).dx(0));
             }
           }
         }
