@@ -152,6 +152,8 @@ template<typename RST>
 std::enable_if_t<Sacado::IsFad<RST>::value>
 ElementsStateST<ST>::import_values_from_deriv (const ElementsStateST<RST>& rhs, int tl, int ider)
 {
+  EKAT_REQUIRE_MSG (ider>=0 and ider<DerivSz<RST>::value,
+      "[ElementsStateST::import_values_from_deriv] Error! Derivative index (" << ider << ") out of bounds.\n");
   auto lhs_v = ekat::scalarize(m_v);
   auto lhs_dp = ekat::scalarize(m_dp3d);
   auto lhs_phi = ekat::scalarize(m_phinh_i);
