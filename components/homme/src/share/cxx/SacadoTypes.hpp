@@ -2,6 +2,7 @@
 #define HOMMEXX_SACADO_TYPES_HPP
 
 #include "Hommexx_config.h"
+#include "Dimensions.hpp"
 
 #ifdef HOMMEXX_ENABLE_FAD_TYPES
 
@@ -20,6 +21,9 @@ using SFadN = Sacado::Fad::SFad<T,N>;
 
 constexpr int DpFadSize = HOMMEXX_DP_SFAD_SIZE;
 using DpFadType = SFadN<double,DpFadSize>;
+
+// The fad type for the deriv w.r.t. state vars of some functors
+using DxFadTypeCaar = SFadN<double,16*NP*NP>;
 
 template<typename T, int N>
 KOKKOS_INLINE_FUNCTION

@@ -16,6 +16,7 @@ template class ElementsDerivedStateST<Real>;
 
 #ifdef HOMMEXX_ENABLE_FAD_TYPES
 template class ElementsDerivedStateST<DpFadType>;
+template class ElementsDerivedStateST<DxFadTypeCaar>;
 #endif
 
 } // namespace Homme
