@@ -239,7 +239,9 @@ contains
     use geometry_interface_mod, only: cleanup_geometry_f90
     use parallel_mod, only: rrequest, srequest, status
 
-    call FreeEdgeBuffer(edge_g)
+    if (allocated(edge_g%buf)) then
+      call FreeEdgeBuffer(edge_g)
+    endif
     call cleanup_geometry_f90()
 
     ! Deallocate all module-scope variables, so the next iteration of catch2

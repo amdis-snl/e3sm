@@ -8,43 +8,43 @@
 #include "PhysicalConstants.hpp"
 
 #include "utilities/TestUtils.hpp"
-#include "utilities/SyncUtils.hpp"
-#include "utilities/ViewUtils.hpp"
 
 #include <ekat_string_utils.hpp>
 
 using namespace Homme;
 
+// NOTE on handling of Comm object in Context
+//
+// Catch runs these TEST_CASE blocks of code in an order that we don't control.
+// This is problematic for Context, which is a static singleton.
+// We cannot call 'create' unless we are sure the object is not already stored
+// in the context. One solution is to call 'create_if_not_there', but that's not what
+// happens in mpi_cxx_f90_interface, which is called by the geometry_interface
+// fortran module.
+// Two solutions:
+//  - cleaning up the context at the end of TEST_CASE: this would also delete
+//    the comm object in the context, so you have to re-create it, to leave
+//    the Context exactly how you found it..
+//  - change mpi_cxx_f90_interface, to create the Connectivity only if not
+//    already present.
+//
+// Among the two, the former seems cleaner, since it does not affect the
+// src folder of Homme, only the test one. So I'm going with that.
+// More precisely, I'm getting a copy of the existing Comm from the context,
+// and reset it back in it after the cleanup
+
 extern "C" {
+// Even if we don't run the f90 code in this unit test, it is easier to
+// init from f90, which takes care of creating the grid and decomposing it
 void init_f90 (const int& ne,
                const Real* hyai_ptr, const Real* hybi_ptr,
                const Real* hyam_ptr, const Real* hybm_ptr,
                Real* dvv, Real* mp,
                const Real& ps0);
+void cleanup_f90();
 }
 
 TEST_CASE("caar_dp_check") {
-
-  // Catch runs these blocks of code multiple times, namely once per each
-  // session within each test case. This is problematic for Context, which
-  // is a static singleton.
-  // We cannot call 'create' unless we are sure the object is not already stored
-  // in the context. One solution is to call 'create_if_not_there', but that's not what
-  // happens in mpi_cxx_f90_interface, which is called by the geometry_interface
-  // fortran module.
-  // Two solutions:
-  //  - cleaning up the context at the end of TEST_CASE: this would also delete
-  //    the comm object in the context, so you have to re-create it.
-  //    Notice, however, that the comm would *already be there* when this block
-  //    of code is executed for the first time (is created in tester.cpp),
-  //    so you need to check if it's there first.
-  //  - change mpi_cxx_f90_interface, to create the Connectivity only if not
-  //    already present.
-  //
-  // Among the two, the former seems cleaner, since it does not affect the
-  // src folder of Homme, only the test one. So I'm going with that.
-  // More precisely, I'm getting a copy of the existing Comm from the context,
-  // and reset it back in it after the cleanup
 
   constexpr int ne = 2;
   const auto A = Kokkos::ALL();
@@ -133,30 +133,6 @@ TEST_CASE("caar_dp_check") {
   DpFadType rearth0 = PhysicalConstants::rearth0;
   rearth0.fastAccessDx(0) = PhysicalConstants::rearth0;
   sphop_dp.m_scale_factor_inv = 1/rearth0;
-
-  // Lambda to compute min of dp3d, to give meaningful initial value to derived.m_eta_dot_dpdn
-  auto dp3d_min = [] (auto dp3d) -> Real {
-    Real the_min = std::numeric_limits<Real>::max();
-    for (int ie = 0; ie < dp3d.extent_int(0); ++ie) {
-      // Because this constraint is difficult to satisfy for all of the tensors,
-      // incrementally generate the view
-      for (int tl = 0; tl < NUM_TIME_LEVELS; ++tl) {
-        for (int igp = 0; igp < NP; ++igp) {
-          for (int jgp = 0; jgp < NP; ++jgp) {
-            auto pt_dp3d = Homme::subview(dp3d, ie, tl, igp, jgp);
-            auto h_dp3d = Kokkos::create_mirror_view(pt_dp3d);
-            Kokkos::deep_copy(h_dp3d,pt_dp3d);
-            for (int ilev=0; ilev<NUM_LEV; ++ilev) {
-              for (int iv=0; iv<VECTOR_SIZE; ++iv) {
-                the_min = std::min(the_min,ADValue(h_dp3d(ilev)[iv]));
-              }
-            }
-          }
-        }
-      }
-    }
-    return the_min;
-  };
 
   auto& comm = c.get<Comm>();
   const int rank = comm.rank();
@@ -262,12 +238,11 @@ TEST_CASE("caar_dp_check") {
             auto linf = KOKKOS_LAMBDA(int ie, int icmp, int ip, int jp, int ilev, Real& accum) {
               Real dvdp_fd = (vh(ie,np1,icmp,ip,jp,ilev) - v0(ie,np1,icmp,ip,jp,ilev)) / hval;
               Real dvdp_ex = dvdp(ie,np1,icmp,ip,jp,ilev).fastAccessDx(0);
-              Real lcl_err = std::fabs(dvdp_fd-dvdp_ex);
-              if (lcl_err>accum) {
-                accum = lcl_err;
-              }
+              Real lcl_err = (dvdp_fd-dvdp_ex)*(dvdp_fd-dvdp_ex);
+              accum += lcl_err;
             };
-            Kokkos::parallel_reduce(policy,linf,Kokkos::Max<Real,ExecSpace>(eh.emplace_back(0)));
+            Kokkos::parallel_reduce(policy,linf,eh.emplace_back(0));
+            eh.back() = std::sqrt(eh.back());
           }
 
           // Compute and print error and order of conv
@@ -296,8 +271,10 @@ TEST_CASE("caar_dp_check") {
   }
 
   // Cleanup (see comment at the top for explanation of the treatment of Comm)
-  auto old_comm = c.get_ptr<Comm>();
+  auto old_comm = c.get<Comm>();
   c.finalize_singleton();
   auto& new_comm = c.create<Comm>();
-  new_comm = *old_comm;
+  new_comm = old_comm;
+
+  cleanup_f90();
 }
