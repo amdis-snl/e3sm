@@ -278,3 +278,258 @@ TEST_CASE("caar_dp_check") {
 
   cleanup_f90();
 }
+
+// Compute Dx/Dp two ways, and compare:
+//  - Use ST=DpFadType to compute Dx_new/Dp from Dx_old/Dp
+//  - Use product rule: Dx_new/Dp = Dx_new/Dx_old * Dx_old/Dp
+TEST_CASE("caar_dx_check") {
+  constexpr int ne = 2;
+  const auto A = Kokkos::ALL();
+  using DxFadType = DxFadTypeCaar;
+
+  // The random numbers generator to init the state
+  std::random_device rd;
+  using rngAlg = std::mt19937_64;
+  const unsigned int catchRngSeed = Catch::rngSeed();
+  const unsigned int seed = catchRngSeed==0 ? rd() : catchRngSeed;
+  std::cout << "seed: " << seed << (catchRngSeed==0 ? " (catch rng seed was 0)\n" : "\n");
+  rngAlg engine(seed);
+  using RPDF = std::uniform_real_distribution<Real>;
+
+  // Use stuff from Context, to increase similarity with actual runs
+  auto& c = Context::singleton();
+
+  // Init parameters
+  auto& params = c.create<SimulationParams>();
+  params.dp3d_thresh = 0; // don't let the limiter do anything, for now
+  params.vtheta_thresh = 0; // don't let the limiter do anything, for now
+  params.params_set = true;
+  params.rsplit = 3;
+
+  // Create and init hvcoord and ref_elem
+  auto& hvcoord = c.create<HybridVCoord>();
+  auto& ref_FE  = c.create<ReferenceElement>();
+  hvcoord.random_init(seed);
+
+  auto hyai = Kokkos::create_mirror_view(hvcoord.hybrid_ai);
+  auto hybi = Kokkos::create_mirror_view(hvcoord.hybrid_bi);
+  auto hyam = Kokkos::create_mirror_view(hvcoord.hybrid_am);
+  auto hybm = Kokkos::create_mirror_view(hvcoord.hybrid_bm);
+  Kokkos::deep_copy(hyai,hvcoord.hybrid_ai);
+  Kokkos::deep_copy(hybi,hvcoord.hybrid_bi);
+  Kokkos::deep_copy(hyam,hvcoord.hybrid_am);
+  Kokkos::deep_copy(hybm,hvcoord.hybrid_bm);
+  HostViewManaged<Real[NUM_PHYSICAL_LEV]> hyam_r(""),hybm_r("");
+  for (int i=0;i<NUM_PHYSICAL_LEV;++i) {
+    int ilev = i / VECTOR_SIZE;
+    int ivec = i % VECTOR_SIZE;
+    hyam_r(i) = ADValue(hyam(ilev)[ivec]);
+    hybm_r(i) = ADValue(hybm(ilev)[ivec]);
+  }
+
+  std::vector<Real> dvv(NP*NP);
+  std::vector<Real> mp(NP*NP);
+
+  init_f90(ne,hyai.data(),hybi.data(),hyam_r.data(),hybm_r.data(),dvv.data(),mp.data(),hvcoord.ps0);
+
+  ref_FE.init_mass(mp.data());
+  ref_FE.init_deriv(dvv.data());
+
+  const int num_elems = c.get<Connectivity>().get_num_local_elements();
+  const auto max_pressure = 1000.0 + hvcoord.ps0; // This ensures max_p > ps0
+
+  // Create elements with Real scalar type
+  auto& elems = c.create<ElementsST<Real>>();
+  elems.init(num_elems,false,true,PhysicalConstants::rearth0);
+  auto& geo = elems.m_geometry;
+  geo.randomize(seed);
+
+  // Create elements with DpFadType scalar type
+  auto& elems_dp = c.create<ElementsST<DpFadType>>();
+  elems_dp.init(num_elems,false,true,PhysicalConstants::rearth0);
+  elems_dp.m_geometry = geo; // Use same views for geometry
+
+  // Create elements with DxFadType scalar type
+  auto& elems_dx = c.create<ElementsST<DxFadType>>();
+  elems_dx.init(num_elems,false,true,PhysicalConstants::rearth0);
+  elems_dx.m_geometry = geo; // Use same views for geometry
+
+  // Get or create and init other structures needed
+  auto& bm = c.create<MpiBuffersManager>();
+  auto& sphop = c.create<SphereOperatorsST<Real>>();
+  auto& sphop_dp = c.create<SphereOperatorsST<DpFadType>>();
+  auto& sphop_dx = c.create<SphereOperatorsST<DxFadType>>();
+  auto& tracers = c.create<TracersST<Real>>();
+  auto& tracers_dp = c.create<TracersST<DpFadType>>();
+  auto& tracers_dx = c.create<TracersST<DxFadType>>();
+
+  // The Caar functor also runs the limiter functor (bad design, imho)
+  auto& limiter = c.create<LimiterFunctorST<Real>>(elems,hvcoord,params);
+  auto& limiter_dp = c.create<LimiterFunctorST<DpFadType>>(elems_dp,hvcoord,params);
+  auto& limiter_dx = c.create<LimiterFunctorST<DxFadType>>(elems_dx,hvcoord,params);
+  limiter.m_verbose = false;
+  limiter_dp.m_verbose = false;
+  limiter_dx.m_verbose = false;
+
+  sphop_dx.setup(geo,ref_FE);
+  sphop_dp.setup(geo,ref_FE);
+  sphop.setup(geo,ref_FE);
+  if (!bm.is_connectivity_set ()) {
+    bm.set_connectivity(c.get_ptr<Connectivity>());
+  }
+
+  auto& comm = c.get<Comm>();
+  const int rank = comm.rank();
+
+  auto CheckWithinTol = [&](Real x, Real expected) {
+    constexpr auto eps = std::numeric_limits<Real>::epsilon();
+    REQUIRE_THAT (x, Catch::WithinRel(expected,eps*1e2) || Catch::WithinAbs(expected,eps*1e5));
+    // REQUIRE_THAT(x, Catch::WithinRel(expected,eps*1e2));
+  };
+
+  for (const bool hydrostatic : {true,false}) {
+    if (comm.root()) {
+      std::cout << " -> " << (hydrostatic ? "Hydrostatic\n" : "Non-Hydrostatic\n");
+    }
+    params.theta_hydrostatic_mode = hydrostatic;
+    limiter.m_theta_hydrostatic_mode = hydrostatic;
+    limiter_dp.m_theta_hydrostatic_mode = hydrostatic;
+    auto adv_forms = {AdvectionForm::Conservative, AdvectionForm::NonConservative};
+    for (const AdvectionForm adv_form : adv_forms) {
+      if (comm.root()) {
+        std::cout << "  -> " << (adv_form==AdvectionForm::Conservative ? "Conservative" : "Non-Conservative") << " theta advection\n";
+      }
+      for (const int pgrad : {1,0}) {
+        if (comm.root()) {
+          std::cout << "    -> pgrad_correction = " << pgrad << "\n";
+        }
+        // Set the parameters
+        params.theta_hydrostatic_mode = hydrostatic;
+        params.theta_adv_form = adv_form;
+        params.pgrad_correction = (pgrad != 0);
+
+        // Generate RK stage data
+        Real dt = RPDF(1.0,10.0)(engine);
+        Real eta_ave_w = RPDF(0.1,1.0)(engine);
+        Real scale1 = RPDF(1.0,2.0)(engine);
+        Real scale2 = RPDF(1.0,2.0)(engine);
+        Real scale3 = RPDF(1.0,2.0)(engine);
+
+        // Sync scalars across ranks (only np1 is *really* necessary, but might as well...)
+        auto mpi_comm = Context::singleton().get<Comm>().mpi_comm();
+        MPI_Bcast(&dt,1,MPI_DOUBLE,0,mpi_comm);
+        MPI_Bcast(&scale1,1,MPI_DOUBLE,0,mpi_comm);
+        MPI_Bcast(&scale2,1,MPI_DOUBLE,0,mpi_comm);
+        MPI_Bcast(&scale3,1,MPI_DOUBLE,0,mpi_comm);
+        MPI_Bcast(&eta_ave_w,1,MPI_DOUBLE,0,mpi_comm);
+
+        const int  nm1 = 0;
+        const int  n0  = 1;
+        const int  np1 = 2;
+
+        RKStageData data (nm1, n0, np1, 0, dt, eta_ave_w, scale1, scale2, scale3);
+
+        // Randomize state, set derived stuff to 0
+        elems_dp.m_state.randomize(seed,max_pressure,hvcoord.ps0,hvcoord.hybrid_ai0,geo.m_phis);
+
+        // We initialize also dp derivs of elems_dp at slice tl.n0 with random values
+        elems_dp.m_state.randomize_derivs(seed,n0);
+
+        // Extract derivs into a non-fad type for the Dp = Dx*Dp_old test
+        Kokkos::deep_copy(elems.m_state.m_v,0);
+        Kokkos::deep_copy(elems.m_state.m_vtheta_dp,0);
+        Kokkos::deep_copy(elems.m_state.m_dp3d,0);
+        Kokkos::deep_copy(elems.m_state.m_phinh_i,0);
+        Kokkos::deep_copy(elems.m_state.m_w_i,0);
+        elems.m_state.import_values_from_deriv(elems_dp.m_state,n0,0);
+
+        // Init d/dx state
+        elems_dx.m_state.import_values(elems_dp.m_state,n0);
+        elems_dx.m_state.import_values(elems_dp.m_state,nm1);
+
+        Kokkos::deep_copy(elems_dp.m_derived.m_vn0,DpFadType(0));
+        Kokkos::deep_copy(elems_dp.m_derived.m_omega_p,DpFadType(0));
+        Kokkos::deep_copy(elems_dx.m_derived.m_vn0,DxFadType(0));
+        Kokkos::deep_copy(elems_dx.m_derived.m_omega_p,DxFadType(0));
+
+        // Create the Caar functors
+        CaarFunctorImplST<DpFadType> caar_dp(elems_dp,tracers_dp,ref_FE,hvcoord,sphop_dp,params);
+        CaarFunctorImplST<DxFadType> caar_dx(elems_dx,tracers_dx,ref_FE,hvcoord,sphop_dx,params);
+
+        FunctorsBuffersManager fbm;
+        fbm.request_size( caar_dp.requested_buffer_size() );
+        fbm.request_size( caar_dx.requested_buffer_size() );
+        fbm.request_size( limiter_dp.requested_buffer_size() );
+        fbm.request_size( limiter_dx.requested_buffer_size() );
+        fbm.allocate();
+        caar_dp.init_buffers(fbm);
+        caar_dx.init_buffers(fbm);
+        limiter_dp.init_buffers(fbm);
+        limiter_dx.init_buffers(fbm);
+        caar_dp.init_boundary_exchanges(c.get_ptr<MpiBuffersManager>());
+        caar_dx.init_boundary_exchanges(c.get_ptr<MpiBuffersManager>());
+
+        // RUN caar for ST=DpFadType
+        caar_dp.run_pre_exchange(data);
+
+        // RUN caar's J*V functor for ST=DxFadType
+        caar_dx.run_JV(data,elems.m_state);
+
+        // Check that dXnew/dp = dXnew/dXold * dXold/dp. dXnew/dp is in elems_dp.m_state at slice np1
+        // while dXnew/dXold is in elems_dx.m_state at slice np1
+
+        auto v_dp   = ekat::scalarize(elems_dp.m_state.m_v);
+        auto vth_dp = ekat::scalarize(elems_dp.m_state.m_vtheta_dp);
+        auto dp_dp  = ekat::scalarize(elems_dp.m_state.m_dp3d);
+        auto phi_dp = ekat::scalarize(elems_dp.m_state.m_phinh_i);
+        auto w_dp   = ekat::scalarize(elems_dp.m_state.m_w_i);
+        auto v_dp_h   = Kokkos::create_mirror_view(v_dp);
+        auto vth_dp_h = Kokkos::create_mirror_view(vth_dp);
+        auto dp_dp_h  = Kokkos::create_mirror_view(dp_dp);
+        auto phi_dp_h = Kokkos::create_mirror_view(phi_dp);
+        auto w_dp_h   = Kokkos::create_mirror_view(w_dp);
+        Kokkos::deep_copy(v_dp_h,   v_dp);
+        Kokkos::deep_copy(vth_dp_h, vth_dp);
+        Kokkos::deep_copy(dp_dp_h,  dp_dp);
+        Kokkos::deep_copy(phi_dp_h, phi_dp);
+        Kokkos::deep_copy(w_dp_h,   w_dp);
+
+        auto v_JV   = ekat::scalarize(elems.m_state.m_v);
+        auto vth_JV = ekat::scalarize(elems.m_state.m_vtheta_dp);
+        auto dp_JV  = ekat::scalarize(elems.m_state.m_dp3d);
+        auto phi_JV = ekat::scalarize(elems.m_state.m_phinh_i);
+        auto w_JV   = ekat::scalarize(elems.m_state.m_w_i);
+        auto v_JV_h   = Kokkos::create_mirror_view(v_JV);
+        auto vth_JV_h = Kokkos::create_mirror_view(vth_JV);
+        auto dp_JV_h  = Kokkos::create_mirror_view(dp_JV);
+        auto phi_JV_h = Kokkos::create_mirror_view(phi_JV);
+        auto w_JV_h   = Kokkos::create_mirror_view(w_JV);
+        Kokkos::deep_copy(v_JV_h,   v_JV);
+        Kokkos::deep_copy(vth_JV_h, vth_JV);
+        Kokkos::deep_copy(dp_JV_h,  dp_JV);
+        Kokkos::deep_copy(phi_JV_h, phi_JV);
+        Kokkos::deep_copy(w_JV_h,   w_JV);
+
+        for (int ie=0; ie<num_elems; ++ie) {
+          for (int igp=0; igp<NP; ++igp) {
+            for (int jgp=0; jgp<NP; ++jgp) {
+              for (int k=0; k<NUM_PHYSICAL_LEV; ++k) {
+                CheckWithinTol (dp_JV_h(ie,np1,igp,jgp,k), dp_dp_h(ie,np1,igp,jgp,k).dx(0));
+                CheckWithinTol (phi_JV_h(ie,np1,igp,jgp,k), phi_dp_h(ie,np1,igp,jgp,k).dx(0));
+                CheckWithinTol (w_JV_h(ie,np1,igp,jgp,k), w_dp_h(ie,np1,igp,jgp,k).dx(0));
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // Cleanup (see comment at the top for explanation of the treatment of Comm)
+  auto old_comm = c.get<Comm>();
+  c.finalize_singleton();
+  auto& new_comm = c.create<Comm>();
+  new_comm = old_comm;
+
+  cleanup_f90();
+}
