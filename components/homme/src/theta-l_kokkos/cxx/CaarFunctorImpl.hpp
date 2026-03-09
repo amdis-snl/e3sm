@@ -655,7 +655,7 @@ struct CaarFunctorImplST {
 
             if (k>1) {
               // Dependency on k-2 quantities
-              l_w_new += pt_Jw[phi_prev2] * l_w_old  (mpt,npt,k-2); // dw(k)/dphi(k-2)
+              l_w_new += pt_Jw[phi_prev2] * l_phi_old  (mpt,npt,k-2); // dw(k)/dphi(k-2)
             }
           }
         }
