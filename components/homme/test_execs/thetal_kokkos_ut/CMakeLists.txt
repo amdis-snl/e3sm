@@ -375,4 +375,5 @@ EkatCreateUnitTest ("caar_sacado_ut"
   EXCLUDE_MAIN_CPP
   COMPILER_CXX_DEFS HOMMEXX_SPHERE_OP_ST_FACTORS
   LIBS thetal_kokkos_ut_lib homme_catch_main
+  LABELS AMDIS
 )
