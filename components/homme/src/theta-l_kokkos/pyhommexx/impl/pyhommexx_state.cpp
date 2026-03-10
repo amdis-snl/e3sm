@@ -612,8 +612,11 @@ void copy_state (const nb::str& from_dtype, const nb::str& to_dtype)
 #ifdef HOMMEXX_ENABLE_FAD_TYPES
       auto& to_st = c.get<ElementsStateST<DpFadType>>();
       auto& to_tr = c.get<TracersST<DpFadType>>();
+      to_st.import_values(from_st,tl.nm1);
       to_st.import_values(from_st,tl.n0);
+      to_st.import_values(from_st,tl.np1);
       to_tr.import_values(from_tr,tl.n0_qdp);
+      to_tr.import_values(from_tr,tl.np1_qdp);
 #else
       EKAT_ERROR_MSG("[pyhommexx] dpfad data type requires homme to be built with HOMMEXX_ENABLE_FAD_TYPES=ON.\n");
 #endif
@@ -630,8 +633,11 @@ void copy_state (const nb::str& from_dtype, const nb::str& to_dtype)
     if (to_dtype_str=="real") {
       auto& to_st = c.get<ElementsStateST<Real>>();
       auto& to_tr = c.get<TracersST<Real>>();
+      to_st.import_values(from_st,tl.nm1);
       to_st.import_values(from_st,tl.n0);
+      to_st.import_values(from_st,tl.np1);
       to_tr.import_values(from_tr,tl.n0_qdp);
+      to_tr.import_values(from_tr,tl.np1_qdp);
     } else if (to_dtype_str=="dpfad") {
       return;
     } else {
