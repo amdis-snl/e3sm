@@ -70,7 +70,7 @@ void get_state_var_impl (nb::ndarray<double>& arr, const nb::str& name, const in
 
   // nanobind has no operator== with const char[]
   std::string n (name.c_str());
-  if (n=="u" or n=="v" or n=="dp" or n=="qv" or n=="vthetadp") {
+  if (n=="u" or n=="v" or n=="dp" or n=="qv" or n=="vth") {
     check_shape(arr,scalar3dm_shape);
   } else if (n=="uv") {
     check_shape(arr,vector3dm_shape);
@@ -196,7 +196,7 @@ void set_state_var_impl (const nb::ndarray<double>& arr, const nb::str& name, co
 
   // nanobind has no operator== with const char[]
   std::string n (name.c_str());
-  if (n=="u" or n=="v" or n=="dp" or n=="qv" or n=="vtheta") {
+  if (n=="u" or n=="v" or n=="dp" or n=="qv" or n=="vth") {
     check_shape(arr,scalar3dm_shape);
   } else if (n=="uv") {
     check_shape(arr,vector3dm_shape);
