@@ -905,8 +905,10 @@ struct CaarFunctorImplST {
       }
 
       // Compute phi at midpoints
-      ColumnOps::compute_midpoint_values(kv,Homme::subview(m_state.m_phinh_i,kv.ie,m_data.n0,igp,jgp),
-                                            Homme::subview(m_buffers.phi,kv.team_idx,igp,jgp));
+      if (m_rsplit==0) {
+        ColumnOps::compute_midpoint_values(kv,Homme::subview(m_state.m_phinh_i,kv.ie,m_data.n0,igp,jgp),
+                                              Homme::subview(m_buffers.phi,kv.team_idx,igp,jgp));
+      }
     });
     kv.team_barrier();
     return ok;
