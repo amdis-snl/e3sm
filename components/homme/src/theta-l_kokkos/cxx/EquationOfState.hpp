@@ -143,14 +143,18 @@ public:
 
       // Boundaries: delta(x) = 2*(x_m(last)-x_i(last)).
       // Top: pnh_i = pi_i = hyai(0)*ps0.
-      // Bottom: approximate with hydrostatic, so that dpnh_dp_i=1
-      // NOTE: we could just do dphn_dp_i(nlevp)=1 (exact arith), but f90 spells out the math,
-      //       which is not bfb the same in finite precision
       dpnh_dp_i(0)[0] = 2*(pnh(0)[0] - m_hvcoord.hybrid_ai(0)*m_hvcoord.ps0)/dp_i(0)[0];
-      const auto pnh_last = pnh(LAST_MID_PACK)[LAST_MID_PACK_END];
-      const auto dp_last = dp_i(LAST_INT_PACK)[LAST_INT_PACK_END];
-      const ST pnh_i_last = pnh_last + dp_last/2;
-      dpnh_dp_i(LAST_INT_PACK)[LAST_INT_PACK_END] = 2*(pnh_i_last - pnh_last)/dp_last;
+
+      // Bottom: approximate with hydrostatic, so that dpnh_dp_i=1
+      // NOTE: Here we hard-code dpnh_dp_i==1 at the surface, but the true formula should be
+      //  dpnh_dp_i(nlevp) = 2*(pnh_i(nlevp) - pnh(nlev)) / dp_i(nlevp)
+      // where pnh_i(nlevp) must be extrapolated from pnh, for instance as pnh_i(nlevp)=pnh(nlev).
+      // This extrapolation is what leads dpnh_dp_i(nlevp)==1, but a different b.c/extrap would not.
+      // const auto pnh_last = pnh(LAST_MID_PACK)[LAST_MID_PACK_END];
+      // const auto dp_last = dp_i(LAST_INT_PACK)[LAST_INT_PACK_END];
+      // const ST pnh_i_last = pnh_last + dp_last/2;
+      // dpnh_dp_i(LAST_INT_PACK)[LAST_INT_PACK_END] = 2*(pnh_i_last - pnh_last)/dp_last;
+      dpnh_dp_i(LAST_INT_PACK)[LAST_INT_PACK_END] = 1;
     }
   }
 
