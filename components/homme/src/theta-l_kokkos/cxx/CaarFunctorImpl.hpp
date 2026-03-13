@@ -397,7 +397,7 @@ struct CaarFunctorImplST {
     // [u_prev, u_curr, v_prev, v_curr,
     //  vth_prev, vth_curr, vth_next,
     //  dp_prev, dp_curr, dp_next,
-    //  phi_prev2, phi_prev, phi_curr, phi_next,
+    //  phi_prev, phi_curr, phi_next, phi_next2,
     //  w_curr, w_next]
     // So the stencil_sz is 16. To compress columns, we interpret the derivs as follows. Let
     //  - kmN_M = (k - N) % M (which is computed via (k+M-N) % M)
@@ -407,7 +407,7 @@ struct CaarFunctorImplST {
     // [u_km1_2, u_k0_2, v_km1_2, v_k0_2,
     //  vth_km1_3, vth_k0_3, vth_kp1_3,
     //  dp_km1_3, dp_k0_3, dp_kp1_3,
-    //  phi_km2_4, phi_km1_3, phi_k0_4, phi_kp1_4,
+    //  phi_km1_3, phi_k0_4, phi_kp1_4, phi_kp2_4,
     //  w_k0_2, w_kp1_2]
     constexpr int stencil_sz = 16;
 
@@ -431,7 +431,7 @@ struct CaarFunctorImplST {
 
     int n0 = data.n0;
     auto init_dx_mid = KOKKOS_LAMBDA (int ie, int ip, int jp, int k) {
-      int pt_offset = ip*NP*16 + jp*16;
+      int pt_offset = ip*NP*stencil_sz + jp*stencil_sz;
 
       auto& dudx   = dvdx_v  (ie,n0,0,ip,jp,k);
       auto& dvdx   = dvdx_v  (ie,n0,1,ip,jp,k);
@@ -449,10 +449,10 @@ struct CaarFunctorImplST {
       ddpdx.fastAccessDx  (pt_offset + offset_dp  + k%3) = 1;
     };
     auto init_dx_int = KOKKOS_LAMBDA (int ie, int ip, int jp, int k) {
-      int pt_offset = ip*NP*16 + jp*16;
+      int pt_offset = ip*NP*stencil_sz + jp*stencil_sz;
 
-      auto& dphidx = dphidx_v(ie,n0,  ip,jp,k);
-      auto& dwdx   = dwdx_v  (ie,n0,  ip,jp,k);
+      auto& dphidx = dphidx_v(ie,n0,ip,jp,k);
+      auto& dwdx   = dwdx_v  (ie,n0,ip,jp,k);
 
       dphidx.zero();
       dwdx.zero();
@@ -476,6 +476,8 @@ struct CaarFunctorImplST {
     auto l_phi = ekat::scalarize(adj_state.m_phinh_i);
     auto l_w = ekat::scalarize(adj_state.m_w_i);
     
+    constexpr int last_mid = NUM_PHYSICAL_LEV-1;
+    constexpr int last_mid_m1 = NUM_PHYSICAL_LEV-2;
     auto prod_rule_mid = KOKKOS_LAMBDA (const int ie, const int ipt, const int jpt, const int k) {
       const auto& l_u_old   = Homme::subview(l_V,ie,n0,0);
       const auto& l_v_old   = Homme::subview(l_V,ie,n0,1);
@@ -513,10 +515,10 @@ struct CaarFunctorImplST {
       int dp_prev   = offset_dp  + (k+3-1) % 3;
       int dp_curr   = offset_dp  + k % 3;
       int dp_next   = offset_dp  + (k+1) % 3;
-      int phi_prev2 = offset_phi + (k+4-2) % 4;
       int phi_prev  = offset_phi + (k+4-1) % 4;
       int phi_curr  = offset_phi + k % 4;
-      int phi_next  = offset_phi +(k+1) % 4;
+      int phi_next  = offset_phi + (k+1) % 4;
+      int phi_next2 = offset_phi + (k+2) % 4;
       int w_curr    = offset_w   + k % 2;
       int w_next    = offset_w   + (k+1) % 2;
 
@@ -562,33 +564,28 @@ struct CaarFunctorImplST {
             l_v_new += pt_Jv[vth_prev] * l_vth_old(mpt,npt,k-1)  // dv(k)/dvth(k-1)
                      + pt_Jv[dp_prev]  * l_dp_old (mpt,npt,k-1)  // dv(k)/ddp(k-1)
                      + pt_Jv[phi_prev] * l_phi_old(mpt,npt,k-1); // dv(k)/dphi(k-1)
-
-            if (k>1) {
-              // Dependency on k-2 quantities
-              l_u_new += pt_Ju[phi_prev2] * l_phi_old(mpt,npt,k-2); // du(k)/dphi(k-2)
-
-              l_v_new += pt_Jv[phi_prev2] * l_phi_old(mpt,npt,k-2); // dv(k)/dphi(k-2)
-            }
           }
 
           // Dependencies on k+1 quantities
-          if (k<NUM_PHYSICAL_LEV-1) {
-            l_u_new += pt_Ju[vth_next] * l_vth_old(mpt,npt,k+1); // du(k)/dvth(k+1)
-                     + pt_Ju[dp_next]  * l_dp_old (mpt,npt,k+1); // du(k)/ddp(k+1)
-                     + pt_Ju[phi_next] * l_phi_old(mpt,npt,k+1); // du(k)/dphi(k+1)
+          l_u_new += pt_Ju[phi_next] * l_phi_old(mpt,npt,k+1)  // du(k)/dphi(k+1)
+                   + pt_Ju[w_next]   * l_w_old  (mpt,npt,k+1); // du(k)/dw(k+1)
 
-            l_v_new += pt_Jv[vth_next] * l_vth_old(mpt,npt,k+1); // dv(k)/dvth(k+1)
-                     + pt_Jv[dp_next]  * l_dp_old (mpt,npt,k+1); // dv(k)/ddp(k+1)
-                     + pt_Jv[phi_next] * l_phi_old(mpt,npt,k+1); // dv(k)/dphi(k+1)
-          } else {
-            l_u_new += pt_Ju[phi_next] * l_phi_old(mpt,npt,k+1); // du(k)/dphi(k+1)
+          l_v_new += pt_Jv[phi_next] * l_phi_old(mpt,npt,k+1)  // dv(k)/dphi(k+1)
+                   + pt_Jv[w_next]   * l_w_old  (mpt,npt,k+1); // dv(k)/dw(k+1)
+          if (k<last_mid) {
+            l_u_new += pt_Ju[vth_next]  * l_vth_old(mpt,npt,k+1)  // du(k)/dvth(k+1)
+                     + pt_Ju[dp_next]   * l_dp_old (mpt,npt,k+1)  // du(k)/ddp(k+1)
+                     + pt_Ju[phi_next2] * l_phi_old(mpt,npt,k+2); // du(k)/dphi(k+2)
 
-            l_v_new += pt_Jv[phi_next] * l_phi_old(mpt,npt,k+1); // dv(k)/dphi(k+1)
+            l_v_new += pt_Jv[vth_next]  * l_vth_old(mpt,npt,k+1)  // dv(k)/dvth(k+1)
+                     + pt_Jv[dp_next]   * l_dp_old (mpt,npt,k+1)  // dv(k)/ddp(k+1)
+                     + pt_Jv[phi_next2] * l_phi_old(mpt,npt,k+2); // dv(k)/dphi(k+2)
           }
         }
       }
     };
 
+    constexpr int last_int = NUM_INTERFACE_LEV-1;
     auto prod_rule_int = KOKKOS_LAMBDA (const int ie, const int ipt, const int jpt, const int k) {
       const auto& l_u_old   = Homme::subview(l_V,ie,n0,0);
       const auto& l_v_old   = Homme::subview(l_V,ie,n0,1);
@@ -616,9 +613,9 @@ struct CaarFunctorImplST {
       int vth_curr  = offset_vth +k % 3;
       int dp_prev   = offset_dp +(k+3-1) % 3;
       int dp_curr   = offset_dp +k % 3;
-      int phi_prev2 = offset_phi +(k+4-2) % 4;
       int phi_prev  = offset_phi +(k+4-1) % 4;
       int phi_curr  = offset_phi +k % 4;
+      int phi_next  = offset_phi +(k+1) % 4;
       int w_curr    = offset_w + k % 2;
 
       for (int mpt=0; mpt<NP; ++mpt) {
@@ -632,7 +629,8 @@ struct CaarFunctorImplST {
           l_phi_new += pt_Jphi[u_curr]   * l_u_old  (mpt,npt,k)  // dphi(k)/du(k)
                      + pt_Jphi[v_curr]   * l_v_old  (mpt,npt,k)  // dphi(k)/dv(k)
                      + pt_Jphi[dp_curr]  * l_dp_old (mpt,npt,k)  // dphi(k)/ddp(k)
-                     + pt_Jphi[phi_curr] * l_phi_old(mpt,npt,k); // dphi(k)/dphi(k)
+                     + pt_Jphi[phi_curr] * l_phi_old(mpt,npt,k)  // dphi(k)/dphi(k)
+                     + pt_Jphi[w_curr]   * l_w_old  (mpt,npt,k); // dphi(k)/dw(k)
 
           l_w_new += pt_Jw[u_curr]   * l_u_old  (mpt,npt,k)  // dw(k)/du(k)
                    + pt_Jw[v_curr]   * l_v_old  (mpt,npt,k)  // dw(k)/dv(k)
@@ -647,16 +645,15 @@ struct CaarFunctorImplST {
                        + pt_Jphi[v_prev]  * l_v_old  (mpt,npt,k-1)  // dphi(k)/dv(k-1)
                        + pt_Jphi[dp_prev] * l_dp_old (mpt,npt,k-1); // dphi(k)/ddp(k-1)
 
-            l_w_new += pt_Jw[u_prev]    * l_u_old   (mpt,npt,k-1)  // dw(k)/du(k-1)
-                     + pt_Jw[v_prev]    * l_v_old   (mpt,npt,k-1)  // dw(k)/dv(k-1)
-                     + pt_Jw[vth_prev]  * l_vth_old (mpt,npt,k-1); // dw(k)/dvth(k-1)
-                     + pt_Jw[dp_prev]   * l_dp_old  (mpt,npt,k-1); // dw(k)/ddp(k-1)
-                     + pt_Jw[phi_prev]  * l_phi_old (mpt,npt,k-1); // dw(k)/dphi(k-1)
-
-            if (k>1) {
-              // Dependency on k-2 quantities
-              l_w_new += pt_Jw[phi_prev2] * l_phi_old  (mpt,npt,k-2); // dw(k)/dphi(k-2)
-            }
+            l_w_new += pt_Jw[u_prev]   * l_u_old  (mpt,npt,k-1)  // dw(k)/du(k-1)
+                     + pt_Jw[v_prev]   * l_v_old  (mpt,npt,k-1)  // dw(k)/dv(k-1)
+                     + pt_Jw[vth_prev] * l_vth_old(mpt,npt,k-1)  // dw(k)/dvth(k-1)
+                     + pt_Jw[dp_prev]  * l_dp_old (mpt,npt,k-1)  // dw(k)/ddp(k-1)
+                     + pt_Jw[phi_prev] * l_phi_old(mpt,npt,k-1); // dw(k)/dphi(k-1)
+          }
+          // Dependency on k+1 quantities
+          if (k<last_int) {
+            l_w_new += pt_Jw[phi_next] * l_phi_old (mpt,npt,k+1); // dw(k)/dphi(k+1)
           }
         }
       }
