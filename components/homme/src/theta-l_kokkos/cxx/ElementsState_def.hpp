@@ -323,6 +323,68 @@ void ElementsStateST<ST>::randomize(const int seed,
 }
 
 template<typename ST>
+void ElementsStateST<ST>::randomize_derivs(const int seed, const int itl)
+{
+  if constexpr (not Sacado::IsFad<ST>::value) {
+    EKAT_ERROR_MSG ("ElementsStateST::randomize_derivs called for non-fad scalar type!\n");
+    return;
+  } else {
+
+    EKAT_REQUIRE_MSG (itl>=0 and itl<NUM_TIME_LEVELS,
+        "Error! Invalid time level index (" + std::to_string(itl) + ")\n");
+
+    constexpr int nder = DerivSz<ST>::value;
+
+    ExecViewManaged<Real *[2][NP][NP][NUM_PHYSICAL_LEV][nder]> dv("",m_num_elems);
+    ExecViewManaged<Real *[NP][NP][NUM_PHYSICAL_LEV][nder]> dvth("",m_num_elems);
+    ExecViewManaged<Real *[NP][NP][NUM_PHYSICAL_LEV][nder]> ddp("",m_num_elems);
+    ExecViewManaged<Real *[NP][NP][NUM_INTERFACE_LEV][nder]> dphi("",m_num_elems);
+    ExecViewManaged<Real *[NP][NP][NUM_INTERFACE_LEV][nder]> dw("",m_num_elems);
+    ExecViewManaged<Real *[NP][NP][nder]> dps("",m_num_elems);
+
+    std::mt19937_64 engine(seed);
+    std::uniform_real_distribution<Real> pdf(-1.0,1.0);
+    genRandArray(dv, engine, pdf);
+    genRandArray(dvth, engine, pdf);
+    genRandArray(ddp, engine, pdf);
+    genRandArray(dphi, engine, pdf);
+    genRandArray(dw, engine, pdf);
+    genRandArray(dps, engine, pdf);
+
+    auto v = m_v;
+    auto vth = m_vtheta_dp;
+    auto dp = m_dp3d;
+    auto phi = m_phinh_i;
+    auto w = m_w_i;
+    auto ps = m_ps_v;
+    auto copy_into_deriv = KOKKOS_LAMBDA (int ie, int igp, int jgp, int k, int ider) {
+      int ilev = k / VECTOR_SIZE;
+      int ivec = k % VECTOR_SIZE;
+
+      v(ie,itl,0,igp,jgp,ilev)[ivec].fastAccessDx(ider) = dv(ie,0,igp,jgp,k,ider);
+      v(ie,itl,1,igp,jgp,ilev)[ivec].fastAccessDx(ider) = dv(ie,1,igp,jgp,k,ider);
+      vth(ie,itl,igp,jgp,ilev)[ivec].fastAccessDx(ider) = dvth(ie,igp,jgp,k,ider);
+      dp(ie,itl,igp,jgp,ilev)[ivec].fastAccessDx (ider) = ddp(ie,igp,jgp,k,ider);
+      phi(ie,itl,igp,jgp,ilev)[ivec].fastAccessDx(ider) = dphi(ie,igp,jgp,k,ider);
+      w(ie,itl,igp,jgp,ilev)[ivec].fastAccessDx  (ider) = dw(ie,igp,jgp,k,ider);
+
+      if (k==0) {
+        // Handle last interface and ps only once (you could pick any k in the if above)
+        int last_lev = NUM_PHYSICAL_LEV / VECTOR_SIZE;
+        int last_vec = NUM_PHYSICAL_LEV % VECTOR_SIZE;
+
+        phi(ie,itl,igp,jgp,last_lev)[last_vec].fastAccessDx(ider) = dphi(ie,igp,jgp,NUM_PHYSICAL_LEV,ider);
+        w(ie,itl,igp,jgp,last_lev)[last_vec].fastAccessDx  (ider) = dw(ie,igp,jgp,NUM_PHYSICAL_LEV,ider);
+
+        ps(ie,itl,igp,jgp).fastAccessDx (ider) = dps(ie,igp,jgp,ider);
+      }
+    };
+    Kokkos::MDRangePolicy<ExecSpace,Kokkos::Rank<5>> p({0,0,0,0,0},{m_num_elems,NP,NP,NUM_PHYSICAL_LEV,nder});
+    Kokkos::parallel_for(p,copy_into_deriv);
+  }
+}
+
+template<typename ST>
 void ElementsStateST<ST>::pull_from_f90_pointers (CF90Ptr& state_v,         CF90Ptr& state_w_i,
                                             CF90Ptr& state_vtheta_dp, CF90Ptr& state_phinh_i,
                                             CF90Ptr& state_dp3d,      CF90Ptr& state_ps_v) {

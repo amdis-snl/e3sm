@@ -16,6 +16,7 @@ template class CaarFunctorST<Real>;
 
 #ifdef HOMMEXX_ENABLE_FAD_TYPES
 template class CaarFunctorST<DpFadType>;
+template class CaarFunctorST<DxFadTypeCaar>;
 #endif
 
 } // namespace Homme

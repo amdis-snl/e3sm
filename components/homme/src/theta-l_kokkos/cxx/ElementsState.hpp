@@ -69,6 +69,8 @@ public:
                  const ExecViewUnmanaged<const Real*[NP][NP]>& phis);
   void randomize(const int seed, const HybridVCoord& hvcoord);
 
+  void randomize_derivs(const int seed, const int itl);
+
   KOKKOS_INLINE_FUNCTION
   int num_elems() const { return m_num_elems; }
 
@@ -86,6 +88,10 @@ public:
   // Copy values from one ElementStateST struct to another. All derivs get set to 0.
   template<typename RST>
   void import_values (const ElementsStateST<RST>& rhs, int tl);
+
+  template<typename RST>
+  std::enable_if_t<Sacado::IsFad<RST>::value>
+  import_values_from_deriv (const ElementsStateST<RST>& rhs, int tl, int ider);
 
 private:
   int m_num_elems;
@@ -134,6 +140,48 @@ void ElementsStateST<ST>::import_values (const ElementsStateST<RST>& rhs, int tl
       lhs_ps(ie,tl,ip,jp) = ADValue(rhs_ps(ie,tl,ip,jp));
       lhs_w(ie,tl,ip,jp,nlev) = ADValue(rhs_w(ie,tl,ip,jp,nlev));
       lhs_phi(ie,tl,ip,jp,nlev) = ADValue(rhs_phi(ie,tl,ip,jp,nlev));
+    }
+  };
+  Kokkos::MDRangePolicy<ExecSpace,Kokkos::Rank<4>> p({0,0,0,0},{m_num_elems,NP,NP,nlev});
+  Kokkos::parallel_for(p,copy);
+}
+
+// Extract derivs from an ElementStateST templated on a Fad type into one that has ST=Real
+template<typename ST>
+template<typename RST>
+std::enable_if_t<Sacado::IsFad<RST>::value>
+ElementsStateST<ST>::import_values_from_deriv (const ElementsStateST<RST>& rhs, int tl, int ider)
+{
+  EKAT_REQUIRE_MSG (ider>=0 and ider<DerivSz<RST>::value,
+      "[ElementsStateST::import_values_from_deriv] Error! Derivative index (" << ider << ") out of bounds.\n");
+  auto lhs_v = ekat::scalarize(m_v);
+  auto lhs_dp = ekat::scalarize(m_dp3d);
+  auto lhs_phi = ekat::scalarize(m_phinh_i);
+  auto lhs_vth = ekat::scalarize(m_vtheta_dp);
+  auto lhs_w = ekat::scalarize(m_w_i);
+  auto lhs_ps = ekat::scalarize(m_ps_v);
+
+  auto rhs_v = ekat::scalarize(rhs.m_v);
+  auto rhs_dp = ekat::scalarize(rhs.m_dp3d);
+  auto rhs_phi = ekat::scalarize(rhs.m_phinh_i);
+  auto rhs_vth = ekat::scalarize(rhs.m_vtheta_dp);
+  auto rhs_w = ekat::scalarize(rhs.m_w_i);
+  auto rhs_ps = ekat::scalarize(rhs.m_ps_v);
+
+  int nlev = NUM_PHYSICAL_LEV;
+  auto copy = KOKKOS_LAMBDA(int ie, int ip, int jp, int k) {
+    lhs_v(ie,tl,0,ip,jp,k) = rhs_v(ie,tl,0,ip,jp,k).fastAccessDx(ider);
+    lhs_v(ie,tl,1,ip,jp,k) = rhs_v(ie,tl,1,ip,jp,k).fastAccessDx(ider);
+
+    lhs_w(ie,tl,ip,jp,k)   = rhs_w(ie,tl,ip,jp,k).fastAccessDx(ider);
+    lhs_dp(ie,tl,ip,jp,k)  = rhs_dp(ie,tl,ip,jp,k).fastAccessDx(ider);
+    lhs_vth(ie,tl,ip,jp,k) = rhs_vth(ie,tl,ip,jp,k).fastAccessDx(ider);
+    lhs_phi(ie,tl,ip,jp,k) = rhs_phi(ie,tl,ip,jp,k).fastAccessDx(ider);
+
+    if (k==0) {
+      lhs_ps(ie,tl,ip,jp) = rhs_ps(ie,tl,ip,jp).fastAccessDx(ider);
+      lhs_w(ie,tl,ip,jp,nlev) = rhs_w(ie,tl,ip,jp,nlev).fastAccessDx(ider);
+      lhs_phi(ie,tl,ip,jp,nlev) = rhs_phi(ie,tl,ip,jp,nlev).fastAccessDx(ider);
     }
   };
   Kokkos::MDRangePolicy<ExecSpace,Kokkos::Rank<4>> p({0,0,0,0},{m_num_elems,NP,NP,nlev});

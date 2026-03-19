@@ -377,13 +377,14 @@ public:
                     const ExecViewUnmanaged<ST [ColInfo<LENGTH>::NumPacks]>& sum,
                     const typename ekat::ScalarTraits<ST>::scalar_type s0 = 0.0)
   {
+    using scalar_t = typename ekat::ScalarTraits<ST>::scalar_type;
     if (Forward) {
       // If exclusive, no need to go to access last input level
       constexpr int offset = Inclusive ? 0 : 1;
       constexpr int loop_size = LENGTH - offset;
 
       Dispatch<>::parallel_scan(kv.team, loop_size,
-                                [&](const int k, auto& accumulator, const bool last) {
+                                [&](const int k, scalar_t& accumulator, const bool last) {
         if (k==0) {
           // First entry from the bottom: set initial value
           accumulator = s0;
@@ -400,7 +401,7 @@ public:
       constexpr int loop_size = LENGTH - offset;
 
       Dispatch<>::parallel_scan(kv.team, loop_size,
-                                [&](const int k, auto& accumulator, const bool last) {
+                                [&](const int k, scalar_t& accumulator, const bool last) {
         // k_bwd must range in (loop_size,0], while k ranges in [0, loop_size).
         const int k_bwd = LENGTH - k - 1;
 

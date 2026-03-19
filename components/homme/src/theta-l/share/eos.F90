@@ -190,6 +190,7 @@ implicit none
    ! an approximation (hydrostatic) so that dpnh/dpi = 1
    ! DO NOT CHANGE this approximation.  it is required by 
    ! compute_andor_apply_rhs()
+   ! NOTE: the correct formula is
    pnh_i(:,:,nlevp) = pnh(:,:,nlev) + dp3d(:,:,nlev)/2
 
 
@@ -201,12 +202,16 @@ implicit none
       dp3d_i(:,:,k)=(dp3d(:,:,k)+dp3d(:,:,k-1))/2
    end do
 
+   ! NOTE: the correct formulat for dpnh_dp_i(nlevp) is
+   !   dpnh_dp_i(:,:,nlevp)  = 2*(pnh_i(:,:,nlevp)-pnh(:,:,nlev))/dp3d_i(:,:,nlevp)
+   ! With the current bc for pnh_i(nlevp), this is equiv to dpnh_dp_i(nlevp)==1
+   ! in exact arithmetic. To avoid issues in CXX with Sacado using the quotient
+   ! rule (and running into catastrophic cancellations), we hardcode it to 1
    dpnh_dp_i(:,:,1)  = 2*(pnh(:,:,1)-pnh_i(:,:,1))/dp3d_i(:,:,1)
-   dpnh_dp_i(:,:,nlevp)  = 2*(pnh_i(:,:,nlevp)-pnh(:,:,nlev))/dp3d_i(:,:,nlevp)
    do k=2,nlev
       dpnh_dp_i(:,:,k) = (pnh(:,:,k)-pnh(:,:,k-1))/dp3d_i(:,:,k)        
    end do
-   
+   dpnh_dp_i(:,:,nlevp)  = 1
 
    if (present(pnh_i_out)) then
       ! boundary values already computed. interpolate interior

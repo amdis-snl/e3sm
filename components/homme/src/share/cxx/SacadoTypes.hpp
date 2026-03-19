@@ -2,6 +2,7 @@
 #define HOMMEXX_SACADO_TYPES_HPP
 
 #include "Hommexx_config.h"
+#include "Dimensions.hpp"
 
 #ifdef HOMMEXX_ENABLE_FAD_TYPES
 
@@ -21,6 +22,9 @@ using SFadN = Sacado::Fad::SFad<T,N>;
 constexpr int DpFadSize = HOMMEXX_DP_SFAD_SIZE;
 using DpFadType = SFadN<double,DpFadSize>;
 
+// The fad type for the deriv w.r.t. state vars of some functors
+using DxFadTypeCaar = SFadN<double,16*NP*NP>;
+
 template<typename T, int N>
 KOKKOS_INLINE_FUNCTION
 T ADValue(const SFadN<T,N>& v) { return v.val(); }
@@ -32,6 +36,16 @@ auto ADValue(const Expr& e)
 {
   return e.val();
 }
+
+template<typename T>
+struct DerivSz {
+  static constexpr int value = 0;
+};
+
+template<typename T, int N>
+struct DerivSz<SFadN<T,N>> {
+  static constexpr int value = N;
+};
 
 } // namespace Homme
 

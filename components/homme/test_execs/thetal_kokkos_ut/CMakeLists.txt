@@ -373,5 +373,7 @@ include (EkatCreateUnitTest)
 EkatCreateUnitTest ("caar_sacado_ut"
   "caar_sacado_ut.cpp;${SHARE_UT_DIR}/geometry_interface.F90;thetal_test_interface.F90"
   EXCLUDE_MAIN_CPP
+  COMPILER_CXX_DEFS HOMMEXX_SPHERE_OP_ST_FACTORS
   LIBS thetal_kokkos_ut_lib homme_catch_main
+  LABELS AMDIS
 )
