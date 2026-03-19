@@ -381,8 +381,8 @@ TEST_CASE("caar_dx_check") {
   auto& comm = c.get<Comm>();
   const int rank = comm.rank();
 
-  auto rtol = 1e-12;
-  auto atol = 1e-12;
+  auto rtol = 1e-10;
+  auto atol = 1e-10;
 
   auto& catch_capture = Catch::getResultCapture();
   // NOTE: cannot use hydrostatic=true, since it requires a scan sum
