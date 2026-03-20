@@ -386,27 +386,34 @@ struct CaarFunctorImplST {
   std::enable_if_t<not std::is_same_v<MyST,DxFadTypeCaar>>
   init_J (const RKStageData& data);
 
-  // Computes the transpose Jacobian-vector product: l_new = J^T * l_old,
-  // where J = d(x_new)/d(x_old) is the same Jacobian used in run_JV.
-  // Uses the identical column-compressed stencil (stencil_sz=16), but reverses
-  // the accumulation: for each input point (mpt,npt,m) we sum over all Jacobian
-  // rows (ipt,jpt,k) whose stencil includes that input point.
+  // Init J derivatives. Fad entries are initialized to diagonal, using a compressed-column approach
+  // The column-compressed Fad, relies on the fact that levels more than 2 above or 1 below
+  // will not interact with the current level (while we have full NPxNP coupling in the horiz direction).
+  // Moreover, for each gauss point, we don't need the derivs of ALL vars at all 4 levels of the
+  // stencil. In fact, the state at k-th level (be that midpoint or interface) depends only on
+  // [u_prev, u_curr, v_prev, v_curr,
+  //  vth_prev, vth_curr, vth_next,
+  //  dp_prev, dp_curr, dp_next,
+  //  phi_prev, phi_curr, phi_next, phi_next2,
+  //  w_curr, w_next]
+  // where _prev refers to lev k-1, _curr to lev k, _next to lev k+1, and _next2 to lev k+2.
+  // So the stencil_sz is 16. To compress columns, we interpret the derivs as follows. Let
+  //  - kmN_M := (k-N) % M
+  //  - k_M   := k % M
+  //  - kpN_M := (k+N) % M
+  // and for state X let X_blah=X(blah). Then the stencil is
+  // [u_km1_2, u_k_2, v_km1_2, v_k_2,
+  //  vth_km1_3, vth_k_3, vth_kp1_3,
+  //  dp_km1_3, dp_k_3, dp_kp1_3,
+  //  phi_km1_3, phi_k_4, phi_kp1_4, phi_kp2_4,
+  //  w_k_2, w_kp1_2]
+  // One would think that, since mod arith on neg numbers doesn't work well, we should do
+  //  kmN_M := (k+M-N) % M
+  // However, if k<N, we will NOT use those deriv entries, so we don't need to be careful with mod arith.
   template<typename MyST = ST>
   std::enable_if_t<std::is_same_v<MyST,DxFadTypeCaar>>
   init_J (const RKStageData& data)
   {
-    // The same compressed-column consideration as in run_JV holds, and everything looks "the same".
-    // There is one important distinction. The indices (i,j,k) for l_new must now match the indices
-    // in the deriv, rather than the indices of the var veeing differentiated. That's b/c
-    //
-    //  out_i = [J*v]_i = J_ij * v_j = d(x_i)/d(x_j) * v_j
-    //  out_i =  [Jt*v]_i = (Jt)_ij * v_j = J_ji * v_j = d(x_j)/d(x_i) * v_j
-    // 
-    // For the gauss points, this is easy to do, as all GPs are coupled with all GPs.
-    // For the levels, since we are doing compression, we need to be careful: in J*v, once we
-    // fix the level of the out_i point, we use j for levs k-1,k,k+1,k+2, since each x_i depends
-    // on x_j on those levels. For J*v we should not look at the levs x_i that x_j depends on,
-    // but rather the levs x_j that x_i impacts, which are k-2,k-1,k,k+1.
     constexpr int stencil_sz = 16;
 
     int offset_u   = 0;
@@ -420,7 +427,6 @@ struct CaarFunctorImplST {
     auto p4_mid = md_range_t({0,0,0,0},{m_num_elems,NP,NP,NUM_PHYSICAL_LEV});
     auto p4_int = md_range_t({0,0,0,0},{m_num_elems,NP,NP,NUM_INTERFACE_LEV});
 
-    // First, init d/dx derivs
     auto dvdx_v = ekat::scalarize(m_state.m_v);
     auto dvthdx_v = ekat::scalarize(m_state.m_vtheta_dp);
     auto ddpdx_v = ekat::scalarize(m_state.m_dp3d);
@@ -471,25 +477,6 @@ struct CaarFunctorImplST {
   std::enable_if_t<std::is_same_v<MyST,DxFadTypeCaar>>
   run_JV (const RKStageData& data, ElementsStateST<Real>& adj_state)
   {
-    // For d/dx we use a column-compressed Fad, since levels more than 2 below or 1 above
-    // will not interact with each other, while we have full NPxNP coupling in the horiz direction.
-    // Moreover, For each gauss point, we don't need the derivs of ALL vars at all 4 levels of the
-    // stencil. In fact, the state at k-th level (midpoint or interface) depends only on
-    // [u_prev, u_curr, v_prev, v_curr,
-    //  vth_prev, vth_curr, vth_next,
-    //  dp_prev, dp_curr, dp_next,
-    //  phi_prev, phi_curr, phi_next, phi_next2,
-    //  w_curr, w_next]
-    // So the stencil_sz is 16. To compress columns, we interpret the derivs as follows. Let
-    //  - kmN_M = (k - N) % M (which is computed via (k+M-N) % M)
-    //  - k0_M = k % M
-    //  - kpN_M = (k+N) % M
-    // and for state X let X_blah=X(blah). Then the stencil is
-    // [u_km1_2, u_k0_2, v_km1_2, v_k0_2,
-    //  vth_km1_3, vth_k0_3, vth_kp1_3,
-    //  dp_km1_3, dp_k0_3, dp_kp1_3,
-    //  phi_km1_3, phi_k0_4, phi_kp1_4, phi_kp2_4,
-    //  w_k0_2, w_kp1_2]
     constexpr int stencil_sz = 16;
 
     int offset_u   = 0;
@@ -520,7 +507,6 @@ struct CaarFunctorImplST {
     auto l_w = ekat::scalarize(adj_state.m_w_i);
     
     constexpr int last_mid = NUM_PHYSICAL_LEV-1;
-    constexpr int last_mid_m1 = NUM_PHYSICAL_LEV-2;
     auto prod_rule_mid = KOKKOS_LAMBDA (const int ie, const int ipt, const int jpt, const int k) {
       const auto& l_u_old   = Homme::subview(l_V,ie,n0,0);
       const auto& l_v_old   = Homme::subview(l_V,ie,n0,1);
@@ -548,21 +534,21 @@ struct CaarFunctorImplST {
       l_vth_new = 0;
 
       // offsets of each var in the deriv vector
-      int u_prev    = offset_u   + (k+2-1) % 2;
-      int u_curr    = offset_u   + k % 2;
-      int v_prev    = offset_v   + (k+2-1) % 2;
-      int v_curr    = offset_v   + k % 2;
-      int vth_prev  = offset_vth + (k+3-1) % 3;
-      int vth_curr  = offset_vth + k % 3;
+      int u_prev    = offset_u   + (k-1) % 2;
+      int u_curr    = offset_u   +  k    % 2;
+      int v_prev    = offset_v   + (k-1) % 2;
+      int v_curr    = offset_v   +  k    % 2;
+      int vth_prev  = offset_vth + (k-1) % 3;
+      int vth_curr  = offset_vth +  k    % 3;
       int vth_next  = offset_vth + (k+1) % 3;
-      int dp_prev   = offset_dp  + (k+3-1) % 3;
-      int dp_curr   = offset_dp  + k % 3;
+      int dp_prev   = offset_dp  + (k-1) % 3;
+      int dp_curr   = offset_dp  +  k    % 3;
       int dp_next   = offset_dp  + (k+1) % 3;
-      int phi_prev  = offset_phi + (k+4-1) % 4;
-      int phi_curr  = offset_phi + k % 4;
+      int phi_prev  = offset_phi + (k-1) % 4;
+      int phi_curr  = offset_phi +  k    % 4;
       int phi_next  = offset_phi + (k+1) % 4;
       int phi_next2 = offset_phi + (k+2) % 4;
-      int w_curr    = offset_w   + k % 2;
+      int w_curr    = offset_w   +  k    % 2;
       int w_next    = offset_w   + (k+1) % 2;
 
       for (int mpt=0; mpt<NP; ++mpt) {
@@ -648,18 +634,18 @@ struct CaarFunctorImplST {
       l_w_new = 0;
 
       // offsets of each var in the deriv vector
-      int u_prev    = offset_u + (k+2-1) % 2;
-      int u_curr    = offset_u + k % 2;
-      int v_prev    = offset_v + (k+2-1) % 2;
-      int v_curr    = offset_v + k % 2;
-      int vth_prev  = offset_vth +(k+3-1) % 3;
-      int vth_curr  = offset_vth +k % 3;
-      int dp_prev   = offset_dp +(k+3-1) % 3;
-      int dp_curr   = offset_dp +k % 3;
-      int phi_prev  = offset_phi +(k+4-1) % 4;
-      int phi_curr  = offset_phi +k % 4;
-      int phi_next  = offset_phi +(k+1) % 4;
-      int w_curr    = offset_w + k % 2;
+      int u_prev    = offset_u   + (k-1) % 2;
+      int u_curr    = offset_u   +  k    % 2;
+      int v_prev    = offset_v   + (k-1) % 2;
+      int v_curr    = offset_v   +  k    % 2;
+      int vth_prev  = offset_vth + (k-1) % 3;
+      int vth_curr  = offset_vth +  k    % 3;
+      int dp_prev   = offset_dp  + (k-1) % 3;
+      int dp_curr   = offset_dp  +  k    % 3;
+      int phi_prev  = offset_phi + (k-1) % 4;
+      int phi_curr  = offset_phi +  k    % 4;
+      int phi_next  = offset_phi + (k+1) % 4;
+      int w_curr    = offset_w   +  k    % 2;
 
       for (int mpt=0; mpt<NP; ++mpt) {
         for (int npt=0; npt<NP; ++npt) {
@@ -706,14 +692,14 @@ struct CaarFunctorImplST {
     Kokkos::parallel_for(p4_int,prod_rule_int);
   }
 
-  // Init J_full derivatives
+  // Init J derivatives. Fad entries are initialized to diagonal. No column-compression used
   template<typename MyST = ST>
   std::enable_if_t<not std::is_same_v<MyST,DxFadTypeCaar>>
   init_J_full (const RKStageData& data) = delete;
 
   template<typename MyST = ST>
   std::enable_if_t<std::is_same_v<MyST,DxFadTypeCaar>>
-  init_JV_full (const RKStageData& data)
+  init_J_full (const RKStageData& data)
   {
     auto dvdx_v = ekat::scalarize(m_state.m_v);
     auto dvthdx_v = ekat::scalarize(m_state.m_vtheta_dp);
@@ -960,7 +946,6 @@ struct CaarFunctorImplST {
     // dpf.close();
     // phif.close();
     // wf.close();
-
   }
 
   template<typename MyST = ST>
@@ -978,16 +963,15 @@ struct CaarFunctorImplST {
   {
     // The same compressed-column consideration as in run_JV holds, and everything looks "the same".
     // There is one important distinction. The indices (i,j,k) for l_new must now match the indices
-    // in the deriv, rather than the indices of the var veeing differentiated. That's b/c
+    // in the deriv, rather than the indices of the var beeing differentiated. That's b/c
     //
-    //  out_i = [J*v]_i = J_ij * v_j = d(x_i)/d(x_j) * v_j
-    //  out_i =  [Jt*v]_i = (Jt)_ij * v_j = J_ji * v_j = d(x_j)/d(x_i) * v_j
+    //  [J *v]_i = J_ij * v_j = d(x_i)/d(x_j) * v_j
+    //  [J'*v]_i = J_ji * v_j = d(x_j)/d(x_i) * v_j
     // 
     // For the gauss points, this is easy to do, as all GPs are coupled with all GPs.
-    // For the levels, since we are doing compression, we need to be careful: in J*v, once we
-    // fix the level of the out_i point, we use j for levs k-1,k,k+1,k+2, since each x_i depends
-    // on x_j on those levels. For J*v we should not look at the levs x_i that x_j depends on,
-    // but rather the levs x_j that x_i impacts, which are k-2,k-1,k,k+1.
+    // For the levels, since we are doing compression, we need to be careful: while in J*v
+    // we considered v_j at the levels that can affect x_i, in J'*v we have to consider
+    // v_j at the levels that x_i can affect.
     constexpr int stencil_sz = 16;
 
     int offset_u   = 0;
@@ -1018,7 +1002,6 @@ struct CaarFunctorImplST {
     auto l_w = ekat::scalarize(adj_state.m_w_i);
     
     constexpr int last_mid = NUM_PHYSICAL_LEV-1;
-    constexpr int last_mid_m1 = NUM_PHYSICAL_LEV-2;
     auto jtv_mid = KOKKOS_LAMBDA (const int ie, const int ipt, const int jpt, const int k) {
       const auto& l_u_old   = Homme::subview(l_V,ie,n0,0);
       const auto& l_v_old   = Homme::subview(l_V,ie,n0,1);

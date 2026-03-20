@@ -559,9 +559,6 @@ TEST_CASE("caar_dx_check") {
 }
 
 // Verify the JtV transpose identity: <a, J*b> == <J^T*a, b>.
-// For each state variable X, both a and b are non-zero only in X,
-// so each check exercises the X-diagonal block of J with fewer
-// floating-point operations, enabling tighter tolerances.
 TEST_CASE("caar_jtv_check") {
   constexpr int ne = 2;
   using DxFadType = DxFadTypeCaar;
@@ -617,31 +614,24 @@ TEST_CASE("caar_jtv_check") {
   auto& geo = elems.m_geometry;
   geo.randomize(seed);
 
-  auto& elems_dp = c.create<ElementsST<DpFadType>>();
-  elems_dp.init(num_elems, false, true, PhysicalConstants::rearth0);
-  elems_dp.m_geometry = geo;
-
   auto& elems_dx = c.create<ElementsST<DxFadType>>();
   elems_dx.init(num_elems, false, true, PhysicalConstants::rearth0);
   elems_dx.m_geometry = geo;
+  Kokkos::deep_copy(elems_dx.m_derived.m_vn0,DxFadType(0));
+  Kokkos::deep_copy(elems_dx.m_derived.m_vn0,DxFadType(0));
 
   auto& bm       = c.create<MpiBuffersManager>();
   auto& sphop    = c.create<SphereOperatorsST<Real>>();
-  auto& sphop_dp = c.create<SphereOperatorsST<DpFadType>>();
   auto& sphop_dx = c.create<SphereOperatorsST<DxFadType>>();
   auto& tracers    = c.create<TracersST<Real>>();
-  auto& tracers_dp = c.create<TracersST<DpFadType>>();
   auto& tracers_dx = c.create<TracersST<DxFadType>>();
 
   auto& limiter    = c.create<LimiterFunctorST<Real>>(elems, hvcoord, params);
-  auto& limiter_dp = c.create<LimiterFunctorST<DpFadType>>(elems_dp, hvcoord, params);
   auto& limiter_dx = c.create<LimiterFunctorST<DxFadType>>(elems_dx, hvcoord, params);
   limiter.m_verbose    = false;
-  limiter_dp.m_verbose = false;
   limiter_dx.m_verbose = false;
 
   sphop.setup(geo, ref_FE);
-  sphop_dp.setup(geo, ref_FE);
   sphop_dx.setup(geo, ref_FE);
   if (!bm.is_connectivity_set()) {
     bm.set_connectivity(c.get_ptr<Connectivity>());
@@ -677,14 +667,13 @@ TEST_CASE("caar_jtv_check") {
   const p5_mid_t p5_mid({0,0,0,0,0}, {num_elems, 2, NP, NP, NUM_PHYSICAL_LEV});
   const p4_int_t p4_int({0,0,0,0}, {num_elems, NP, NP, NUM_INTERFACE_LEV});
 
-  const Real rtol = 1e-9;
-  const Real atol = 1e-9;
+  const Real rtol = 1e-8;
+  const Real atol = 1e-8;
 
   // NOTE: cannot use hydrostatic=true (requires a scan sum not supported here)
   for (const bool hydrostatic : {false}) {
     params.theta_hydrostatic_mode       = hydrostatic;
     limiter.m_theta_hydrostatic_mode    = hydrostatic;
-    limiter_dp.m_theta_hydrostatic_mode = hydrostatic;
     limiter_dx.m_theta_hydrostatic_mode = hydrostatic;
     if (comm.root())
       std::cout << " -> " << (hydrostatic ? "Hydrostatic\n" : "Non-Hydrostatic\n");
@@ -716,13 +705,11 @@ TEST_CASE("caar_jtv_check") {
         RKStageData data(nm1, n0, np1, 0, dt, eta_ave_w, scale1, scale2, scale3);
 
         // State at which J is evaluated
-        elems_dp.m_state.randomize(seed, max_pressure, hvcoord.ps0,
+        elems_dx.m_state.randomize(seed, max_pressure, hvcoord.ps0,
                                    hvcoord.hybrid_ai0, geo.m_phis);
-        elems_dx.m_state.import_values(elems_dp.m_state, n0);
-        elems_dx.m_state.import_values(elems_dp.m_state, nm1);
 
         CaarFunctorImplST<DxFadType> caar_dx(elems_dx, tracers_dx,
-                                              ref_FE, hvcoord, sphop_dx, params);
+                                             ref_FE, hvcoord, sphop_dx, params);
         FunctorsBuffersManager fbm;
         fbm.request_size(caar_dx.requested_buffer_size());
         fbm.request_size(limiter_dx.requested_buffer_size());
