@@ -25,6 +25,12 @@ using DpFadType = SFadN<double,DpFadSize>;
 // The fad type for the deriv w.r.t. state vars of some functors
 using DxFadTypeCaar = SFadN<double,16*NP*NP>;
 
+// The fad type for the deriv w.r.t. state vars of the DIRK functor.
+// DIRK has no horizontal (GaussPoint) coupling: each column (ip,jp) is independent.
+// The stencil encodes {u,v,vtheta_dp,dp3d} at NUM_PHYSICAL_LEV midpoints plus
+// {w_i,phinh_i} at NUM_INTERFACE_LEV interface levels, all per column.
+using DxFadTypeDirk = SFadN<double, NUM_PHYSICAL_LEV*4 + NUM_INTERFACE_LEV*2>;
+
 template<typename T, int N>
 KOKKOS_INLINE_FUNCTION
 T ADValue(const SFadN<T,N>& v) { return v.val(); }

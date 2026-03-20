@@ -153,6 +153,165 @@ struct DirkFunctorImplST {
     Kokkos::fence();
   }
 
+#ifdef HOMMEXX_ENABLE_FAD_TYPES
+  // Offsets into the per-column FAD derivative vector for init_J / run_JV.
+  // The FAD type DxFadTypeDirk has size NUM_PHYSICAL_LEV*4 + NUM_INTERFACE_LEV*2.
+  // For each column (ip,jp) the state variables are encoded as:
+  //   [u(0..NUM_PHYSICAL_LEV-1), v(0..NUM_PHYSICAL_LEV-1),
+  //    vtheta_dp(0..NUM_PHYSICAL_LEV-1), dp3d(0..NUM_PHYSICAL_LEV-1),
+  //    w_i(0..NUM_INTERFACE_LEV-1), phinh_i(0..NUM_INTERFACE_LEV-1)]
+  static constexpr int fad_offset_u   = 0;
+  static constexpr int fad_offset_v   = NUM_PHYSICAL_LEV;
+  static constexpr int fad_offset_vth = 2*NUM_PHYSICAL_LEV;
+  static constexpr int fad_offset_dp  = 3*NUM_PHYSICAL_LEV;
+  static constexpr int fad_offset_w   = 4*NUM_PHYSICAL_LEV;
+  static constexpr int fad_offset_phi = 4*NUM_PHYSICAL_LEV + NUM_INTERFACE_LEV;
+
+  // Initialize the d/dx derivatives of the n0 state so that each state variable
+  // gets a unique FAD index encoding its level. Since DIRK has no horizontal
+  // (GaussPoint) coupling, each column (ip,jp) is independent and uses the
+  // same per-level FAD indices.
+  template<typename MyST = ST>
+  std::enable_if_t<std::is_same_v<MyST, DxFadTypeDirk>>
+  init_J (const int n0, const ElementsST<ST>& e) {
+    using md_range_t = Kokkos::MDRangePolicy<ExecSpace, Kokkos::Rank<4>>;
+    const int nelem = e.m_state.num_elems();
+    auto p4_mid = md_range_t({0,0,0,0}, {nelem, NP, NP, NUM_PHYSICAL_LEV});
+    auto p4_int = md_range_t({0,0,0,0}, {nelem, NP, NP, NUM_INTERFACE_LEV});
+
+    auto dvdx_v   = ekat::scalarize(e.m_state.m_v);
+    auto dvthdx_v = ekat::scalarize(e.m_state.m_vtheta_dp);
+    auto ddpdx_v  = ekat::scalarize(e.m_state.m_dp3d);
+    auto dwdx_v   = ekat::scalarize(e.m_state.m_w_i);
+    auto dphidx_v = ekat::scalarize(e.m_state.m_phinh_i);
+
+    // Local copies of offsets for lambda capture (KOKKOS_LAMBDA uses [=])
+    const int offset_u   = fad_offset_u;
+    const int offset_v   = fad_offset_v;
+    const int offset_vth = fad_offset_vth;
+    const int offset_dp  = fad_offset_dp;
+    const int offset_w   = fad_offset_w;
+    const int offset_phi = fad_offset_phi;
+
+    auto init_dx_mid = KOKKOS_LAMBDA (int ie, int ip, int jp, int k) {
+      auto& dudx   = dvdx_v  (ie, n0, 0, ip, jp, k);
+      auto& dvdx   = dvdx_v  (ie, n0, 1, ip, jp, k);
+      auto& dvthdx = dvthdx_v(ie, n0,    ip, jp, k);
+      auto& ddpdx  = ddpdx_v (ie, n0,    ip, jp, k);
+
+      dudx.zero();   dudx.fastAccessDx  (offset_u   + k) = 1;
+      dvdx.zero();   dvdx.fastAccessDx  (offset_v   + k) = 1;
+      dvthdx.zero(); dvthdx.fastAccessDx(offset_vth + k) = 1;
+      ddpdx.zero();  ddpdx.fastAccessDx (offset_dp  + k) = 1;
+    };
+
+    auto init_dx_int = KOKKOS_LAMBDA (int ie, int ip, int jp, int k) {
+      auto& dwdx   = dwdx_v  (ie, n0, ip, jp, k);
+      auto& dphidx = dphidx_v(ie, n0, ip, jp, k);
+
+      dwdx.zero();   dwdx.fastAccessDx  (offset_w   + k) = 1;
+      dphidx.zero(); dphidx.fastAccessDx(offset_phi + k) = 1;
+    };
+
+    Kokkos::parallel_for(p4_mid, init_dx_mid);
+    Kokkos::parallel_for(p4_int, init_dx_int);
+  }
+
+  // Compute the product J*V where J = d(state(np1)) / d(state(n0)).
+  // DIRK only updates w_i and phinh_i at np1; for v, vtheta_dp, dp3d the
+  // Jacobian is the identity (DIRK leaves them unchanged).
+  // On entry:  adj_state at n0 holds the vector V.
+  // On exit:   adj_state at np1 holds J*V for w_i and phinh_i;
+  //            adj_state at np1 holds V unchanged for v, vtheta_dp, dp3d.
+  template<typename MyST = ST>
+  std::enable_if_t<not std::is_same_v<MyST, DxFadTypeDirk>>
+  run_JV (int /*nm1*/, Real /*alphadt_nm1*/, int /*n0*/, Real /*alphadt_n0*/,
+          int /*np1*/, Real /*dt2*/, const ElementsST<ST>& /*e*/,
+          const HybridVCoord& /*hvcoord*/, ElementsStateST<Real>& /*adj_state*/) = delete;
+
+  template<typename MyST = ST>
+  std::enable_if_t<std::is_same_v<MyST, DxFadTypeDirk>>
+  run_JV (int nm1, Real alphadt_nm1, int n0, Real alphadt_n0,
+          int np1, Real dt2, const ElementsST<ST>& e,
+          const HybridVCoord& hvcoord, ElementsStateST<Real>& adj_state)
+  {
+    // Initialize d/dx derivatives for the n0 state
+    init_J(n0, e);
+
+    // Run DIRK Newton iteration with FAD arithmetic; this propagates the
+    // derivatives through the entire implicit solve
+    run(nm1, alphadt_nm1, n0, alphadt_n0, np1, dt2, e, hvcoord);
+
+    // Extract the Jacobian-vector product using the product rule.
+    // dw_v(ie,np1,ip,jp,k).dx(j) = d(w_np1(ie,ip,jp,k)) / d(input_j)
+    // dphi_v(ie,np1,ip,jp,k).dx(j) = d(phi_np1(ie,ip,jp,k)) / d(input_j)
+    const int nelem = e.m_state.num_elems();
+
+    auto dw_v   = ekat::scalarize(e.m_state.m_w_i);
+    auto dphi_v = ekat::scalarize(e.m_state.m_phinh_i);
+
+    auto l_V   = ekat::scalarize(adj_state.m_v);
+    auto l_vth = ekat::scalarize(adj_state.m_vtheta_dp);
+    auto l_dp  = ekat::scalarize(adj_state.m_dp3d);
+    auto l_w   = ekat::scalarize(adj_state.m_w_i);
+    auto l_phi = ekat::scalarize(adj_state.m_phinh_i);
+
+    // Local copies of offsets for lambda capture
+    const int offset_u   = fad_offset_u;
+    const int offset_v   = fad_offset_v;
+    const int offset_vth = fad_offset_vth;
+    const int offset_dp  = fad_offset_dp;
+    const int offset_w   = fad_offset_w;
+    const int offset_phi = fad_offset_phi;
+
+    using md_range_t = Kokkos::MDRangePolicy<ExecSpace, Kokkos::Rank<4>>;
+    auto p4_int = md_range_t({0,0,0,0}, {nelem, NP, NP, NUM_INTERFACE_LEV});
+    auto p4_mid = md_range_t({0,0,0,0}, {nelem, NP, NP, NUM_PHYSICAL_LEV});
+
+    // Compute J*V for w_i and phinh_i at np1 (non-trivial DIRK blocks)
+    auto prod_rule_int = KOKKOS_LAMBDA (const int ie, const int ip, const int jp, const int k) {
+      const auto& Jw   = dw_v  (ie, np1, ip, jp, k).dx();
+      const auto& Jphi = dphi_v(ie, np1, ip, jp, k).dx();
+
+      Real l_w_new   = 0;
+      Real l_phi_new = 0;
+
+      // Contributions from midpoint variables (u, v, vtheta_dp, dp3d)
+      for (int k2 = 0; k2 < NUM_PHYSICAL_LEV; ++k2) {
+        l_w_new   += Jw  [offset_u   + k2] * l_V  (ie, n0, 0, ip, jp, k2)
+                   + Jw  [offset_v   + k2] * l_V  (ie, n0, 1, ip, jp, k2)
+                   + Jw  [offset_vth + k2] * l_vth(ie, n0,    ip, jp, k2)
+                   + Jw  [offset_dp  + k2] * l_dp (ie, n0,    ip, jp, k2);
+        l_phi_new += Jphi[offset_u   + k2] * l_V  (ie, n0, 0, ip, jp, k2)
+                   + Jphi[offset_v   + k2] * l_V  (ie, n0, 1, ip, jp, k2)
+                   + Jphi[offset_vth + k2] * l_vth(ie, n0,    ip, jp, k2)
+                   + Jphi[offset_dp  + k2] * l_dp (ie, n0,    ip, jp, k2);
+      }
+      // Contributions from interface variables (w_i, phinh_i)
+      for (int k2 = 0; k2 < NUM_INTERFACE_LEV; ++k2) {
+        l_w_new   += Jw  [offset_w   + k2] * l_w  (ie, n0, ip, jp, k2)
+                   + Jw  [offset_phi + k2] * l_phi(ie, n0, ip, jp, k2);
+        l_phi_new += Jphi[offset_w   + k2] * l_w  (ie, n0, ip, jp, k2)
+                   + Jphi[offset_phi + k2] * l_phi(ie, n0, ip, jp, k2);
+      }
+
+      l_w  (ie, np1, ip, jp, k) = l_w_new;
+      l_phi(ie, np1, ip, jp, k) = l_phi_new;
+    };
+
+    // Identity blocks: DIRK does not modify v, vtheta_dp, or dp3d
+    auto prod_rule_mid_id = KOKKOS_LAMBDA (const int ie, const int ip, const int jp, const int k) {
+      l_V  (ie, np1, 0, ip, jp, k) = l_V  (ie, n0, 0, ip, jp, k);
+      l_V  (ie, np1, 1, ip, jp, k) = l_V  (ie, n0, 1, ip, jp, k);
+      l_vth(ie, np1,    ip, jp, k) = l_vth(ie, n0,    ip, jp, k);
+      l_dp (ie, np1,    ip, jp, k) = l_dp (ie, n0,    ip, jp, k);
+    };
+
+    Kokkos::parallel_for(p4_int, prod_rule_int);
+    Kokkos::parallel_for(p4_mid, prod_rule_mid_id);
+  }
+#endif // HOMMEXX_ENABLE_FAD_TYPES
+
   // Optimal impl of phi_from_eos for the initial guess. See comments for the
   // function phi_from_eos, below, for discussion. This kernel uses standard
   // Hommexx layout and parallelization approaches to compute the scans
