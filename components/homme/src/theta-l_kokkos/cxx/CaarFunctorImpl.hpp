@@ -382,6 +382,7 @@ struct CaarFunctorImplST {
     limiter.run(data.np1);
   }
 
+#ifdef HOMMEXX_ENABLE_FAD_TYPES
   template<typename MyST = ST>
   std::enable_if_t<not std::is_same_v<MyST,DxFadTypeCaar>>
   init_J (const RKStageData& data);
@@ -1190,7 +1191,7 @@ struct CaarFunctorImplST {
     Kokkos::parallel_for(p4_mid,jtv_mid);
     Kokkos::parallel_for(p4_int,jtv_int);
   }
-
+#endif //HOMMEXX_ENABLE_FAD_TYPES
 
   KOKKOS_INLINE_FUNCTION
   void operator()(const TagPreExchange&, const TeamMember &team, int& nerr) const {
