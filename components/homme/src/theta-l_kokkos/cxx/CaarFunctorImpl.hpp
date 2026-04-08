@@ -875,7 +875,7 @@ struct CaarFunctorImplST {
                     ddpdx_v(ie,np1,igp,jgp,lvl).dx(fad_idx++) * l_dp(ie,n0,sigp,sjgp,slvl);
                 }
                 for (int slvl=0; slvl<NUM_INTERFACE_LEV; ++slvl) {
-                  l_vth(ie,np1,igp,jgp,lvl) +=
+                  l_dp(ie,np1,igp,jgp,lvl) +=
                     ddpdx_v(ie,np1,igp,jgp,lvl).dx(fad_idx++) * l_w(ie,n0,sigp,sjgp,slvl) +
                     ddpdx_v(ie,np1,igp,jgp,lvl).dx(fad_idx++) * l_phi(ie,n0,sigp,sjgp,slvl);
                 }
@@ -1190,6 +1190,182 @@ struct CaarFunctorImplST {
 
     Kokkos::parallel_for(p4_mid,jtv_mid);
     Kokkos::parallel_for(p4_int,jtv_int);
+  }
+
+  // A version of run_JVt that computes the full element Jacobian instead of using column compression to help debugging
+  // Note, to run this you need to set DxFadTypeCaar correctly based on the number of levels.  The formula is:
+  //      NP*NP*(NUM_PHYSICAL_LEV*4 + NUM_INTERFACE_LEV*2)
+  template<typename MyST = ST>
+  std::enable_if_t<not std::is_same_v<MyST,DxFadTypeCaar>>
+  run_JtV_full (const RKStageData& data, ElementsStateST<Real>& adj_state) = delete;
+
+  template<typename MyST = ST>
+  std::enable_if_t<std::is_same_v<MyST,DxFadTypeCaar>>
+  run_JtV_full (const RKStageData& data, ElementsStateST<Real>& adj_state)
+  {
+    // First, init d/dx derivs
+    auto dvdx_v = ekat::scalarize(m_state.m_v);
+    auto dvthdx_v = ekat::scalarize(m_state.m_vtheta_dp);
+    auto ddpdx_v = ekat::scalarize(m_state.m_dp3d);
+    auto dwdx_v = ekat::scalarize(m_state.m_w_i);
+    auto dphidx_v = ekat::scalarize(m_state.m_phinh_i);
+
+    int n0 = data.n0;
+
+    const int num_fad = Sacado::StaticSize<DxFadTypeCaar>::value;
+
+    // Then compute dxnew/dp = dxnew/dxold * dxold/dp
+    int np1 = data.np1;
+
+    auto l_V = ekat::scalarize(adj_state.m_v);
+    auto l_vth = ekat::scalarize(adj_state.m_vtheta_dp);
+    auto l_dp = ekat::scalarize(adj_state.m_dp3d);
+    auto l_w = ekat::scalarize(adj_state.m_w_i);
+    auto l_phi = ekat::scalarize(adj_state.m_phinh_i);
+
+    for (int ie=0; ie<m_num_elems; ++ie) {
+      int fad_idx = 0;
+
+      for (int igp=0; igp<NP; ++igp) {
+        for (int jgp=0; jgp<NP; ++jgp) {
+          for (int lvl=0; lvl<NUM_PHYSICAL_LEV; ++lvl) {
+
+            // Zero Fad components
+            l_V(ie,np1,0,igp,jgp,lvl) = 0;
+            l_V(ie,np1,1,igp,jgp,lvl) = 0;
+            l_vth(ie,np1,igp,jgp,lvl) = 0;
+            l_dp(ie,np1,igp,jgp,lvl) = 0;
+
+            // Compute mat-trans-vec one column at a time
+            for (int sigp=0; sigp<NP; ++sigp) {
+              for (int sjgp=0; sjgp<NP; ++sjgp) {
+                for (int slvl=0; slvl<NUM_PHYSICAL_LEV; ++slvl) {
+                  l_V(ie,np1,0,igp,jgp,lvl) +=
+                    dvdx_v(ie,np1,0,sigp,sjgp,slvl).dx(fad_idx) * l_V(ie,n0,0,sigp,sjgp,slvl) + 
+                    dvdx_v(ie,np1,1,sigp,sjgp,slvl).dx(fad_idx) * l_V(ie,n0,1,sigp,sjgp,slvl) + 
+                    dvthdx_v(ie,np1,sigp,sjgp,slvl).dx(fad_idx) * l_vth(ie,n0,sigp,sjgp,slvl) + 
+                    ddpdx_v(ie,np1,sigp,sjgp,slvl).dx(fad_idx) * l_dp(ie,n0,sigp,sjgp,slvl);
+                }
+                for (int slvl=0; slvl<NUM_INTERFACE_LEV; ++slvl) {
+                  l_V(ie,np1,0,igp,jgp,lvl) +=
+                    dwdx_v(ie,np1,sigp,sjgp,slvl).dx(fad_idx) * l_w(ie,n0,sigp,sjgp,slvl) +
+                    dphidx_v(ie,np1,sigp,sjgp,slvl).dx(fad_idx) * l_phi(ie,n0,sigp,sjgp,slvl);
+                }
+              }
+            }
+
+            ++fad_idx;
+            
+            for (int sigp=0; sigp<NP; ++sigp) {
+              for (int sjgp=0; sjgp<NP; ++sjgp) {
+                for (int slvl=0; slvl<NUM_PHYSICAL_LEV; ++slvl) {
+                  l_V(ie,np1,1,igp,jgp,lvl) +=
+                    dvdx_v(ie,np1,0,sigp,sjgp,slvl).dx(fad_idx) * l_V(ie,n0,0,sigp,sjgp,slvl) + 
+                    dvdx_v(ie,np1,1,sigp,sjgp,slvl).dx(fad_idx) * l_V(ie,n0,1,sigp,sjgp,slvl) + 
+                    dvthdx_v(ie,np1,sigp,sjgp,slvl).dx(fad_idx) * l_vth(ie,n0,sigp,sjgp,slvl) + 
+                    ddpdx_v(ie,np1,sigp,sjgp,slvl).dx(fad_idx) * l_dp(ie,n0,sigp,sjgp,slvl);
+                }
+                for (int slvl=0; slvl<NUM_INTERFACE_LEV; ++slvl) {
+                  l_V(ie,np1,1,igp,jgp,lvl) +=
+                    dwdx_v(ie,np1,sigp,sjgp,slvl).dx(fad_idx) * l_w(ie,n0,sigp,sjgp,slvl) +
+                    dphidx_v(ie,np1,sigp,sjgp,slvl).dx(fad_idx) * l_phi(ie,n0,sigp,sjgp,slvl);
+                }
+              }
+            }
+
+            ++fad_idx;
+
+            for (int sigp=0; sigp<NP; ++sigp) {
+              for (int sjgp=0; sjgp<NP; ++sjgp) {
+                for (int slvl=0; slvl<NUM_PHYSICAL_LEV; ++slvl) {
+                  l_vth(ie,np1,igp,jgp,lvl) +=
+                    dvdx_v(ie,np1,0,sigp,sjgp,slvl).dx(fad_idx) * l_V(ie,n0,0,sigp,sjgp,slvl) + 
+                    dvdx_v(ie,np1,1,sigp,sjgp,slvl).dx(fad_idx) * l_V(ie,n0,1,sigp,sjgp,slvl) + 
+                    dvthdx_v(ie,np1,sigp,sjgp,slvl).dx(fad_idx) * l_vth(ie,n0,sigp,sjgp,slvl) + 
+                    ddpdx_v(ie,np1,sigp,sjgp,slvl).dx(fad_idx) * l_dp(ie,n0,sigp,sjgp,slvl);
+                }
+                for (int slvl=0; slvl<NUM_INTERFACE_LEV; ++slvl) {
+                  l_vth(ie,np1,igp,jgp,lvl) +=
+                    dwdx_v(ie,np1,sigp,sjgp,slvl).dx(fad_idx) * l_w(ie,n0,sigp,sjgp,slvl) +
+                    dphidx_v(ie,np1,sigp,sjgp,slvl).dx(fad_idx) * l_phi(ie,n0,sigp,sjgp,slvl);
+                }
+              }
+            }
+
+            ++fad_idx;
+
+            for (int sigp=0; sigp<NP; ++sigp) {
+              for (int sjgp=0; sjgp<NP; ++sjgp) {
+                for (int slvl=0; slvl<NUM_PHYSICAL_LEV; ++slvl) {
+                  l_dp(ie,np1,igp,jgp,lvl) +=
+                    dvdx_v(ie,np1,0,sigp,sjgp,slvl).dx(fad_idx) * l_V(ie,n0,0,sigp,sjgp,slvl) + 
+                    dvdx_v(ie,np1,1,sigp,sjgp,slvl).dx(fad_idx) * l_V(ie,n0,1,sigp,sjgp,slvl) + 
+                    dvthdx_v(ie,np1,sigp,sjgp,slvl).dx(fad_idx) * l_vth(ie,n0,sigp,sjgp,slvl) + 
+                    ddpdx_v(ie,np1,sigp,sjgp,slvl).dx(fad_idx) * l_dp(ie,n0,sigp,sjgp,slvl);
+                }
+                for (int slvl=0; slvl<NUM_INTERFACE_LEV; ++slvl) {
+                  l_dp(ie,np1,igp,jgp,lvl) +=
+                    dwdx_v(ie,np1,sigp,sjgp,slvl).dx(fad_idx) * l_w(ie,n0,sigp,sjgp,slvl) +
+                    dphidx_v(ie,np1,sigp,sjgp,slvl).dx(fad_idx) * l_phi(ie,n0,sigp,sjgp,slvl);
+                }
+              }
+            }
+
+            ++fad_idx;
+
+          } // lvl
+
+          for (int lvl=0; lvl<NUM_INTERFACE_LEV; ++lvl) {
+
+            // Zero Fad components
+            l_w(ie,np1,igp,jgp,lvl) = 0;
+            l_phi(ie,np1,igp,jgp,lvl) = 0;
+
+            // Compute mat-trans-vec one column at a time
+            for (int sigp=0; sigp<NP; ++sigp) {
+              for (int sjgp=0; sjgp<NP; ++sjgp) {
+                for (int slvl=0; slvl<NUM_PHYSICAL_LEV; ++slvl) {
+                  l_w(ie,np1,igp,jgp,lvl) +=
+                    dvdx_v(ie,np1,0,sigp,sjgp,slvl).dx(fad_idx) * l_V(ie,n0,0,sigp,sjgp,slvl) + 
+                    dvdx_v(ie,np1,1,sigp,sjgp,slvl).dx(fad_idx) * l_V(ie,n0,1,sigp,sjgp,slvl) + 
+                    dvthdx_v(ie,np1,sigp,sjgp,slvl).dx(fad_idx) * l_vth(ie,n0,sigp,sjgp,slvl) + 
+                    ddpdx_v(ie,np1,sigp,sjgp,slvl).dx(fad_idx) * l_dp(ie,n0,sigp,sjgp,slvl);
+                } 
+                for (int slvl=0; slvl<NUM_INTERFACE_LEV; ++slvl) {
+                  l_w(ie,np1,igp,jgp,lvl) +=
+                    dwdx_v(ie,np1,sigp,sjgp,slvl).dx(fad_idx) * l_w(ie,n0,sigp,sjgp,slvl) +
+                    dphidx_v(ie,np1,sigp,sjgp,slvl).dx(fad_idx) * l_phi(ie,n0,sigp,sjgp,slvl);
+                }
+              }
+            }
+          
+            ++fad_idx;
+
+            for (int sigp=0; sigp<NP; ++sigp) {
+              for (int sjgp=0; sjgp<NP; ++sjgp) {
+                for (int slvl=0; slvl<NUM_PHYSICAL_LEV; ++slvl) {
+                  l_phi(ie,np1,igp,jgp,lvl) +=
+                    dvdx_v(ie,np1,0,sigp,sjgp,slvl).dx(fad_idx) * l_V(ie,n0,0,sigp,sjgp,slvl) + 
+                    dvdx_v(ie,np1,1,sigp,sjgp,slvl).dx(fad_idx) * l_V(ie,n0,1,sigp,sjgp,slvl) + 
+                    dvthdx_v(ie,np1,sigp,sjgp,slvl).dx(fad_idx) * l_vth(ie,n0,sigp,sjgp,slvl) + 
+                    ddpdx_v(ie,np1,sigp,sjgp,slvl).dx(fad_idx) * l_dp(ie,n0,sigp,sjgp,slvl);
+                } 
+                for (int slvl=0; slvl<NUM_INTERFACE_LEV; ++slvl) {
+                  l_phi(ie,np1,igp,jgp,lvl) +=
+                    dwdx_v(ie,np1,sigp,sjgp,slvl).dx(fad_idx) * l_w(ie,n0,sigp,sjgp,slvl) +
+                    dphidx_v(ie,np1,sigp,sjgp,slvl).dx(fad_idx) * l_phi(ie,n0,sigp,sjgp,slvl);
+                }
+              }
+            }
+
+            ++fad_idx;
+
+          } // lvl
+        } // j
+      } // i
+
+      assert(fad_idx <= num_fad);
+    } // e
   }
 #endif //HOMMEXX_ENABLE_FAD_TYPES
 
