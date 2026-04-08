@@ -322,6 +322,7 @@ void ElementsStateST<ST>::randomize(const int seed,
   Kokkos::fence();
 }
 
+#ifdef HOMMEXX_ENABLE_FAD_TYPES
 template<typename ST>
 void ElementsStateST<ST>::randomize_derivs(const int seed, const int itl)
 {
@@ -383,6 +384,7 @@ void ElementsStateST<ST>::randomize_derivs(const int seed, const int itl)
     Kokkos::parallel_for(p,copy_into_deriv);
   }
 }
+#endif // HOMMEXX_ENABLE_FAD_TYPES
 
 template<typename ST>
 void ElementsStateST<ST>::pull_from_f90_pointers (CF90Ptr& state_v,         CF90Ptr& state_w_i,

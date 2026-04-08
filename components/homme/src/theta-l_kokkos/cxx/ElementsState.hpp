@@ -69,8 +69,6 @@ public:
                  const ExecViewUnmanaged<const Real*[NP][NP]>& phis);
   void randomize(const int seed, const HybridVCoord& hvcoord);
 
-  void randomize_derivs(const int seed, const int itl);
-
   KOKKOS_INLINE_FUNCTION
   int num_elems() const { return m_num_elems; }
 
@@ -89,9 +87,14 @@ public:
   template<typename RST>
   void import_values (const ElementsStateST<RST>& rhs, int tl);
 
+
+#ifdef HOMMEXX_ENABLE_FAD_TYPES
+  void randomize_derivs(const int seed, const int itl);
+
   template<typename RST>
   std::enable_if_t<Sacado::IsFad<RST>::value>
   import_values_from_deriv (const ElementsStateST<RST>& rhs, int tl, int ider);
+#endif
 
 private:
   int m_num_elems;
@@ -146,6 +149,7 @@ void ElementsStateST<ST>::import_values (const ElementsStateST<RST>& rhs, int tl
   Kokkos::parallel_for(p,copy);
 }
 
+#ifdef HOMMEXX_ENABLE_FAD_TYPES
 // Extract derivs from an ElementStateST templated on a Fad type into one that has ST=Real
 template<typename ST>
 template<typename RST>
@@ -187,6 +191,7 @@ ElementsStateST<ST>::import_values_from_deriv (const ElementsStateST<RST>& rhs, 
   Kokkos::MDRangePolicy<ExecSpace,Kokkos::Rank<4>> p({0,0,0,0},{m_num_elems,NP,NP,nlev});
   Kokkos::parallel_for(p,copy);
 }
+#endif // HOMMEXX_ENABLE_FAD_TYPES
 
 // Check ElementsState for NaN or incorrectly signed values. The initial check
 // is fast and on device. If everything is fine, the routine returns

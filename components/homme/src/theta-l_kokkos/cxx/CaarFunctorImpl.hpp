@@ -382,33 +382,39 @@ struct CaarFunctorImplST {
     limiter.run(data.np1);
   }
 
+#ifdef HOMMEXX_ENABLE_FAD_TYPES
   template<typename MyST = ST>
   std::enable_if_t<not std::is_same_v<MyST,DxFadTypeCaar>>
-  run_JV (const RKStageData& data, ElementsStateST<Real>& adj_state) = delete;
+  init_J (const RKStageData& data);
 
+  // Init J derivatives. Fad entries are initialized to diagonal, using a compressed-column approach
+  // The column-compressed Fad, relies on the fact that levels more than 2 above or 1 below
+  // will not interact with the current level (while we have full NPxNP coupling in the horiz direction).
+  // Moreover, for each gauss point, we don't need the derivs of ALL vars at all 4 levels of the
+  // stencil. In fact, the state at k-th level (be that midpoint or interface) depends only on
+  // [u_prev, u_curr, v_prev, v_curr,
+  //  vth_prev, vth_curr, vth_next,
+  //  dp_prev, dp_curr, dp_next,
+  //  phi_prev, phi_curr, phi_next, phi_next2,
+  //  w_curr, w_next]
+  // where _prev refers to lev k-1, _curr to lev k, _next to lev k+1, and _next2 to lev k+2.
+  // So the stencil_sz is 16. To compress columns, we interpret the derivs as follows. Let
+  //  - kmN_M := (k-N) % M
+  //  - k_M   := k % M
+  //  - kpN_M := (k+N) % M
+  // and for state X let X_blah=X(blah). Then the stencil is
+  // [u_km1_2, u_k_2, v_km1_2, v_k_2,
+  //  vth_km1_3, vth_k_3, vth_kp1_3,
+  //  dp_km1_3, dp_k_3, dp_kp1_3,
+  //  phi_km1_3, phi_k_4, phi_kp1_4, phi_kp2_4,
+  //  w_k_2, w_kp1_2]
+  // One would think that, since mod arith on neg numbers doesn't work well, we should do
+  //  kmN_M := (k+M-N) % M
+  // However, if k<N, we will NOT use those deriv entries, so we don't need to be careful with mod arith.
   template<typename MyST = ST>
   std::enable_if_t<std::is_same_v<MyST,DxFadTypeCaar>>
-  run_JV (const RKStageData& data, ElementsStateST<Real>& adj_state)
+  init_J (const RKStageData& data)
   {
-    // For d/dx we use a column-compressed Fad, since levels more than 2 below or 1 above
-    // will not interact with each other, while we have full NPxNP coupling in the horiz direction.
-    // Moreover, For each gauss point, we don't need the derivs of ALL vars at all 4 levels of the
-    // stencil. In fact, the state at k-th level (midpoint or interface) depends only on
-    // [u_prev, u_curr, v_prev, v_curr,
-    //  vth_prev, vth_curr, vth_next,
-    //  dp_prev, dp_curr, dp_next,
-    //  phi_prev, phi_curr, phi_next, phi_next2,
-    //  w_curr, w_next]
-    // So the stencil_sz is 16. To compress columns, we interpret the derivs as follows. Let
-    //  - kmN_M = (k - N) % M (which is computed via (k+M-N) % M)
-    //  - k0_M = k % M
-    //  - kpN_M = (k+N) % M
-    // and for state X let X_blah=X(blah). Then the stencil is
-    // [u_km1_2, u_k0_2, v_km1_2, v_k0_2,
-    //  vth_km1_3, vth_k0_3, vth_kp1_3,
-    //  dp_km1_3, dp_k0_3, dp_kp1_3,
-    //  phi_km1_3, phi_k0_4, phi_kp1_4, phi_kp2_4,
-    //  w_k0_2, w_kp1_2]
     constexpr int stencil_sz = 16;
 
     int offset_u   = 0;
@@ -422,7 +428,6 @@ struct CaarFunctorImplST {
     auto p4_mid = md_range_t({0,0,0,0},{m_num_elems,NP,NP,NUM_PHYSICAL_LEV});
     auto p4_int = md_range_t({0,0,0,0},{m_num_elems,NP,NP,NUM_INTERFACE_LEV});
 
-    // First, init d/dx derivs
     auto dvdx_v = ekat::scalarize(m_state.m_v);
     auto dvthdx_v = ekat::scalarize(m_state.m_vtheta_dp);
     auto ddpdx_v = ekat::scalarize(m_state.m_dp3d);
@@ -463,11 +468,37 @@ struct CaarFunctorImplST {
 
     Kokkos::parallel_for(p4_mid,init_dx_mid);
     Kokkos::parallel_for(p4_int,init_dx_int);
+  }
 
-    // Run pre-exchange phase of CAAR
-    run_pre_exchange(data);
+  template<typename MyST = ST>
+  std::enable_if_t<not std::is_same_v<MyST,DxFadTypeCaar>>
+  run_JV (const RKStageData& data, ElementsStateST<Real>& adj_state) = delete;
 
-    // Then compute dxnew/dp = dxnew/dxold * dxold/dp
+  template<typename MyST = ST>
+  std::enable_if_t<std::is_same_v<MyST,DxFadTypeCaar>>
+  run_JV (const RKStageData& data, ElementsStateST<Real>& adj_state)
+  {
+    constexpr int stencil_sz = 16;
+
+    int offset_u   = 0;
+    int offset_v   = 2;
+    int offset_vth = 4;
+    int offset_dp  = 7;
+    int offset_phi = 10;
+    int offset_w   = 14;
+
+    using md_range_t = Kokkos::MDRangePolicy<ExecSpace,Kokkos::Rank<4>>;
+    auto p4_mid = md_range_t({0,0,0,0},{m_num_elems,NP,NP,NUM_PHYSICAL_LEV});
+    auto p4_int = md_range_t({0,0,0,0},{m_num_elems,NP,NP,NUM_INTERFACE_LEV});
+
+    auto dvdx_v = ekat::scalarize(m_state.m_v);
+    auto dvthdx_v = ekat::scalarize(m_state.m_vtheta_dp);
+    auto ddpdx_v = ekat::scalarize(m_state.m_dp3d);
+    auto dphidx_v = ekat::scalarize(m_state.m_phinh_i);
+    auto dwdx_v = ekat::scalarize(m_state.m_w_i);
+
+    // Compute dxnew/dp = dxnew/dxold * dxold/dp
+    int n0 = data.n0;
     int np1 = data.np1;
 
     auto l_V = ekat::scalarize(adj_state.m_v);
@@ -477,7 +508,6 @@ struct CaarFunctorImplST {
     auto l_w = ekat::scalarize(adj_state.m_w_i);
     
     constexpr int last_mid = NUM_PHYSICAL_LEV-1;
-    constexpr int last_mid_m1 = NUM_PHYSICAL_LEV-2;
     auto prod_rule_mid = KOKKOS_LAMBDA (const int ie, const int ipt, const int jpt, const int k) {
       const auto& l_u_old   = Homme::subview(l_V,ie,n0,0);
       const auto& l_v_old   = Homme::subview(l_V,ie,n0,1);
@@ -505,21 +535,21 @@ struct CaarFunctorImplST {
       l_vth_new = 0;
 
       // offsets of each var in the deriv vector
-      int u_prev    = offset_u   + (k+2-1) % 2;
-      int u_curr    = offset_u   + k % 2;
-      int v_prev    = offset_v   + (k+2-1) % 2;
-      int v_curr    = offset_v   + k % 2;
-      int vth_prev  = offset_vth + (k+3-1) % 3;
-      int vth_curr  = offset_vth + k % 3;
+      int u_prev    = offset_u   + (k-1) % 2;
+      int u_curr    = offset_u   +  k    % 2;
+      int v_prev    = offset_v   + (k-1) % 2;
+      int v_curr    = offset_v   +  k    % 2;
+      int vth_prev  = offset_vth + (k-1) % 3;
+      int vth_curr  = offset_vth +  k    % 3;
       int vth_next  = offset_vth + (k+1) % 3;
-      int dp_prev   = offset_dp  + (k+3-1) % 3;
-      int dp_curr   = offset_dp  + k % 3;
+      int dp_prev   = offset_dp  + (k-1) % 3;
+      int dp_curr   = offset_dp  +  k    % 3;
       int dp_next   = offset_dp  + (k+1) % 3;
-      int phi_prev  = offset_phi + (k+4-1) % 4;
-      int phi_curr  = offset_phi + k % 4;
+      int phi_prev  = offset_phi + (k-1) % 4;
+      int phi_curr  = offset_phi +  k    % 4;
       int phi_next  = offset_phi + (k+1) % 4;
       int phi_next2 = offset_phi + (k+2) % 4;
-      int w_curr    = offset_w   + k % 2;
+      int w_curr    = offset_w   +  k    % 2;
       int w_next    = offset_w   + (k+1) % 2;
 
       for (int mpt=0; mpt<NP; ++mpt) {
@@ -605,18 +635,18 @@ struct CaarFunctorImplST {
       l_w_new = 0;
 
       // offsets of each var in the deriv vector
-      int u_prev    = offset_u + (k+2-1) % 2;
-      int u_curr    = offset_u + k % 2;
-      int v_prev    = offset_v + (k+2-1) % 2;
-      int v_curr    = offset_v + k % 2;
-      int vth_prev  = offset_vth +(k+3-1) % 3;
-      int vth_curr  = offset_vth +k % 3;
-      int dp_prev   = offset_dp +(k+3-1) % 3;
-      int dp_curr   = offset_dp +k % 3;
-      int phi_prev  = offset_phi +(k+4-1) % 4;
-      int phi_curr  = offset_phi +k % 4;
-      int phi_next  = offset_phi +(k+1) % 4;
-      int w_curr    = offset_w + k % 2;
+      int u_prev    = offset_u   + (k-1) % 2;
+      int u_curr    = offset_u   +  k    % 2;
+      int v_prev    = offset_v   + (k-1) % 2;
+      int v_curr    = offset_v   +  k    % 2;
+      int vth_prev  = offset_vth + (k-1) % 3;
+      int vth_curr  = offset_vth +  k    % 3;
+      int dp_prev   = offset_dp  + (k-1) % 3;
+      int dp_curr   = offset_dp  +  k    % 3;
+      int phi_prev  = offset_phi + (k-1) % 4;
+      int phi_curr  = offset_phi +  k    % 4;
+      int phi_next  = offset_phi + (k+1) % 4;
+      int w_curr    = offset_w   +  k    % 2;
 
       for (int mpt=0; mpt<NP; ++mpt) {
         for (int npt=0; npt<NP; ++npt) {
@@ -663,18 +693,15 @@ struct CaarFunctorImplST {
     Kokkos::parallel_for(p4_int,prod_rule_int);
   }
 
-  // A version of run_JV that computes the full element Jacobian instead of using column compression to help debugging
-  // Note, to run this you need to set DxFadTypeCaar correctly based on the number of levels.  The formula is:
-  //      NP*NP*(NUM_PHYSICAL_LEV*4 + NUM_INTERFACE_LEV*2)
+  // Init J derivatives. Fad entries are initialized to diagonal. No column-compression used
   template<typename MyST = ST>
   std::enable_if_t<not std::is_same_v<MyST,DxFadTypeCaar>>
-  run_JV_full (const RKStageData& data, ElementsStateST<Real>& adj_state) = delete;
+  init_J_full (const RKStageData& data) = delete;
 
   template<typename MyST = ST>
   std::enable_if_t<std::is_same_v<MyST,DxFadTypeCaar>>
-  run_JV_full (const RKStageData& data, ElementsStateST<Real>& adj_state)
+  init_J_full (const RKStageData& data)
   {
-    // First, init d/dx derivs
     auto dvdx_v = ekat::scalarize(m_state.m_v);
     auto dvthdx_v = ekat::scalarize(m_state.m_vtheta_dp);
     auto ddpdx_v = ekat::scalarize(m_state.m_dp3d);
@@ -718,9 +745,29 @@ struct CaarFunctorImplST {
       }
       assert(fad_idx <= num_fad);
     }
+  }
 
-    // Run pre-exchange phase of CAAR
-    run_pre_exchange(data);
+  // A version of run_JV that computes the full element Jacobian instead of using column compression to help debugging
+  // Note, to run this you need to set DxFadTypeCaar correctly based on the number of levels.  The formula is:
+  //      NP*NP*(NUM_PHYSICAL_LEV*4 + NUM_INTERFACE_LEV*2)
+  template<typename MyST = ST>
+  std::enable_if_t<not std::is_same_v<MyST,DxFadTypeCaar>>
+  run_JV_full (const RKStageData& data, ElementsStateST<Real>& adj_state) = delete;
+
+  template<typename MyST = ST>
+  std::enable_if_t<std::is_same_v<MyST,DxFadTypeCaar>>
+  run_JV_full (const RKStageData& data, ElementsStateST<Real>& adj_state)
+  {
+    // First, init d/dx derivs
+    auto dvdx_v = ekat::scalarize(m_state.m_v);
+    auto dvthdx_v = ekat::scalarize(m_state.m_vtheta_dp);
+    auto ddpdx_v = ekat::scalarize(m_state.m_dp3d);
+    auto dwdx_v = ekat::scalarize(m_state.m_w_i);
+    auto dphidx_v = ekat::scalarize(m_state.m_phinh_i);
+
+    int n0 = data.n0;
+
+    const int num_fad = Sacado::StaticSize<DxFadTypeCaar>::value;
 
     // Then compute dxnew/dp = dxnew/dxold * dxold/dp
     int np1 = data.np1;
@@ -828,7 +875,7 @@ struct CaarFunctorImplST {
                     ddpdx_v(ie,np1,igp,jgp,lvl).dx(fad_idx++) * l_dp(ie,n0,sigp,sjgp,slvl);
                 }
                 for (int slvl=0; slvl<NUM_INTERFACE_LEV; ++slvl) {
-                  l_vth(ie,np1,igp,jgp,lvl) +=
+                  l_dp(ie,np1,igp,jgp,lvl) +=
                     ddpdx_v(ie,np1,igp,jgp,lvl).dx(fad_idx++) * l_w(ie,n0,sigp,sjgp,slvl) +
                     ddpdx_v(ie,np1,igp,jgp,lvl).dx(fad_idx++) * l_phi(ie,n0,sigp,sjgp,slvl);
                 }
@@ -900,8 +947,427 @@ struct CaarFunctorImplST {
     // dpf.close();
     // phif.close();
     // wf.close();
-
   }
+
+  template<typename MyST = ST>
+  std::enable_if_t<not std::is_same_v<MyST,DxFadTypeCaar>>
+  run_JtV (const RKStageData& data, ElementsStateST<Real>& adj_state) = delete;
+
+  // Computes the transpose Jacobian-vector product: l_new = J^T * l_old,
+  // where J = d(x_new)/d(x_old) is the same Jacobian used in run_JV.
+  // Uses the identical column-compressed stencil (stencil_sz=16), but reverses
+  // the accumulation: for each input point (mpt,npt,m) we sum over all Jacobian
+  // rows (ipt,jpt,k) whose stencil includes that input point.
+  template<typename MyST = ST>
+  std::enable_if_t<std::is_same_v<MyST,DxFadTypeCaar>>
+  run_JtV (const RKStageData& data, ElementsStateST<Real>& adj_state)
+  {
+    // The same compressed-column consideration as in run_JV holds, and everything looks "the same".
+    // There is one important distinction. The indices (i,j,k) for l_new must now match the indices
+    // in the deriv, rather than the indices of the var beeing differentiated. That's b/c
+    //
+    //  [J *v]_i = J_ij * v_j = d(x_i)/d(x_j) * v_j
+    //  [J'*v]_i = J_ji * v_j = d(x_j)/d(x_i) * v_j
+    // 
+    // For the gauss points, this is easy to do, as all GPs are coupled with all GPs.
+    // For the levels, since we are doing compression, we need to be careful: while in J*v
+    // we considered v_j at the levels that can affect x_i, in J'*v we have to consider
+    // v_j at the levels that x_i can affect.
+    constexpr int stencil_sz = 16;
+
+    int offset_u   = 0;
+    int offset_v   = 2;
+    int offset_vth = 4;
+    int offset_dp  = 7;
+    int offset_phi = 10;
+    int offset_w   = 14;
+
+    using md_range_t = Kokkos::MDRangePolicy<ExecSpace,Kokkos::Rank<4>>;
+    auto p4_mid = md_range_t({0,0,0,0},{m_num_elems,NP,NP,NUM_PHYSICAL_LEV});
+    auto p4_int = md_range_t({0,0,0,0},{m_num_elems,NP,NP,NUM_INTERFACE_LEV});
+
+    auto dvdx_v = ekat::scalarize(m_state.m_v);
+    auto dvthdx_v = ekat::scalarize(m_state.m_vtheta_dp);
+    auto ddpdx_v = ekat::scalarize(m_state.m_dp3d);
+    auto dphidx_v = ekat::scalarize(m_state.m_phinh_i);
+    auto dwdx_v = ekat::scalarize(m_state.m_w_i);
+
+    // Compute dxnew/dp = dxnew/dxold * dxold/dp
+    int n0 = data.n0;
+    int np1 = data.np1;
+
+    auto l_V = ekat::scalarize(adj_state.m_v);
+    auto l_vth = ekat::scalarize(adj_state.m_vtheta_dp);
+    auto l_dp = ekat::scalarize(adj_state.m_dp3d);
+    auto l_phi = ekat::scalarize(adj_state.m_phinh_i);
+    auto l_w = ekat::scalarize(adj_state.m_w_i);
+    
+    constexpr int last_mid = NUM_PHYSICAL_LEV-1;
+    auto jtv_mid = KOKKOS_LAMBDA (const int ie, const int ipt, const int jpt, const int k) {
+      const auto& l_u_old   = Homme::subview(l_V,ie,n0,0);
+      const auto& l_v_old   = Homme::subview(l_V,ie,n0,1);
+      const auto& l_vth_old = Homme::subview(l_vth,ie,n0);
+      const auto& l_dp_old  = Homme::subview(l_dp,ie,n0);
+      const auto& l_phi_old = Homme::subview(l_phi,ie,n0);
+      const auto& l_w_old   = Homme::subview(l_w,ie,n0);
+
+      auto& l_u_new   = l_V(ie,np1,0,ipt,jpt,k);
+      auto& l_v_new   = l_V(ie,np1,1,ipt,jpt,k);
+      auto& l_vth_new = l_vth(ie,np1,ipt,jpt,k);
+      auto& l_dp_new  = l_dp(ie,np1,ipt,jpt,k);
+
+      // Jacobians
+      const auto& Ju   = Homme::subview(dvdx_v,ie,np1,0);
+      const auto& Jv   = Homme::subview(dvdx_v,ie,np1,1);
+      const auto& Jvth = Homme::subview(dvthdx_v,ie,np1);
+      const auto& Jdp  = Homme::subview(ddpdx_v,ie,np1);
+      const auto& Jphi = Homme::subview(dphidx_v,ie,np1);
+      const auto& Jw   = Homme::subview(dwdx_v,ie,np1);
+
+      l_u_new = 0;
+      l_v_new = 0;
+      l_dp_new = 0;
+      l_vth_new = 0;
+
+      // offsets of each var in the deriv vector
+      // NOTE: to do (X-m) mod n, do (X-m+n) mod n, since the mod of a neg number is not what you think
+      int pt_offset = ipt*NP*stencil_sz + jpt*stencil_sz;
+
+      int u_curr    = pt_offset + offset_u   + k % 2;
+      int v_curr    = pt_offset + offset_v   + k % 2;
+      int vth_curr  = pt_offset + offset_vth + k % 3;
+      int dp_curr   = pt_offset + offset_dp  + k % 3;
+      int phi_curr  = pt_offset + offset_phi + k % 4;
+      int w_curr    = pt_offset + offset_w   + k % 2;
+
+      for (int mpt=0; mpt<NP; ++mpt) {
+        for (int npt=0; npt<NP; ++npt) {
+          auto pt_Ju   = Homme::subview(Ju   ,mpt,npt);
+          auto pt_Jv   = Homme::subview(Jv   ,mpt,npt);
+          auto pt_Jvth = Homme::subview(Jvth ,mpt,npt);
+          auto pt_Jdp  = Homme::subview(Jdp  ,mpt,npt);
+          auto pt_Jphi = Homme::subview(Jphi ,mpt,npt);
+          auto pt_Jw   = Homme::subview(Jw   ,mpt,npt);
+
+          // Impacts on k quantities
+          l_u_new += pt_Ju(k).dx(u_curr)   * l_u_old   (mpt,npt,k)  // du(k)/du(k)
+                   + pt_Jv(k).dx(u_curr)   * l_v_old   (mpt,npt,k)  // dv(k)/du(k)
+                   + pt_Jvth(k).dx(u_curr) * l_vth_old (mpt,npt,k)  // dvth(k)/du(k)
+                   + pt_Jdp(k).dx(u_curr)  * l_dp_old  (mpt,npt,k)  // ddp(k)/du(k)
+                   + pt_Jphi(k).dx(u_curr) * l_phi_old (mpt,npt,k)  // dphi(k)/du(k)
+                   + pt_Jw(k).dx(u_curr)   * l_w_old   (mpt,npt,k); // dw(k)/du(k)
+
+          l_v_new += pt_Ju(k).dx(v_curr)   * l_u_old   (mpt,npt,k)  // du(k)/du(k)
+                   + pt_Jv(k).dx(v_curr)   * l_v_old   (mpt,npt,k)  // dv(k)/du(k)
+                   + pt_Jvth(k).dx(v_curr) * l_vth_old (mpt,npt,k)  // dvth(k)/du(k)
+                   + pt_Jdp(k).dx(v_curr)  * l_dp_old  (mpt,npt,k)  // ddp(k)/du(k)
+                   + pt_Jphi(k).dx(v_curr) * l_phi_old (mpt,npt,k)  // dphi(k)/du(k)
+                   + pt_Jw(k).dx(v_curr)   * l_w_old   (mpt,npt,k); // dw(k)/du(k)
+
+          l_vth_new += pt_Ju(k).dx(vth_curr)   * l_u_old   (mpt,npt,k)  // du(k)/dvth(k)
+                    +  pt_Jv(k).dx(vth_curr)   * l_v_old   (mpt,npt,k)  // dv(k)/dvth(k)
+                    +  pt_Jvth(k).dx(vth_curr) * l_vth_old (mpt,npt,k)  // dvth(k)/dvth(k)
+                    +  pt_Jw(k).dx(vth_curr)   * l_w_old   (mpt,npt,k); // dw(k)/dvth(k)
+
+          l_dp_new += pt_Ju(k).dx(dp_curr)   * l_u_old   (mpt,npt,k)  // du(k)/ddp(k)
+                   +  pt_Jv(k).dx(dp_curr)   * l_v_old   (mpt,npt,k)  // dv(k)/ddp(k)
+                   +  pt_Jvth(k).dx(dp_curr) * l_vth_old (mpt,npt,k)  // dvth(k)/ddp(k)
+                   +  pt_Jdp(k).dx(dp_curr)  * l_dp_old  (mpt,npt,k)  // ddp(k)/ddp(k)
+                   +  pt_Jphi(k).dx(dp_curr) * l_phi_old (mpt,npt,k)  // dphi(k)/ddp(k)
+                   +  pt_Jw(k).dx(dp_curr)   * l_w_old   (mpt,npt,k); // dw(k)/ddp(k)
+
+          // Impacts on k+1 quantities
+          l_u_new += pt_Jphi(k+1).dx(u_curr) * l_phi_old (mpt,npt,k+1)  // dphi(k+1)/du(k)
+                   + pt_Jw(k+1).dx(u_curr)   * l_w_old   (mpt,npt,k+1); // dw(k+1)/du(k)
+
+          l_v_new += pt_Jphi(k+1).dx(v_curr) * l_phi_old (mpt,npt,k+1)  // dphi(k+1)/dv(k)
+                   + pt_Jw(k+1).dx(v_curr)   * l_w_old   (mpt,npt,k+1); // dw(k+1)/dv(k)
+
+          l_vth_new += pt_Jw(k+1).dx(vth_curr) * l_w_old (mpt,npt,k+1); // dw(k+1)/dvth(k)
+
+          l_dp_new += pt_Jphi(k+1).dx(dp_curr) * l_phi_old (mpt,npt,k+1)  // dphi(k+1)/ddp(k)
+                    + pt_Jw(k+1).dx(dp_curr)   * l_w_old   (mpt,npt,k+1); // dw(k+1)/ddp(k)
+
+          if (k<last_mid) {
+            l_vth_new += pt_Ju(k+1).dx(vth_curr) * l_u_old (mpt,npt,k+1)  // du(k+1)/dvth(k)
+                       + pt_Jv(k+1).dx(vth_curr) * l_v_old (mpt,npt,k+1); // dv(k+1)/dvth(k)
+
+            l_dp_new += pt_Ju(k+1).dx(dp_curr) * l_u_old (mpt,npt,k+1)  // du(k+1)/ddp(k)
+                      + pt_Jv(k+1).dx(dp_curr) * l_v_old (mpt,npt,k+1); // dv(k+1)/ddp(k)
+          }
+
+          // Impacts on k-1 quantities
+          if (k>0) {
+            l_vth_new += pt_Ju(k-1).dx(vth_curr) * l_u_old (mpt,npt,k-1)  // du(k-1)/dvth(k)
+                       + pt_Jv(k-1).dx(vth_curr) * l_v_old (mpt,npt,k-1); // dv(k-1)/dvth(k)
+
+            l_dp_new += pt_Ju(k-1).dx(dp_curr) * l_u_old (mpt,npt,k-1)  // du(k-1)/ddp(k)
+                      + pt_Jv(k-1).dx(dp_curr) * l_v_old (mpt,npt,k-1); // dv(k-1)/ddp(k)
+          }
+        }
+      }
+    };
+
+    constexpr int last_int = NUM_INTERFACE_LEV-1;
+    auto jtv_int = KOKKOS_LAMBDA (const int ie, const int ipt, const int jpt, const int k) {
+      const auto& l_u_old   = Homme::subview(l_V,ie,n0,0);
+      const auto& l_v_old   = Homme::subview(l_V,ie,n0,1);
+      const auto& l_vth_old = Homme::subview(l_vth,ie,n0);
+      const auto& l_dp_old  = Homme::subview(l_dp,ie,n0);
+      const auto& l_phi_old = Homme::subview(l_phi,ie,n0);
+      const auto& l_w_old   = Homme::subview(l_w,ie,n0);
+
+      auto& l_phi_new = l_phi(ie,np1,ipt,jpt,k);
+      auto& l_w_new   = l_w(ie,np1,ipt,jpt,k);
+
+      // Jacobians
+      const auto& Ju   = Homme::subview(dvdx_v,ie,np1,0);
+      const auto& Jv   = Homme::subview(dvdx_v,ie,np1,1);
+      const auto& Jvth = Homme::subview(dvthdx_v,ie,np1);
+      const auto& Jdp  = Homme::subview(ddpdx_v,ie,np1);
+      const auto& Jphi = Homme::subview(dphidx_v,ie,np1);
+      const auto& Jw   = Homme::subview(dwdx_v,ie,np1);
+
+      l_phi_new = 0;
+      l_w_new = 0;
+
+      int pt_offset = ipt*NP*stencil_sz + jpt*stencil_sz;
+
+      int u_curr    = pt_offset + offset_u   + k % 2;
+      int v_curr    = pt_offset + offset_v   + k % 2;
+      int vth_curr  = pt_offset + offset_vth + k % 3;
+      int dp_curr   = pt_offset + offset_dp  + k % 3;
+      int phi_curr  = pt_offset + offset_phi + k % 4;
+      int w_curr    = pt_offset + offset_w   + k % 2;
+
+      for (int mpt=0; mpt<NP; ++mpt) {
+        for (int npt=0; npt<NP; ++npt) {
+          auto pt_Ju   = Homme::subview(Ju   ,mpt,npt);
+          auto pt_Jv   = Homme::subview(Jv   ,mpt,npt);
+          auto pt_Jphi = Homme::subview(Jphi ,mpt,npt);
+          auto pt_Jw   = Homme::subview(Jw   ,mpt,npt);
+
+          // Impacts on k interfaces
+          l_phi_new += pt_Jphi(k).dx(phi_curr) * l_phi_old (mpt,npt,k)  // dphi(k)/dphi(k)
+                     + pt_Jw(k).dx(phi_curr)   * l_w_old   (mpt,npt,k); // dw(k)/dphi(k)
+
+          l_w_new += pt_Jphi(k).dx(w_curr) * l_phi_old (mpt,npt,k)  // dphi(k)/dw(k)
+                   + pt_Jw(k).dx(w_curr)   * l_w_old   (mpt,npt,k); // dw(k)/dw(k)
+
+          // Impacts on k+1 interfaces and k midpoints
+          if (k<last_int) {
+            l_phi_new += pt_Ju(k).dx(phi_curr)   * l_u_old (mpt,npt,k)  // du(k)/dphi(k)
+                       + pt_Jv(k).dx(phi_curr)   * l_v_old (mpt,npt,k)  // dv(k)/dphi(k)
+                       + pt_Jw(k+1).dx(phi_curr) * l_w_old (mpt,npt,k+1); // dw(k+1)/dphi(k)
+
+            l_w_new += pt_Ju(k).dx(w_curr) * l_u_old (mpt,npt,k)  // du(k)/dw(k)
+                     + pt_Jv(k).dx(w_curr) * l_v_old (mpt,npt,k); // dv(k)/dw(k)
+
+            if (k<last_mid) {
+              l_phi_new += pt_Ju(k+1).dx(phi_curr) * l_u_old (mpt,npt,k+1)  // du(k+1)/dphi(k)
+                         + pt_Jv(k+1).dx(phi_curr) * l_v_old (mpt,npt,k+1); // dv(k+1)/dphi(k)
+            }
+          }
+
+          // Impacts on k-1 quantities
+          if (k>0) {
+            l_phi_new += pt_Ju(k-1).dx(phi_curr) * l_u_old  (mpt,npt,k-1)  // du(k-1)/dphi(k)
+                       + pt_Jv(k-1).dx(phi_curr) * l_v_old  (mpt,npt,k-1)  // dv(k-1)/dphi(k)
+                       + pt_Jw(k-1).dx(phi_curr) * l_w_old  (mpt,npt,k-1); // dw(k-1)/dphi(k)
+
+            l_w_new += pt_Ju(k-1).dx(w_curr) * l_u_old  (mpt,npt,k-1)  // du(k-1)/dw(k)
+                     + pt_Jv(k-1).dx(w_curr) * l_v_old  (mpt,npt,k-1); // dv(k-1)/dw(k)
+
+            // Impacts on k-2 quantities
+            if (k>1) {
+              l_phi_new += pt_Ju(k-2).dx(phi_curr) * l_u_old  (mpt,npt,k-2)  // du(k-2)/dphi(k)
+                         + pt_Jv(k-2).dx(phi_curr) * l_v_old  (mpt,npt,k-2); // dv(k-2)/dphi(k)
+            }
+          }
+        }
+      }
+    };
+
+    Kokkos::parallel_for(p4_mid,jtv_mid);
+    Kokkos::parallel_for(p4_int,jtv_int);
+  }
+
+  // A version of run_JVt that computes the full element Jacobian instead of using column compression to help debugging
+  // Note, to run this you need to set DxFadTypeCaar correctly based on the number of levels.  The formula is:
+  //      NP*NP*(NUM_PHYSICAL_LEV*4 + NUM_INTERFACE_LEV*2)
+  template<typename MyST = ST>
+  std::enable_if_t<not std::is_same_v<MyST,DxFadTypeCaar>>
+  run_JtV_full (const RKStageData& data, ElementsStateST<Real>& adj_state) = delete;
+
+  template<typename MyST = ST>
+  std::enable_if_t<std::is_same_v<MyST,DxFadTypeCaar>>
+  run_JtV_full (const RKStageData& data, ElementsStateST<Real>& adj_state)
+  {
+    // First, init d/dx derivs
+    auto dvdx_v = ekat::scalarize(m_state.m_v);
+    auto dvthdx_v = ekat::scalarize(m_state.m_vtheta_dp);
+    auto ddpdx_v = ekat::scalarize(m_state.m_dp3d);
+    auto dwdx_v = ekat::scalarize(m_state.m_w_i);
+    auto dphidx_v = ekat::scalarize(m_state.m_phinh_i);
+
+    int n0 = data.n0;
+
+    const int num_fad = Sacado::StaticSize<DxFadTypeCaar>::value;
+
+    // Then compute dxnew/dp = dxnew/dxold * dxold/dp
+    int np1 = data.np1;
+
+    auto l_V = ekat::scalarize(adj_state.m_v);
+    auto l_vth = ekat::scalarize(adj_state.m_vtheta_dp);
+    auto l_dp = ekat::scalarize(adj_state.m_dp3d);
+    auto l_w = ekat::scalarize(adj_state.m_w_i);
+    auto l_phi = ekat::scalarize(adj_state.m_phinh_i);
+
+    for (int ie=0; ie<m_num_elems; ++ie) {
+      int fad_idx = 0;
+
+      for (int igp=0; igp<NP; ++igp) {
+        for (int jgp=0; jgp<NP; ++jgp) {
+          for (int lvl=0; lvl<NUM_PHYSICAL_LEV; ++lvl) {
+
+            // Zero Fad components
+            l_V(ie,np1,0,igp,jgp,lvl) = 0;
+            l_V(ie,np1,1,igp,jgp,lvl) = 0;
+            l_vth(ie,np1,igp,jgp,lvl) = 0;
+            l_dp(ie,np1,igp,jgp,lvl) = 0;
+
+            // Compute mat-trans-vec one column at a time
+            for (int sigp=0; sigp<NP; ++sigp) {
+              for (int sjgp=0; sjgp<NP; ++sjgp) {
+                for (int slvl=0; slvl<NUM_PHYSICAL_LEV; ++slvl) {
+                  l_V(ie,np1,0,igp,jgp,lvl) +=
+                    dvdx_v(ie,np1,0,sigp,sjgp,slvl).dx(fad_idx) * l_V(ie,n0,0,sigp,sjgp,slvl) + 
+                    dvdx_v(ie,np1,1,sigp,sjgp,slvl).dx(fad_idx) * l_V(ie,n0,1,sigp,sjgp,slvl) + 
+                    dvthdx_v(ie,np1,sigp,sjgp,slvl).dx(fad_idx) * l_vth(ie,n0,sigp,sjgp,slvl) + 
+                    ddpdx_v(ie,np1,sigp,sjgp,slvl).dx(fad_idx) * l_dp(ie,n0,sigp,sjgp,slvl);
+                }
+                for (int slvl=0; slvl<NUM_INTERFACE_LEV; ++slvl) {
+                  l_V(ie,np1,0,igp,jgp,lvl) +=
+                    dwdx_v(ie,np1,sigp,sjgp,slvl).dx(fad_idx) * l_w(ie,n0,sigp,sjgp,slvl) +
+                    dphidx_v(ie,np1,sigp,sjgp,slvl).dx(fad_idx) * l_phi(ie,n0,sigp,sjgp,slvl);
+                }
+              }
+            }
+
+            ++fad_idx;
+            
+            for (int sigp=0; sigp<NP; ++sigp) {
+              for (int sjgp=0; sjgp<NP; ++sjgp) {
+                for (int slvl=0; slvl<NUM_PHYSICAL_LEV; ++slvl) {
+                  l_V(ie,np1,1,igp,jgp,lvl) +=
+                    dvdx_v(ie,np1,0,sigp,sjgp,slvl).dx(fad_idx) * l_V(ie,n0,0,sigp,sjgp,slvl) + 
+                    dvdx_v(ie,np1,1,sigp,sjgp,slvl).dx(fad_idx) * l_V(ie,n0,1,sigp,sjgp,slvl) + 
+                    dvthdx_v(ie,np1,sigp,sjgp,slvl).dx(fad_idx) * l_vth(ie,n0,sigp,sjgp,slvl) + 
+                    ddpdx_v(ie,np1,sigp,sjgp,slvl).dx(fad_idx) * l_dp(ie,n0,sigp,sjgp,slvl);
+                }
+                for (int slvl=0; slvl<NUM_INTERFACE_LEV; ++slvl) {
+                  l_V(ie,np1,1,igp,jgp,lvl) +=
+                    dwdx_v(ie,np1,sigp,sjgp,slvl).dx(fad_idx) * l_w(ie,n0,sigp,sjgp,slvl) +
+                    dphidx_v(ie,np1,sigp,sjgp,slvl).dx(fad_idx) * l_phi(ie,n0,sigp,sjgp,slvl);
+                }
+              }
+            }
+
+            ++fad_idx;
+
+            for (int sigp=0; sigp<NP; ++sigp) {
+              for (int sjgp=0; sjgp<NP; ++sjgp) {
+                for (int slvl=0; slvl<NUM_PHYSICAL_LEV; ++slvl) {
+                  l_vth(ie,np1,igp,jgp,lvl) +=
+                    dvdx_v(ie,np1,0,sigp,sjgp,slvl).dx(fad_idx) * l_V(ie,n0,0,sigp,sjgp,slvl) + 
+                    dvdx_v(ie,np1,1,sigp,sjgp,slvl).dx(fad_idx) * l_V(ie,n0,1,sigp,sjgp,slvl) + 
+                    dvthdx_v(ie,np1,sigp,sjgp,slvl).dx(fad_idx) * l_vth(ie,n0,sigp,sjgp,slvl) + 
+                    ddpdx_v(ie,np1,sigp,sjgp,slvl).dx(fad_idx) * l_dp(ie,n0,sigp,sjgp,slvl);
+                }
+                for (int slvl=0; slvl<NUM_INTERFACE_LEV; ++slvl) {
+                  l_vth(ie,np1,igp,jgp,lvl) +=
+                    dwdx_v(ie,np1,sigp,sjgp,slvl).dx(fad_idx) * l_w(ie,n0,sigp,sjgp,slvl) +
+                    dphidx_v(ie,np1,sigp,sjgp,slvl).dx(fad_idx) * l_phi(ie,n0,sigp,sjgp,slvl);
+                }
+              }
+            }
+
+            ++fad_idx;
+
+            for (int sigp=0; sigp<NP; ++sigp) {
+              for (int sjgp=0; sjgp<NP; ++sjgp) {
+                for (int slvl=0; slvl<NUM_PHYSICAL_LEV; ++slvl) {
+                  l_dp(ie,np1,igp,jgp,lvl) +=
+                    dvdx_v(ie,np1,0,sigp,sjgp,slvl).dx(fad_idx) * l_V(ie,n0,0,sigp,sjgp,slvl) + 
+                    dvdx_v(ie,np1,1,sigp,sjgp,slvl).dx(fad_idx) * l_V(ie,n0,1,sigp,sjgp,slvl) + 
+                    dvthdx_v(ie,np1,sigp,sjgp,slvl).dx(fad_idx) * l_vth(ie,n0,sigp,sjgp,slvl) + 
+                    ddpdx_v(ie,np1,sigp,sjgp,slvl).dx(fad_idx) * l_dp(ie,n0,sigp,sjgp,slvl);
+                }
+                for (int slvl=0; slvl<NUM_INTERFACE_LEV; ++slvl) {
+                  l_dp(ie,np1,igp,jgp,lvl) +=
+                    dwdx_v(ie,np1,sigp,sjgp,slvl).dx(fad_idx) * l_w(ie,n0,sigp,sjgp,slvl) +
+                    dphidx_v(ie,np1,sigp,sjgp,slvl).dx(fad_idx) * l_phi(ie,n0,sigp,sjgp,slvl);
+                }
+              }
+            }
+
+            ++fad_idx;
+
+          } // lvl
+
+          for (int lvl=0; lvl<NUM_INTERFACE_LEV; ++lvl) {
+
+            // Zero Fad components
+            l_w(ie,np1,igp,jgp,lvl) = 0;
+            l_phi(ie,np1,igp,jgp,lvl) = 0;
+
+            // Compute mat-trans-vec one column at a time
+            for (int sigp=0; sigp<NP; ++sigp) {
+              for (int sjgp=0; sjgp<NP; ++sjgp) {
+                for (int slvl=0; slvl<NUM_PHYSICAL_LEV; ++slvl) {
+                  l_w(ie,np1,igp,jgp,lvl) +=
+                    dvdx_v(ie,np1,0,sigp,sjgp,slvl).dx(fad_idx) * l_V(ie,n0,0,sigp,sjgp,slvl) + 
+                    dvdx_v(ie,np1,1,sigp,sjgp,slvl).dx(fad_idx) * l_V(ie,n0,1,sigp,sjgp,slvl) + 
+                    dvthdx_v(ie,np1,sigp,sjgp,slvl).dx(fad_idx) * l_vth(ie,n0,sigp,sjgp,slvl) + 
+                    ddpdx_v(ie,np1,sigp,sjgp,slvl).dx(fad_idx) * l_dp(ie,n0,sigp,sjgp,slvl);
+                } 
+                for (int slvl=0; slvl<NUM_INTERFACE_LEV; ++slvl) {
+                  l_w(ie,np1,igp,jgp,lvl) +=
+                    dwdx_v(ie,np1,sigp,sjgp,slvl).dx(fad_idx) * l_w(ie,n0,sigp,sjgp,slvl) +
+                    dphidx_v(ie,np1,sigp,sjgp,slvl).dx(fad_idx) * l_phi(ie,n0,sigp,sjgp,slvl);
+                }
+              }
+            }
+          
+            ++fad_idx;
+
+            for (int sigp=0; sigp<NP; ++sigp) {
+              for (int sjgp=0; sjgp<NP; ++sjgp) {
+                for (int slvl=0; slvl<NUM_PHYSICAL_LEV; ++slvl) {
+                  l_phi(ie,np1,igp,jgp,lvl) +=
+                    dvdx_v(ie,np1,0,sigp,sjgp,slvl).dx(fad_idx) * l_V(ie,n0,0,sigp,sjgp,slvl) + 
+                    dvdx_v(ie,np1,1,sigp,sjgp,slvl).dx(fad_idx) * l_V(ie,n0,1,sigp,sjgp,slvl) + 
+                    dvthdx_v(ie,np1,sigp,sjgp,slvl).dx(fad_idx) * l_vth(ie,n0,sigp,sjgp,slvl) + 
+                    ddpdx_v(ie,np1,sigp,sjgp,slvl).dx(fad_idx) * l_dp(ie,n0,sigp,sjgp,slvl);
+                } 
+                for (int slvl=0; slvl<NUM_INTERFACE_LEV; ++slvl) {
+                  l_phi(ie,np1,igp,jgp,lvl) +=
+                    dwdx_v(ie,np1,sigp,sjgp,slvl).dx(fad_idx) * l_w(ie,n0,sigp,sjgp,slvl) +
+                    dphidx_v(ie,np1,sigp,sjgp,slvl).dx(fad_idx) * l_phi(ie,n0,sigp,sjgp,slvl);
+                }
+              }
+            }
+
+            ++fad_idx;
+
+          } // lvl
+        } // j
+      } // i
+
+      assert(fad_idx <= num_fad);
+    } // e
+  }
+#endif //HOMMEXX_ENABLE_FAD_TYPES
 
   KOKKOS_INLINE_FUNCTION
   void operator()(const TagPreExchange&, const TeamMember &team, int& nerr) const {
