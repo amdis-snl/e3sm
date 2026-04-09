@@ -286,7 +286,7 @@ void Connectivity::setup_ucon () {
       }
     }
     if ( ! ok)
-      Errors::runtime_abort(
+      EKAT_ERROR_MSG(
         std::string("Connectivity::setup_ucon: At least one connection"
                     " count is wrong:\n") + msg);
   }
@@ -307,7 +307,7 @@ void Connectivity::setup_ucon () {
               // In fact, S,N,W,E is numbered 0:3.
               h_ucon(k+i).local.dir == i);
       if ( ! ok)
-        Errors::runtime_abort("Connectivity::setup_ucon: Element's first four"
+        EKAT_ERROR_MSG("Connectivity::setup_ucon: Element's first four"
                               " connections are not edges in S, N, W, E order.");
     }
   }

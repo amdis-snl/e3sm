@@ -93,7 +93,7 @@ struct LimiterFunctorST {
   }
 
   void init_buffers (const FunctorsBuffersManager& fbm) {
-    Errors::runtime_check(fbm.allocated_size()>=requested_buffer_size(), "Error! Buffers size not sufficient.\n");
+    EKAT_REQUIRE_MSG(fbm.allocated_size()>=requested_buffer_size(), "Error! Buffers size not sufficient.\n");
 
     PT* mem = reinterpret_cast<PT*>(fbm.get_memory());
     const int nslots = m_tu.get_num_ws_slots();

@@ -279,11 +279,11 @@ void init_functors_c ()
   auto& fbm     = Context::singleton().create<FunctorsBuffersManager>();
 
   // Check that the above structures have been inited
-  Errors::runtime_check(elems.inited(),    "Error! You must initialize the Elements structure before initializing the functors.\n", -1);
-  Errors::runtime_check(tracers.inited(),  "Error! You must initialize the Tracers structure before initializing the functors.\n", -1);
-  Errors::runtime_check(ref_FE.inited(),   "Error! You must initialize the ReferenceElement structure before initializing the functors.\n", -1);
-  Errors::runtime_check(hvcoord.m_inited,  "Error! You must initialize the HybridVCoord structure before initializing the functors.\n", -1);
-  Errors::runtime_check(params.params_set, "Error! You must initialize the SimulationParams structure before initializing the functors.\n", -1);
+  EKAT_REQUIRE_MSG(elems.inited(),    "Error! You must initialize the Elements structure before initializing the functors.\n");
+  EKAT_REQUIRE_MSG(tracers.inited(),  "Error! You must initialize the Tracers structure before initializing the functors.\n");
+  EKAT_REQUIRE_MSG(ref_FE.inited(),   "Error! You must initialize the ReferenceElement structure before initializing the functors.\n");
+  EKAT_REQUIRE_MSG(hvcoord.m_inited,  "Error! You must initialize the HybridVCoord structure before initializing the functors.\n");
+  EKAT_REQUIRE_MSG(params.params_set, "Error! You must initialize the SimulationParams structure before initializing the functors.\n");
 
   // First, sphere operators, then all the functors
   auto& sph_op = Context::singleton().create<SphereOperators>(elems.m_geometry,ref_FE);

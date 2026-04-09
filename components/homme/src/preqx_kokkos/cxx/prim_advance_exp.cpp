@@ -44,8 +44,7 @@ void prim_advance_exp (TimeLevel& tl, const Real dt, const bool compute_diagnost
 #ifndef CAM
   // if "prescribed wind" set dynamics explicitly and skip time-integration
   if (params.prescribed_wind) {
-    Errors::runtime_abort("'prescribed wind' functionality not yet available in C++ build.\n",
-                           Errors::err_not_implemented);
+    EKAT_ERROR_MSG("'prescribed wind' functionality not yet available in C++ build.\n");
   }
 #endif
 
@@ -60,14 +59,13 @@ void prim_advance_exp (TimeLevel& tl, const Real dt, const bool compute_diagnost
         std::string msg = "[prim_advance_exp_iter]:";
         msg += "missing some code for this time step method. ";
         msg += "The program should have errored out earlier though. Plese, investigate.";
-        Errors::runtime_abort(msg,Errors::err_not_implemented);
+        EKAT_ERROR_MSG(msg);
       }
   }
 
 #ifdef ENERGY_DIAGNOSTICS
   if (compute_diagnostics) {
-    Errors::runtime_abort("'compute diagnostic' functionality not yet available in C++ build.\n",
-                          Errors::err_not_implemented);
+    EKAT_ERROR_MSG("'compute diagnostic' functionality not yet available in C++ build.\n");
   }
 #endif
 
@@ -79,8 +77,7 @@ void prim_advance_exp (TimeLevel& tl, const Real dt, const bool compute_diagnost
 
 #ifdef ENERGY_DIAGNOSTICS
   if (compute_diagnostics) {
-    Errors::runtime_abort("'compute diagnostic' functionality not yet available in C++ build.\n",
-                          Errors::err_not_implemented);
+    EKAT_ERROR_MSG("'compute diagnostic' functionality not yet available in C++ build.\n");
   }
 #else
   (void) compute_diagnostics;

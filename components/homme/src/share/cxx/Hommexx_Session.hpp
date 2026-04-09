@@ -25,14 +25,6 @@ struct Session {
   // init/finalization of kokkos.
   static bool m_handle_kokkos;
 
-  // If this is true, error routines in the Error namespace will
-  // not call finalize_hommexx_session (and then MPI_Abort).
-  // Instead, they will throw an exception. This allows a host
-  // lib/exe that is calling homme to decide what to do.
-  // In particular, this prevents hommexx from calling
-  // kokkos finalization, which may be catastrophic for the host app.
-  static bool m_throw_instead_of_abort;
-
   // Whether a certain scalar type is "enabled" in this hommexx session
   // Downstream fcn may use this to decide whether to init/use data sturctures
   // for a certain scalar type

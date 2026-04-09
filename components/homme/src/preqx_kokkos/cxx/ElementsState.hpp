@@ -60,8 +60,7 @@ private:
 };
 
 // Not implemented.
-void check_print_abort_on_bad_elems(const std::string& label, const int time_level,
-                                    const int error_code = -1);
+void check_print_abort_on_bad_elems(const std::string& label, const int time_level);
 
 using ElementsState = ElementsStateST<ScalarValue>;
 

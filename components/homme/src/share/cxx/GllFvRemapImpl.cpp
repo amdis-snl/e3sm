@@ -62,7 +62,7 @@ void GllFvRemapImpl::reset (const SimulationParams& params) {
   if (m_data.nelemd == num_elems and m_data.qsize == params.qsize) return;
 
   m_data.qsize = params.qsize;
-  Errors::runtime_check(m_data.qsize > 0, "GllFvRemapImpl requires qsize > 0");
+  EKAT_REQUIRE_MSG(m_data.qsize > 0, "GllFvRemapImpl requires qsize > 0");
   m_data.nelemd = num_elems;
   m_data.n_dss_fld = m_data.qsize + 2 + 1;
 
@@ -139,8 +139,8 @@ void GllFvRemapImpl
   using Kokkos::deep_copy;
 
   if (nf <= 1)
-    Errors::runtime_abort("GllFvRemap: In physics grid configuration nf x nf,"
-                          " nf must be > 1.", Errors::err_not_implemented);
+    EKAT_ERROR_MSG("GllFvRemap: In physics grid configuration nf x nf,"
+                          " nf must be > 1.");
 
   auto& sp = Context::singleton().get<SimulationParams>();
   m_data.use_moisture = sp.use_moisture;
@@ -823,7 +823,7 @@ void GllFvRemapImpl
   const auto buf10 = m_data.buf1[0];
   const auto buf11 = m_data.buf1[1];
 
-  Errors::runtime_check(nq <= qsize,
+  EKAT_REQUIRE_MSG(nq <= qsize,
                         "GllFvRemap::remap_tracer_dyn_to_fv_phys: nq must be <= qsize.");
 
 #ifndef NDEBUG

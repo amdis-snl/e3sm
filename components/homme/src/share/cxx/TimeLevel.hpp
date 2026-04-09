@@ -49,8 +49,7 @@ struct TimeLevel
         n0  = tmp;
         break;
       default:
-        Errors::runtime_abort("Unknown time level update type",
-                              Errors::err_unknown_option);
+        EKAT_ERROR_MSG("Unknown time level update type");
     }
     ++nstep;
   }

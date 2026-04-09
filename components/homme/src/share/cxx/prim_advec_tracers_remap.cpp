@@ -118,7 +118,7 @@ static void prim_advec_tracers_remap_compose (const Real dt) {
   ct.run(tl, dt);
   GPTLstop("tl-at prim_advec_tracers_compose");
 #else
-  Errors::runtime_abort("prim_advec_tracers_remap_compose: "
+  EKAT_ERROR_MSG("prim_advec_tracers_remap_compose: "
                         "transport_alg > 0 not supported in this build.");
 #endif
 }

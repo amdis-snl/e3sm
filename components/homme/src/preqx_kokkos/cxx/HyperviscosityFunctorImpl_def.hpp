@@ -91,7 +91,7 @@ int HyperviscosityFunctorImplST<ST>::requested_buffer_size () const {
 
 template<typename ST>
 void HyperviscosityFunctorImplST<ST>::init_buffers (const FunctorsBuffersManager& fbm) {
-  Errors::runtime_check(fbm.allocated_size()>=requested_buffer_size(), "Error! Buffers size not sufficient.\n");
+  EKAT_REQUIRE_MSG(fbm.allocated_size()>=requested_buffer_size(), "Error! Buffers size not sufficient.\n");
 
   constexpr int size_scalar =   NP*NP*NUM_LEV;
   constexpr int size_vector = 2*NP*NP*NUM_LEV;

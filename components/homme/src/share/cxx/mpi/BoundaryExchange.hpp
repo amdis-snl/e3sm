@@ -447,7 +447,7 @@ void BoundaryExchangeST<ST>::register_field_impl (
   assert (m_num_3d_int_fields+1<=m_3d_int_fields.extent_int(1));
   assert (m_num_1d_fields==0);
 
-  Errors::runtime_check(
+  EKAT_REQUIRE_MSG(
     nlev == NUM_LEV_IN,
     "register_field for 3D interface fields does not support nlev < NUM_LEV_P.");
 
@@ -530,7 +530,7 @@ void BoundaryExchangeST<ST>::register_field_impl (
   assert (m_num_3d_int_fields+1<=m_3d_int_fields.extent_int(1));
   assert (m_num_1d_fields==0);
 
-  Errors::runtime_check(
+  EKAT_REQUIRE_MSG(
     nlev == NUM_LEV_IN,
     "register_field for 3D interface fields does not support nlev < NUM_LEV_P.");
 

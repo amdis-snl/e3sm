@@ -92,11 +92,11 @@ void create_functors_impl ()
   auto& derived  = c.get<ElementsDerivedStateST<ST>>();
 
   // Check that the above structures have been inited
-  Errors::runtime_check(elems.inited(),    "Error! You must initialize the Elements structure before initializing the functors.\n", -1);
-  Errors::runtime_check(tracers.inited(),  "Error! You must initialize the Tracers structure before initializing the functors.\n", -1);
-  Errors::runtime_check(ref_FE.inited(),   "Error! You must initialize the ReferenceElement structure before initializing the functors.\n", -1);
-  Errors::runtime_check(hvcoord.m_inited,  "Error! You must initialize the HybridVCoord structure before initializing the functors.\n", -1);
-  Errors::runtime_check(params.params_set, "Error! You must initialize the SimulationParams structure before initializing the functors.\n", -1);
+  EKAT_REQUIRE_MSG(elems.inited(),    "Error! You must initialize the Elements structure before initializing the functors.\n");
+  EKAT_REQUIRE_MSG(tracers.inited(),  "Error! You must initialize the Tracers structure before initializing the functors.\n");
+  EKAT_REQUIRE_MSG(ref_FE.inited(),   "Error! You must initialize the ReferenceElement structure before initializing the functors.\n");
+  EKAT_REQUIRE_MSG(hvcoord.m_inited,  "Error! You must initialize the HybridVCoord structure before initializing the functors.\n");
+  EKAT_REQUIRE_MSG(params.params_set, "Error! You must initialize the SimulationParams structure before initializing the functors.\n");
 
   // First, sphere operators, then the others
   auto& sph_op = c.create<SphereOperatorsST<ST>>(elems.m_geometry,ref_FE);
@@ -385,8 +385,8 @@ void init_simulation_params_c (const int& ne, const int& remap_alg, const int& l
     //2nd order implicit table
     params.time_step_type = TimeStepType::ttype10_imex;
   } else if ( ! params.prescribed_wind) {
-    Errors::runtime_abort("Invalid time_step_type"
-                          + std::to_string(time_step_type), Errors::err_not_implemented);
+    EKAT_ERROR_MSG("Invalid time_step_type"
+                          + std::to_string(time_step_type));
   }
 
   //set nu_ratios values

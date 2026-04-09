@@ -83,7 +83,7 @@ public:
   }
 
   Impl::holder_base& content () const { 
-    Errors::runtime_check(static_cast<bool>(m_content), "Error! Object not yet initialized.\n", -1);
+    EKAT_REQUIRE_MSG(static_cast<bool>(m_content), "Error! Object not yet initialized.\n");
     return *m_content;
   }
 
@@ -101,11 +101,11 @@ ConcreteType& any_cast (any& src) {
   const auto& src_type = src.content().type();
   const auto& req_type = typeid(ConcreteType);
 
-  Errors::runtime_check(src_type==req_type, std::string("Error! Invalid cast requested, from '") + src_type.name() + "' to '" + req_type.name() + "'.\n", -1);
+  EKAT_REQUIRE_MSG(src_type==req_type, std::string("Error! Invalid cast requested, from '") + src_type.name() + "' to '" + req_type.name() + "'.\n");
 
   Impl::holder<ConcreteType>* ptr = dynamic_cast<Impl::holder<ConcreteType>*>(src.content_ptr());
 
-  Errors::runtime_check(ptr!=nullptr, "Error! Failed dynamic_cast during any_cast. This is an internal problem, please, contact developers.\n", -1);
+  EKAT_REQUIRE_MSG(ptr!=nullptr, "Error! Failed dynamic_cast during any_cast. This is an internal problem, please, contact developers.\n");
 
   return ptr->value();
 }
@@ -115,11 +115,11 @@ std::shared_ptr<ConcreteType> any_ptr_cast (const any& src) {
   const auto& src_type = src.content().type();
   const auto& req_type = typeid(ConcreteType);
 
-  Errors::runtime_check(src_type==req_type, std::string("Error! Invalid cast requested, from '") + src_type.name() + "' to '" + req_type.name() + "'.\n", -1);
+  EKAT_REQUIRE_MSG(src_type==req_type, std::string("Error! Invalid cast requested, from '") + src_type.name() + "' to '" + req_type.name() + "'.\n");
 
   Impl::holder<ConcreteType>* ptr = dynamic_cast<Impl::holder<ConcreteType>*>(src.content_ptr());
 
-  Errors::runtime_check(ptr!=nullptr, "Error! Failed dynamic_cast during any_cast. This is an internal problem, please, contact developers.\n", -1);
+  EKAT_REQUIRE_MSG(ptr!=nullptr, "Error! Failed dynamic_cast during any_cast. This is an internal problem, please, contact developers.\n");
 
   return ptr->ptr();
 }

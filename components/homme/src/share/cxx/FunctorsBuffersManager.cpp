@@ -24,7 +24,7 @@ void FunctorsBuffersManager::request_size (const int num_doubles) {
 }
 
 void FunctorsBuffersManager:: allocate () {
-  Errors::runtime_check(!m_allocated, "Error! Cannot call 'allocate' more than once.\n");
+  EKAT_REQUIRE_MSG(!m_allocated, "Error! Cannot call 'allocate' more than once.\n");
 
   m_buffer = ExecViewManaged<Real*>("",m_size);
 
@@ -34,7 +34,7 @@ void FunctorsBuffersManager:: allocate () {
 }
 
 void FunctorsBuffersManager:: allocate (Real* data, const int new_size) {
-  Errors::runtime_check(!m_allocated, "Error! Cannot call 'allocate' more than once.\n");
+  EKAT_REQUIRE_MSG(!m_allocated, "Error! Cannot call 'allocate' more than once.\n");
 
   m_size   = new_size;
   m_buffer = ExecViewManaged<Real*>(data, m_size);

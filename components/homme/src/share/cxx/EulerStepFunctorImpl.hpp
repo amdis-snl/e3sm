@@ -172,7 +172,7 @@ public:
       std::string msg = "[EulerStepFunctorImplST::reset]:";
       msg += "limiter_option=4 is not yet supported in C++. ";
       msg += "The program should have errored out earlier though. Please, investigate.";
-      Errors::runtime_abort(msg,Errors::err_not_implemented);
+      EKAT_ERROR_MSG(msg);
     }
 
     // Make sure sphere ops have buffers large enough to accommodate this functor's needs
@@ -211,7 +211,7 @@ public:
   }
 
   void init_buffers (const FunctorsBuffersManager& fbm) {
-    Errors::runtime_check(fbm.allocated_size()>=requested_buffer_size(), "Error! Buffers size not sufficient.\n");
+    EKAT_REQUIRE_MSG(fbm.allocated_size()>=requested_buffer_size(), "Error! Buffers size not sufficient.\n");
 
     constexpr int size_scalar =   NP*NP*NUM_LEV;
     const int ne = m_geometry.num_elems();

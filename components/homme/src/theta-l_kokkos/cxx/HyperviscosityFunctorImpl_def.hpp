@@ -128,8 +128,8 @@ void HyperviscosityFunctorImplST<ST>::init_params(const SimulationParams& params
 #ifdef HOMMEXX_TEST_HYPERVIS_FAD
   // Make this a runtime check, as we maybe doing ETI also for ST=Real, even if unused
   // Then, don't compile the code that actually inits the Fad.
-  Errors::runtime_check(std::is_same_v<ST,DpFadType>,
-                        "Error! The test for Dp fads requires a Fad scalar type");
+  EKAT_REQUIRE_MSG((std::is_same_v<ST,DpFadType>),
+      "Error! The test for Dp fads requires a Fad scalar type");
   if constexpr (std::is_same_v<ST,DpFadType>) {
     m_data.rel_perturb.fastAccessDx(0) = 1;
     m_data.rel_perturb.val() = params.rel_perturb;
@@ -176,7 +176,8 @@ int HyperviscosityFunctorImplST<ST>::requested_buffer_size () const {
 
 template<typename ST>
 void HyperviscosityFunctorImplST<ST>::init_buffers (const FunctorsBuffersManager& fbm) {
-  Errors::runtime_check(fbm.allocated_size()>=requested_buffer_size(), "Error! Buffers size not sufficient.\n");
+    EKAT_REQUIRE_MSG(fbm.allocated_size()>=requested_buffer_size(),
+        "Error! Buffers size not sufficient.\n");
 
   constexpr int size_mid_scalar =   NP*NP*NUM_LEV;
   constexpr int size_mid_vector = 2*NP*NP*NUM_LEV;
@@ -211,7 +212,7 @@ void HyperviscosityFunctorImplST<ST>::init_buffers (const FunctorsBuffersManager
     std::string msg = "[HyperviscosityFunctorImplST] Error! We used more memory than we said we would: "
                     + std::to_string(used_mem) + " instead of "
                     + std::to_string(requested_buffer_size()) + "\n";
-    Errors::runtime_abort(msg);
+    EKAT_ERROR_MSG(msg);
   }
 }
 

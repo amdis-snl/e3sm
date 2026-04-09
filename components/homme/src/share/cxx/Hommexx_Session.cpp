@@ -59,7 +59,6 @@ protected:
 // Default settings for homme's session
 bool Session::m_inited = false;
 bool Session::m_handle_kokkos = true;
-bool Session::m_throw_instead_of_abort = false;
 bool Session::m_screen_output_enabled = true;
 
 void Session::toggle_screen_output (const bool enabled)

@@ -293,7 +293,7 @@ private:
     if ( ! ok && am_root) {
       printf("compose_ut> Failed to parse command line, starting with: %s\n",
              hommexx_catch2_argv[i]);
-      Homme::Errors::runtime_abort("compose_ut invalid command line");
+      EKAT_ERROR_MSG("compose_ut invalid command line");
     }
 
     if (am_root) {
