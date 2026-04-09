@@ -763,7 +763,7 @@ static void test_get_temperature (Session& s) {
                   eos.compute_pnh_and_exner(kv, vthdp_ij, Homme::subview(phi_i,ie,t,i,j), wrk_ij,
                                             exner_ij);
                 }
-                ops.get_temperature(kv, eos, use_moisture, dp3d_ij, exner_ij,
+                ops.get_temperature(kv, use_moisture, dp3d_ij, exner_ij,
                                     vthdp_ij, Homme::subview(q,ie,0,i,j), wrk_ij,
                                     Homme::subview(Td,ie,t,i,j));
               });

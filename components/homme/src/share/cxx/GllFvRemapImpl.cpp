@@ -487,7 +487,7 @@ void GllFvRemapImpl
           eos.compute_pnh_and_exner(kv, vthdp_ij, Homme::subview(phi_i,ie,timeidx,i,j),
                                     wrk_ij, exner_ij);
         // theta_g
-        ops.get_temperature(kv, eos, use_moisture, dp3d_ij, exner_ij, vthdp_ij,
+        ops.get_temperature(kv, use_moisture, dp3d_ij, exner_ij, vthdp_ij,
                             Homme::subview(q_g,ie,0,i,j), wrk_ij, th_g_ij);
         const auto& rexner_ij = exner_ij;
         parallel_for(tvr, [&] (int k) { // could avoid this in H case but then would lose BFB
