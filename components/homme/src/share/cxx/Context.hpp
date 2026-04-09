@@ -7,13 +7,13 @@
 #ifndef HOMMEXX_CONTEXT_HPP
 #define HOMMEXX_CONTEXT_HPP
 
+#include <any>
 #include <string>
 #include <map>
 #include <memory>
 #include <functional>
 
 #include "ErrorDefs.hpp"
-#include "utilities/StdMeta.hpp"
 
 namespace Homme {
 
@@ -66,8 +66,8 @@ public:
   static void finalize_singleton();
 private:
 
-  std::map<std::string,Homme::any> m_members;
-  std::map<std::string, bool>      m_is_ref_wrapper;
+  std::map<std::string,std::any> m_members;
+  std::map<std::string, bool>    m_is_ref_wrapper;
 
   // Clear the objects Context manages.
   void clear();
@@ -83,75 +83,70 @@ bool Context::has () const {
 }
 
 template<typename ConcreteType, typename... Args>
-ConcreteType& Context::create_if_not_there (Args&&... args) {
-  // This is needed for emplacing a type whose constructor takes no arguments.
-  // We could do emplace(name,ConcreteType()), but then we would be assuming
-  // that ConcreteType *has* a move constructor. This implementation here is
-  // probably the most cumbersome, but also the safest.
-  auto it_bool = m_members.emplace(typeid(ConcreteType).name(),Homme::any());
-  if (it_bool.second) {
-    // We created it, so init it.
-    it_bool.first->second.reset<ConcreteType>(args...);
-    m_is_ref_wrapper[typeid(ConcreteType).name()] = false;
+ConcreteType& Context::create_if_not_there (Args&&... args)
+{
+  const std::string name = typeid(ConcreteType).name();
+  auto it = m_members.find(name);
+  if (it==m_members.end()) {
+    auto ptr = std::make_shared<ConcreteType>(std::forward<Args>(args)...);
+    m_members[name] = ptr;
+    m_is_ref_wrapper[name] = false;
+    return *ptr;
   }
-  return *any_ptr_cast<ConcreteType>(it_bool.first->second);
+  auto ptr = *std::any_cast<std::shared_ptr<ConcreteType>>(&it->second);
+  return *ptr;
 }
 
 template<typename ConcreteType, typename... Args>
-ConcreteType& Context::create (Args&&... args) {
+ConcreteType& Context::create (Args&&... args)
+{
+  const std::string name = typeid(ConcreteType).name();
   EKAT_REQUIRE_MSG(!has<ConcreteType>(),
-                        "Error! An object for the concrete type " + std::string(typeid(ConcreteType).name()) +
-                        " is already stored. The 'Context' class does not allow overwriting or duplicates.\n");
-  // This is needed for emplacing a type whose constructor takes no arguments.
-  // We could do emplace(name,ConcreteType()), but then we would be assuming
-  // that ConcreteType *has* a move constructor. This implementation here is
-  // probably the most cumbersome, but also the safest.
-  auto it_bool = m_members.emplace(typeid(ConcreteType).name(),Homme::any());
-  EKAT_REQUIRE_MSG(it_bool.second, "Error! Something went wrong when inserting a new element in the context. "
-                                        "This is an internal error. Please, contact developers.\n");
-  it_bool.first->second.reset<ConcreteType>(args...);
+      "Error! An object for the concrete type " + name +
+      " is already stored. The 'Context' class does not allow overwriting or duplicates.\n");
+
+  auto ptr = std::make_shared<ConcreteType>(std::forward<Args>(args)...);
+  m_members[name] = ptr;
   m_is_ref_wrapper[typeid(ConcreteType).name()] = false;
 
-  return *any_ptr_cast<ConcreteType>(it_bool.first->second);
+  return *ptr;
 }
 
 template<typename ConcreteType>
-void Context::create_ref (ConcreteType& src) {
-  // This is needed for emplacing a type whose constructor takes no arguments.
-  // We could do emplace(name,ConcreteType()), but then we would be assuming
-  // that ConcreteType *has* a move constructor. This implementation here is
-  // probably the most cumbersome, but also the safest.
-  auto it_bool = m_members.emplace(typeid(ConcreteType).name(),Homme::any());
-  EKAT_REQUIRE_MSG(it_bool.second, "Error! Something went wrong when inserting a new element in the context. "
-                                        "This is an internal error. Please, contact developers.\n");
+void Context::create_ref (ConcreteType& src)
+{
+  const std::string name = typeid(ConcreteType).name();
+  EKAT_REQUIRE_MSG(!has<ConcreteType>(),
+      "Error! An object for the concrete type " + name +
+      " is already stored. The 'Context' class does not allow overwriting or duplicates.\n");
 
-  auto ref = std::ref(src);
-  it_bool.first->second.reset<std::reference_wrapper<ConcreteType>>(ref);
-  m_is_ref_wrapper[typeid(ConcreteType).name()] = true;
+  m_members[name] = std::reference_wrapper<ConcreteType>(src);
+  m_is_ref_wrapper[name] = true;
 }
 
 template<typename ConcreteType>
-ConcreteType& Context::get () const {
-  const std::string& name = typeid(ConcreteType).name();
+ConcreteType& Context::get () const
+{
+  const std::string name = typeid(ConcreteType).name();
   auto it = m_members.find(name);
   EKAT_REQUIRE_MSG(it!=m_members.end(), "Error! Context member '" + name + "' not found.\n");
   if (m_is_ref_wrapper.at(name)) {
-    auto ref = any_ptr_cast<std::reference_wrapper<ConcreteType>>(it->second);
-    return ref->get();
+    return std::any_cast<std::reference_wrapper<ConcreteType>>(it->second).get();
   } else {
-    return *get_ptr<ConcreteType>();
+    return *std::any_cast<std::shared_ptr<ConcreteType>>(it->second);
   }
 }
 
 template<typename ConcreteType>
-std::shared_ptr<ConcreteType> Context::get_ptr() const {
+std::shared_ptr<ConcreteType> Context::get_ptr() const
+{
   const std::string& name = typeid(ConcreteType).name();
   auto it = m_members.find(name);
   EKAT_REQUIRE_MSG(it!=m_members.end(), "Error! Context member '" + name + "' not found.\n");
   EKAT_REQUIRE_MSG(!m_is_ref_wrapper.at(name),
-                        "Error! Context member '" + name + "' is only available as a reference.\n");
+      "Error! Context member '" + name + "' is only available as a reference.\n");
 
-  return any_ptr_cast<ConcreteType>(it->second);
+  return std::any_cast<std::shared_ptr<ConcreteType>>(it->second);
 }
 
 } // namespace Homme
