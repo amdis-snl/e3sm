@@ -131,7 +131,7 @@ struct CaarFunctorImplST {
   }
 
   void init_buffers (const FunctorsBuffersManager& fbm) {
-    Errors::runtime_check(fbm.allocated_size()>=requested_buffer_size(), "Error! Buffers size not sufficient.\n");
+    EKAT_REQUIRE_MSG(fbm.allocated_size()>=requested_buffer_size(), "Error! Buffers size not sufficient.\n");
 
     const int nteams = get_num_concurrent_teams(m_policy);
 

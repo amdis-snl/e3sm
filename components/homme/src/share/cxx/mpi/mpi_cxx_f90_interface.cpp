@@ -61,7 +61,7 @@ void add_connection (const int& e1_lid, const int& e1_gid, const int& e1_pos, co
                      const int& e2_lid, const int& e2_gid, const int& e2_pos, const int& e2_pid)
 {
   // Check that F90 is in base 1
-  Errors::runtime_check(e1_lid >= 1 && e1_gid >= 1 && e1_pos >= 1 && e1_pid >= 1 &&
+  EKAT_REQUIRE_MSG(e1_lid >= 1 && e1_gid >= 1 && e1_pos >= 1 && e1_pid >= 1 &&
                         e2_lid >= 1 && e2_gid >= 1 && e2_pos >= 1 && e2_pid >= 1,
                         "add_connection: F90 indices should start at 1");
 

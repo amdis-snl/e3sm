@@ -36,8 +36,7 @@ void prim_advance_exp (TimeLevel& tl, const Real dt, const bool compute_diagnost
   GPTLstart("tl-ae prim_advance_exp");
 
 #ifdef ARKODE
-  Errors::runtime_abort("'ARKODE' support not yet available in C++ build.\n",
-                         Errors::err_not_implemented);
+  EKAT_ERROR_MSG("'ARKODE' support not yet available in C++ build.\n");
 #endif
 
   auto& context = Context::singleton();
@@ -102,7 +101,7 @@ void prim_advance_exp (TimeLevel& tl, const Real dt, const bool compute_diagnost
         msg += "missing some code for time step method ";
         msg += etoi(params.time_step_type);
         msg += ".\n";
-        Errors::runtime_abort(msg,Errors::err_not_implemented);
+        EKAT_ERROR_MSG(msg);
       }
   }
 
@@ -120,8 +119,7 @@ void prim_advance_exp (TimeLevel& tl, const Real dt, const bool compute_diagnost
   }
 
   if (params.dcmip16_mu>0) {
-    Errors::runtime_abort("'dcmip16_mu>0' functionality not yet available in C++ build.\n",
-                           Errors::err_not_implemented);
+    EKAT_ERROR_MSG("'dcmip16_mu>0' functionality not yet available in C++ build.\n");
   }
 
   if (compute_diagnostics) {

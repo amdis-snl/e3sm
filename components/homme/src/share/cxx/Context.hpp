@@ -99,7 +99,7 @@ ConcreteType& Context::create_if_not_there (Args&&... args) {
 
 template<typename ConcreteType, typename... Args>
 ConcreteType& Context::create (Args&&... args) {
-  Errors::runtime_check(!has<ConcreteType>(),
+  EKAT_REQUIRE_MSG(!has<ConcreteType>(),
                         "Error! An object for the concrete type " + std::string(typeid(ConcreteType).name()) +
                         " is already stored. The 'Context' class does not allow overwriting or duplicates.\n");
   // This is needed for emplacing a type whose constructor takes no arguments.
@@ -107,8 +107,8 @@ ConcreteType& Context::create (Args&&... args) {
   // that ConcreteType *has* a move constructor. This implementation here is
   // probably the most cumbersome, but also the safest.
   auto it_bool = m_members.emplace(typeid(ConcreteType).name(),Homme::any());
-  Errors::runtime_check(it_bool.second, "Error! Something went wrong when inserting a new element in the context. "
-                                        "This is an internal error. Please, contact developers.\n", -1);
+  EKAT_REQUIRE_MSG(it_bool.second, "Error! Something went wrong when inserting a new element in the context. "
+                                        "This is an internal error. Please, contact developers.\n");
   it_bool.first->second.reset<ConcreteType>(args...);
   m_is_ref_wrapper[typeid(ConcreteType).name()] = false;
 
@@ -122,8 +122,8 @@ void Context::create_ref (ConcreteType& src) {
   // that ConcreteType *has* a move constructor. This implementation here is
   // probably the most cumbersome, but also the safest.
   auto it_bool = m_members.emplace(typeid(ConcreteType).name(),Homme::any());
-  Errors::runtime_check(it_bool.second, "Error! Something went wrong when inserting a new element in the context. "
-                                        "This is an internal error. Please, contact developers.\n", -1);
+  EKAT_REQUIRE_MSG(it_bool.second, "Error! Something went wrong when inserting a new element in the context. "
+                                        "This is an internal error. Please, contact developers.\n");
 
   auto ref = std::ref(src);
   it_bool.first->second.reset<std::reference_wrapper<ConcreteType>>(ref);
@@ -134,7 +134,7 @@ template<typename ConcreteType>
 ConcreteType& Context::get () const {
   const std::string& name = typeid(ConcreteType).name();
   auto it = m_members.find(name);
-  Errors::runtime_check(it!=m_members.end(), "Error! Context member '" + name + "' not found.\n", -1);
+  EKAT_REQUIRE_MSG(it!=m_members.end(), "Error! Context member '" + name + "' not found.\n");
   if (m_is_ref_wrapper.at(name)) {
     auto ref = any_ptr_cast<std::reference_wrapper<ConcreteType>>(it->second);
     return ref->get();
@@ -147,9 +147,9 @@ template<typename ConcreteType>
 std::shared_ptr<ConcreteType> Context::get_ptr() const {
   const std::string& name = typeid(ConcreteType).name();
   auto it = m_members.find(name);
-  Errors::runtime_check(it!=m_members.end(), "Error! Context member '" + name + "' not found.\n", -1);
-  Errors::runtime_check(!m_is_ref_wrapper.at(name),
-                        "Error! Context member '" + name + "' is only available as a reference.\n", -1);
+  EKAT_REQUIRE_MSG(it!=m_members.end(), "Error! Context member '" + name + "' not found.\n");
+  EKAT_REQUIRE_MSG(!m_is_ref_wrapper.at(name),
+                        "Error! Context member '" + name + "' is only available as a reference.\n");
 
   return any_ptr_cast<ConcreteType>(it->second);
 }

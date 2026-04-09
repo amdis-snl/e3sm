@@ -182,8 +182,7 @@ void prim_step_flexible (const Real dt, const bool compute_diagnostics) {
       if (params.prescribed_wind) {
         // Prescribed winds are evaluated on reference levels, not floating
         // levels, so don't remap, just update dp3d.
-        Errors::runtime_abort("prim_step_flexible: need to impl prescribed_wind\n",
-                              Errors::err_not_implemented);
+        EKAT_ERROR_MSG("prim_step_flexible: need to impl prescribed_wind\n");
       } else {
         // Remap dynamics variables but not tracers.
         GPTLstart("tl-sc vertical_remap");
@@ -210,7 +209,7 @@ void prim_step_flexible (const Real dt, const bool compute_diagnostics) {
 
   GPTLstop("tl-s prim_step_flexible");
 #else
-  Errors::runtime_abort("prim_step_flexible not supported in non-theta-l builds.");
+  EKAT_ERROR_MSG("prim_step_flexible not supported in non-theta-l builds.");
 #endif
 }
 

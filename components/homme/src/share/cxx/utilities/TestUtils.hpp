@@ -59,7 +59,7 @@ genRandArray(ViewType view, rngAlg &engine, PDF &&pdf,
     success = constraint(mirror);
   } while (!success && iter<max_attempts);
   if (!success) {
-    Errors::runtime_abort("Error! Failed to randomly initialize Kokkos view '" +
+    EKAT_ERROR_MSG("Error! Failed to randomly initialize Kokkos view '" +
                            view.label() + "' in " + std::to_string(max_attempts) + " attempts.\n");
   }
   Kokkos::deep_copy(view, mirror);

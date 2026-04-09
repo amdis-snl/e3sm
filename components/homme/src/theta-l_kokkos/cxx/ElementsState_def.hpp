@@ -468,8 +468,7 @@ static bool all_good_elems (const ElementsStateST<ST>& s, const int tlvl) {
   return nerr == 0;
 }
 
-void check_print_abort_on_bad_elems (const std::string& label, const int tlvl,
-                                     const int error_code) {
+void check_print_abort_on_bad_elems (const std::string& label, const int tlvl) {
   const auto& s = Context::singleton().get<ElementsState>();
 
   // On device and, thus, efficient.
@@ -539,9 +538,8 @@ void check_print_abort_on_bad_elems (const std::string& label, const int tlvl,
   }
   if (fid) fclose(fid);
 
-  Errors::runtime_abort(std::string("Bad dphi, dp3d, or vtheta_dp; label: '") +
-                        label + "'; see " + filename,
-                        error_code < 0 ? Errors::err_bad_column_value : error_code);
+  EKAT_ERROR_MSG(std::string("Bad dphi, dp3d, or vtheta_dp; label: '") +
+                        label + "'; see " + filename);
 }
 
 template<typename ST>

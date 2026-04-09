@@ -42,14 +42,12 @@ do {                     \
 #endif
 
 #include <HommexxEnums.hpp>
+#include <ekat_assert.hpp>
 #include <string>
 #include <sstream>
 
 namespace Homme {
 namespace Errors {
-
-void runtime_check(bool cond, const std::string& message, int code = -1);
-void runtime_abort(const std::string& message, int code = -1);
 
 static constexpr int err_unknown_option               = 11;
 static constexpr int err_not_implemented              = 12;
@@ -66,7 +64,7 @@ void option_error(const std::string& location,
   msg << "Error in " << location << ": " << "unsupported value '"
       << value << "' for input parameter '" << option << "'.";
 
-  runtime_abort(msg.str(),err_not_implemented);
+  EKAT_ERROR_MSG(msg.str());
 }
 
 template<typename T>
@@ -111,7 +109,7 @@ void check_option (const std::string& location,
         << " The value should satisfy " << option << " " << cmp_str[etoi(relation)]
         << " " << ref_value << ".";
 
-    runtime_abort(msg.str(),err_invalid_options_combination);
+    EKAT_ERROR_MSG(msg.str());
   }
 }
 
@@ -140,7 +138,7 @@ void check_options_relation(const std::string& location,
         << " The two should satisfy " << option1 << " " << cmp_str[etoi(relation)]
         << " " << option2 << ".";
 
-    runtime_abort(msg.str(),err_invalid_options_combination);
+    EKAT_ERROR_MSG(msg.str());
   }
 }
 

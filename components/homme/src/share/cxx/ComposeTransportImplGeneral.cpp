@@ -105,13 +105,13 @@ void ComposeTransportImpl::reset (const SimulationParams& params) {
   if (m_data.nelemd == num_elems && m_data.qsize == params.qsize) return;
 
   m_data.qsize = params.qsize;
-  Errors::runtime_check(m_data.qsize > 0,
+  EKAT_REQUIRE_MSG(m_data.qsize > 0,
                         "SL transport requires qsize > 0; if qsize == 0, use Eulerian.");
   m_data.nelemd = num_elems;
 
-  Errors::runtime_check(m_data.hv_q >= 0 && m_data.hv_q <= m_data.qsize,
+  EKAT_REQUIRE_MSG(m_data.hv_q >= 0 && m_data.hv_q <= m_data.qsize,
                         "semi_lagrange_hv_q should be in [0, qsize].");
-  Errors::runtime_check(m_data.hv_subcycle_q >= 0,
+  EKAT_REQUIRE_MSG(m_data.hv_subcycle_q >= 0,
                         "hypervis_subcycle_q should be >= 0.");
 
   m_tp_ne = Homme::get_default_team_policy<ExecSpace>(m_data.nelemd);

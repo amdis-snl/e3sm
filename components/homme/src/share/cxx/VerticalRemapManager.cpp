@@ -62,9 +62,8 @@ struct VerticalRemapManager::Impl {
             qsize, m_elements, m_tracers, m_hvcoord, capacity);
       }
     } else {
-      Errors::runtime_abort(
-          "Error in VerticalRemapManager: unknown remap algorithm.\n",
-          Errors::err_unknown_option);
+      EKAT_ERROR_MSG(
+          "Error in VerticalRemapManager: unknown remap algorithm.\n");
     }
   }
 

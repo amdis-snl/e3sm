@@ -26,8 +26,6 @@ void init_session (const bool do_print_to_screen)
 {
   toggle_screen_output(do_print_to_screen);
   init_parallel_f90();
-  // Throw, so we can use try blocks in py
-  Session::m_throw_instead_of_abort = true;
 }
 
 void enable_scalar_type (const nb::str& dtype)

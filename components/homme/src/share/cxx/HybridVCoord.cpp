@@ -188,7 +188,7 @@ void HybridVCoord::random_init(int seed)
     Real prev = ADValue(hyai_h(i) + hybi_h(i));   
     Real next = ADValue(hyai_h(i+1) + hybi_h(i+1));
 
-    Errors::runtime_check(next>prev,"Error! hybrid_a+hybrid_b is not increasing.\n", -1);
+    EKAT_REQUIRE_MSG(next>prev,"Error! hybrid_a+hybrid_b is not increasing.\n");
 
     int ilev = i / VECTOR_SIZE;
     int ivec = i % VECTOR_SIZE;
