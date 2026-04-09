@@ -6,7 +6,7 @@
 
 #include "Config.hpp"
 #include "Hommexx_Session.hpp"
-#include "ExecSpaceDefs.hpp"
+#include "HommeExecSpace.hpp"
 #include "Types.hpp"
 #include "profiling.hpp"
 
