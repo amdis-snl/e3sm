@@ -7,7 +7,8 @@
 #include <Hommexx_Session.hpp>
 
 #include <Context.hpp>
-#include <mpi/Comm.hpp>
+
+#include <ekat_comm.hpp>
 
 #include <mpi.h>
 
@@ -21,7 +22,7 @@ int main(int argc, char **argv) {
   // Initialize mpi
   MPI_Init(&argc,&argv);
 
-  Homme::Context::singleton().create<Homme::Comm>().reset_mpi_comm(MPI_COMM_WORLD);
+  Homme::Context::singleton().create<ekat::Comm>().reset_mpi_comm(MPI_COMM_WORLD);
   Homme::initialize_hommexx_session();
 
   // Filter arguments so catch2 doesn't try to interpret hommexx-specific ones.

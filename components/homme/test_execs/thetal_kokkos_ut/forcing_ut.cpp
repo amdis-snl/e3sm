@@ -14,12 +14,12 @@
 #include "Tracers.hpp"
 #include "Types.hpp"
 
-#include "mpi/Comm.hpp"
-
 #include "utilities/MathUtils.hpp"
 #include "utilities/TestUtils.hpp"
 #include "utilities/SubviewUtils.hpp"
 #include "utilities/SyncUtils.hpp"
+
+#include <ekat_comm.hpp>
 
 using namespace Homme;
 
@@ -391,9 +391,9 @@ TEST_CASE("forcing", "forcing") {
   // that it was found in. The comm is the only structure that
   // is present when we enter a test_case, so just copy it,
   // finalize the singleton, then re-set the (same) comm in the context.
-  auto old_comm = c.get_ptr<Comm>();
+  auto old_comm = c.get_ptr<ekat::Comm>();
   c.finalize_singleton();
-  auto& new_comm = c.create<Comm>();
+  auto& new_comm = c.create<ekat::Comm>();
   new_comm = *old_comm;
   cleanup_f90();
 }

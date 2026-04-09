@@ -9,7 +9,6 @@
 #include "ExecSpaceDefs.hpp"
 #include "Types.hpp"
 #include "profiling.hpp"
-#include "mpi/Comm.hpp"
 
 #include "Context.hpp"
 
@@ -19,6 +18,7 @@
 #include "Sacado_Version.hpp"
 #endif
 
+#include <ekat_comm.hpp>
 #include <ekat_arch.hpp>
 #include <ekat_kokkos_session.hpp>
 
@@ -118,8 +118,8 @@ void initialize_hommexx_session ()
     }
 
     // Note: at this point, the Comm *should* already be created.
-    const auto& comm = Context::singleton().get<Comm>();
-    if (comm.root()) {
+    const auto& comm = Context::singleton().get<ekat::Comm>();
+    if (comm.am_i_root()) {
       ExecSpace().print_configuration(std::cout, true);
       print_homme_config_settings ();
     }

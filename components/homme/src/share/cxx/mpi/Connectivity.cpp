@@ -22,7 +22,7 @@ Connectivity::Connectivity ()
   // Nothing to be done here
 }
 
-void Connectivity::set_comm (const Comm& comm)
+void Connectivity::set_comm (const ekat::Comm& comm)
 {
   // Input comm must be valid (not storing a null MPI comm)
   assert (comm.mpi_comm()!=MPI_COMM_NULL);

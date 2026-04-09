@@ -2,7 +2,6 @@
 
 #include "Types.hpp"
 #include "Context.hpp"
-#include "mpi/Comm.hpp"
 #include "mpi/Connectivity.hpp"
 #include "mpi/MpiBuffersManager.hpp"
 #include "FunctorsBuffersManager.hpp"
@@ -21,13 +20,14 @@
 #include "utilities/SyncUtils.hpp"
 #include "utilities/ViewUtils.hpp"
 
+#include <ekat_comm.hpp>
+#include <ekat_string_utils.hpp>
+#include <ekat_test_utils.hpp>
+
 #include <catch2/catch.hpp>
 #include <random>
 
 using namespace Homme;
-
-extern int hommexx_catch2_argc;
-extern char** hommexx_catch2_argv;
 
 extern "C" {
   void limiter1_clip_and_sum_f90(int n, Real* spheremp, Real* qmin, Real* qmax, Real* dp, Real* q);
@@ -170,7 +170,7 @@ struct Session {
     const auto seed = r.gen_seed();
     printf("seed %u\n", seed);
 
-    parse_command_line();
+    parse_test_options ();
 
     auto& c = Context::singleton();
 
@@ -244,38 +244,47 @@ struct Session {
     s_session = nullptr;
   }
 
-  Comm& get_comm () const { return Context::singleton().get<Comm>(); }
+  ekat::Comm& get_comm () const { return Context::singleton().get<ekat::Comm>(); }
 
 private:
   static std::shared_ptr<Session> s_session;
 
   // gllfvremap_ut hommexx -ne NE -qsize QSIZE [-planar]
-  void parse_command_line () {
-    const bool am_root = get_comm().root();
+  void parse_test_options () {
     ne = 2;
     qsize = QSIZE_D;
     is_sphere = true;
+
+    auto& ts = ekat::TestSession::get();
     bool ok = true;
-    int i;
-    for (i = 0; i < hommexx_catch2_argc; ++i) {
-      const std::string tok(hommexx_catch2_argv[i]);
-      if (tok == "-ne") {
-        if (i+1 == hommexx_catch2_argc) { ok = false; break; }
-        ne = std::atoi(hommexx_catch2_argv[++i]);
-      } else if (tok == "-qsize") {
-        if (i+1 == hommexx_catch2_argc) { ok = false; break; }
-        qsize = std::atoi(hommexx_catch2_argv[++i]);
-      } else if (tok == "-planar") {
-        is_sphere = false;
-      }
+    if (ts.params.count("ne")==1) {
+      ne = std::stoi(ts.params.at("ne"));
+      ts.params.erase("ne");
     }
+    if (ts.params.count("qsize")==1) {
+      qsize = std::stoi(ts.params.at("qsize"));
+      ts.params.erase("qsize");
+    }
+    if (ts.flags.count("planar")==1) {
+      is_sphere = false;
+      ts.flags.erase("planar");
+    }
+
+    const auto& comm = get_comm();
+    if (ts.flags.size()>0 and comm.am_i_root()) {
+      EKAT_ERROR_MSG("unrecognized flags: " + ekat::join(ts.flags,[](auto it){return it->first;},",") + "\n");
+    }
+    if (ts.params.size()>0 and comm.am_i_root()) {
+      EKAT_ERROR_MSG("unrecognized flags: " + ekat::join(ts.params,[](auto it){return it->first;},",") + "\n");
+    }
+    if (ts.vec_params.size()>0 and comm.am_i_root()) {
+      EKAT_ERROR_MSG("unrecognized flags: " + ekat::join(ts.vec_params,[](auto it){return it->first;},",") + "\n");
+    }
+
     ne = std::max(2, std::min(128, ne));
     if ( ! is_sphere) ne = std::max(4, ne);
     qsize = std::max(1, std::min(QSIZE_D, qsize));
-    if ( ! ok && am_root)
-      printf("gllfvremap_ut> Failed to parse command line, starting with: %s\n",
-             hommexx_catch2_argv[i]);
-    if (am_root) {
+    if (comm.am_i_root()) {
       const int bfb =
 #ifdef HOMMEXX_BFB_TESTING
         1;

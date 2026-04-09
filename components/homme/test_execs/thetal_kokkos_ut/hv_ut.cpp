@@ -20,6 +20,7 @@
 #include "utilities/SyncUtils.hpp"
 #include "utilities/ViewUtils.hpp"
 
+#include <ekat_comm.hpp>
 
 using namespace Homme;
 
@@ -157,14 +158,14 @@ TEST_CASE("hvf", "biharmonic") {
   params.params_set = true;
 
   // Sync params across ranks
-  MPI_Bcast(&params.nu_top,1,MPI_DOUBLE,0,c.get<Comm>().mpi_comm());
-  MPI_Bcast(&params.nu,1,MPI_DOUBLE,0,c.get<Comm>().mpi_comm());
-  MPI_Bcast(&params.nu_p,1,MPI_DOUBLE,0,c.get<Comm>().mpi_comm());
-  MPI_Bcast(&params.nu_s,1,MPI_DOUBLE,0,c.get<Comm>().mpi_comm());
-  MPI_Bcast(&params.nu_div,1,MPI_DOUBLE,0,c.get<Comm>().mpi_comm());
+  MPI_Bcast(&params.nu_top,1,MPI_DOUBLE,0,c.get<ekat::Comm>().mpi_comm());
+  MPI_Bcast(&params.nu,1,MPI_DOUBLE,0,c.get<ekat::Comm>().mpi_comm());
+  MPI_Bcast(&params.nu_p,1,MPI_DOUBLE,0,c.get<ekat::Comm>().mpi_comm());
+  MPI_Bcast(&params.nu_s,1,MPI_DOUBLE,0,c.get<ekat::Comm>().mpi_comm());
+  MPI_Bcast(&params.nu_div,1,MPI_DOUBLE,0,c.get<ekat::Comm>().mpi_comm());
   //reset below, not bcasted
-  MPI_Bcast(&params.hypervis_scaling,1,MPI_DOUBLE,0,c.get<Comm>().mpi_comm());
-  MPI_Bcast(&params.hypervis_subcycle,1,MPI_INT,0,c.get<Comm>().mpi_comm());
+  MPI_Bcast(&params.hypervis_scaling,1,MPI_DOUBLE,0,c.get<ekat::Comm>().mpi_comm());
+  MPI_Bcast(&params.hypervis_subcycle,1,MPI_INT,0,c.get<ekat::Comm>().mpi_comm());
 
   // Create and init hvcoord and ref_elem, needed to init the fortran interface
   auto& hvcoord = c.create<HybridVCoord>();
@@ -279,7 +280,7 @@ TEST_CASE("hvf", "biharmonic") {
         const Real eta_ave_w = RPDF(0.1,10.0)(engine);
         int np1 = IPDF(0,2)(engine);
         // Sync np1 across ranks. If they are not synced, we may get stuck in an mpi wait
-        MPI_Bcast(&np1,1,MPI_INT,0,c.get<Comm>().mpi_comm());
+        MPI_Bcast(&np1,1,MPI_INT,0,c.get<ekat::Comm>().mpi_comm());
 
         // Create the HVF tester
         HVFTester hvf(params,geo,state,derived);
@@ -465,7 +466,7 @@ TEST_CASE("hvf", "biharmonic") {
         const Real eta_ave_w = 1.0;
         int  np1 = IPDF(0,2)(engine);
         // Sync np1 across ranks. If they are not synced, we may get stuck in an mpi wait
-        MPI_Bcast(&np1,1,MPI_INT,0,c.get<Comm>().mpi_comm());
+        MPI_Bcast(&np1,1,MPI_INT,0,c.get<ekat::Comm>().mpi_comm());
 
         // Create the HVF tester
         HVFTester hvf(params,geo,state,derived);
@@ -690,9 +691,9 @@ TEST_CASE("hvf", "biharmonic") {
   // that it was found in. The comm is the only structure that
   // is present when we enter a test_case, so just copy it,
   // finalize the singleton, then re-set the (same) comm in the context.
-  auto old_comm = c.get_ptr<Comm>();
+  auto old_comm = c.get_ptr<ekat::Comm>();
   c.finalize_singleton();
-  auto& new_comm = c.create<Comm>();
+  auto& new_comm = c.create<ekat::Comm>();
   new_comm = *old_comm;
 
   cleanup_f90();

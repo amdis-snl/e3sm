@@ -8,8 +8,9 @@
 #define HOMMEXX_CONNECTIVITY_HPP
 
 #include "ConnectivityHelpers.hpp"
-#include "Comm.hpp"
 #include "Types.hpp"
+
+#include <ekat_comm.hpp>
 
 namespace Homme
 {
@@ -70,7 +71,7 @@ public:
   //@name Methods
   //@{
 
-  void set_comm (const Comm& comm);
+  void set_comm (const ekat::Comm& comm);
 
   void set_num_elements (const int num_local_elements);
   void set_max_corner_elements (const int max_corner_elements);
@@ -128,7 +129,7 @@ public:
   bool is_initialized () const { return m_initialized; }
   bool is_finalized   () const { return m_finalized;   }
 
-  const Comm& get_comm () const { return m_comm; }
+  const ekat::Comm& get_comm () const { return m_comm; }
   //@}
 
 private:
@@ -137,7 +138,7 @@ private:
   // An invalid direction or direction_idx
   static constexpr std::uint8_t INVALID_DIR = 0xFF;
 
-  Comm    m_comm;
+  ekat::Comm    m_comm;
 
   bool    m_finalized;
   bool    m_initialized;

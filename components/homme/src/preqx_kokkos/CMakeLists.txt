@@ -171,7 +171,6 @@ MACRO(PREQX_KOKKOS_SETUP)
     ${SRC_SHARE_DIR}/cxx/VerticalRemapManager.cpp
     ${SRC_SHARE_DIR}/cxx/mpi/BoundaryExchangeBase.cpp
     ${SRC_SHARE_DIR}/cxx/mpi/BoundaryExchange.cpp
-    ${SRC_SHARE_DIR}/cxx/mpi/Comm.cpp
     ${SRC_SHARE_DIR}/cxx/mpi/Connectivity.cpp
     ${SRC_SHARE_DIR}/cxx/mpi/MpiBuffersManager.cpp
     ${SRC_SHARE_DIR}/cxx/mpi/mpi_cxx_f90_interface.cpp

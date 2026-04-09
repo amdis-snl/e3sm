@@ -16,9 +16,9 @@
 #include "ElementsGeometry.hpp"
 #include "Context.hpp"
 #include "mpi/Connectivity.hpp"
-#include "mpi/Comm.hpp"
 
 #include <ekat_pack_kokkos.hpp>
+#include <ekat_comm.hpp>
 
 #include <limits>
 #include <random>

@@ -13,6 +13,8 @@
 #include "utilities/SyncUtils.hpp"
 #include "utilities/ViewUtils.hpp"
 
+#include <ekat_comm.hpp>
+
 using namespace Homme;
 
 extern "C" {
@@ -219,25 +221,25 @@ TEST_CASE("caar", "caar_testing") {
     return the_min;
   };
 
-  auto& comm = c.get<Comm>();
+  auto& comm = c.get<ekat::Comm>();
   const int rank = comm.rank();
 
   SECTION ("caar_run") {
     for (const bool hydrostatic : {true,false}) {
-      if (comm.root()) {
+      if (comm.am_i_root()) {
         std::cout << " -> " << (hydrostatic ? "Hydrostatic\n" : "Non-Hydrostatic\n");
       }
       auto adv_forms = {AdvectionForm::Conservative, AdvectionForm::NonConservative};
       for (const AdvectionForm adv_form : adv_forms) {
-        if (comm.root()) {
+        if (comm.am_i_root()) {
           std::cout << "  -> " << (adv_form==AdvectionForm::Conservative ? "Conservative" : "Non-Conservative") << " theta advection\n";
         }
         for (int rsplit : {3,0}) {
-          if (comm.root()) {
+          if (comm.am_i_root()) {
             std::cout << "   -> rsplit = " << rsplit << "\n";
           }
           for (const int pgrad : {1,0}) {
-            if (comm.root()) {
+            if (comm.am_i_root()) {
               std::cout << "    -> pgrad_correction = " << pgrad << "\n";
             }
             // Set the parameters
@@ -256,7 +258,7 @@ TEST_CASE("caar", "caar_testing") {
             int  np1 = IPDF(0,2)(engine);
 
             // Sync scalars across ranks (only np1 is *really* necessary, but might as well...)
-            auto mpi_comm = Context::singleton().get<Comm>().mpi_comm();
+            auto mpi_comm = Context::singleton().get<ekat::Comm>().mpi_comm();
             MPI_Bcast(&dt,1,MPI_DOUBLE,0,mpi_comm);
             MPI_Bcast(&scale1,1,MPI_DOUBLE,0,mpi_comm);
             MPI_Bcast(&scale2,1,MPI_DOUBLE,0,mpi_comm);
@@ -519,9 +521,9 @@ TEST_CASE("caar", "caar_testing") {
   }
 
   // Cleanup (see comment at the top for explanation of the treatment of Comm)
-  auto old_comm = c.get_ptr<Comm>();
+  auto old_comm = c.get_ptr<ekat::Comm>();
   c.finalize_singleton();
-  auto& new_comm = c.create<Comm>();
+  auto& new_comm = c.create<ekat::Comm>();
   new_comm = *old_comm;
 
   cleanup_f90();
