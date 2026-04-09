@@ -556,7 +556,7 @@ private:
 
   HybridVCoord      m_hvcoord;
   ElementOps        m_elem_ops;
-  EquationOfState   m_eos;
+  EquationOfState<> m_eos;
 
   const int m_num_state_elems;
   const int m_num_tracer_elems;

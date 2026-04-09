@@ -478,7 +478,7 @@ TEST_CASE("hvf", "biharmonic") {
 
         constexpr Real noise_lvl = 0.05;
         genRandArray(perturb,engine,PDF(-noise_lvl,noise_lvl));
-        EquationOfState eos;
+        EquationOfState<> eos;
         eos.init(hydrostatic,hvcoord);
 
         ElementOps elem_ops;

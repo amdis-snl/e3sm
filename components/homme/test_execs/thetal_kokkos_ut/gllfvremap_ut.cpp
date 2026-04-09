@@ -685,7 +685,7 @@ static void init_dyn_data (Session& s) {
   deep_copy(uv_s, uv);
 
   {
-    EquationOfState eos; eos.init(c.get<SimulationParams>().theta_hydrostatic_mode, s.h);
+    EquationOfState<> eos; eos.init(c.get<SimulationParams>().theta_hydrostatic_mode, s.h);
     ElementOps ops; ops.init(s.h);
     const auto phis = geometry.m_phis;
     const auto dp3d = state.m_dp3d;
@@ -731,7 +731,7 @@ static void test_get_temperature (Session& s) {
     const ExecViewManaged<Scalar*[NUM_TIME_LEVELS][NP][NP][NUM_LEV]> Td("T", s.nelemd); {
       auto& c = Context::singleton();
       const auto& sp = c.get<SimulationParams>();
-      EquationOfState eos; eos.init(theta_hydrostatic_mode, s.h);
+      EquationOfState<> eos; eos.init(theta_hydrostatic_mode, s.h);
       ElementOps ops; ops.init(s.h);
       const bool use_moisture = sp.use_moisture;
       const auto state = c.get<ElementsState>();

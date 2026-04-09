@@ -404,7 +404,7 @@ protected:
   ElementsGeometry            m_geometry;
   SphereOperatorsST<ST>       m_sphere_ops;
   ElementOps                  m_elem_ops;
-  EquationOfState             m_eos;
+  EquationOfState<>           m_eos;
   Buffers                     m_buffers;
   HybridVCoord                m_hvcoord;
 

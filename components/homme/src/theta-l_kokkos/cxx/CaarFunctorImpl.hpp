@@ -99,7 +99,7 @@ struct CaarFunctorImplST {
   ElementsStateST<ST>         m_state;
   ElementsDerivedStateST<ST>  m_derived;
   ElementsGeometry            m_geometry;
-  EquationOfState             m_eos;
+  EquationOfState<>           m_eos;
   Buffers                     m_buffers;
   deriv_type                  m_deriv;
 

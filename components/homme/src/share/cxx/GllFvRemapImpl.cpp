@@ -406,7 +406,7 @@ void GllFvRemapImpl
                         dp.extent_int(2)/packn);
   }
   
-  EquationOfState eos; eos.init(theta_hydrostatic_mode, hvcoord);
+  EquationOfState<> eos; eos.init(theta_hydrostatic_mode, hvcoord);
   ElementOps ops; ops.init(hvcoord);
 
   const auto tu_ne = m_tu_ne;
@@ -607,7 +607,7 @@ run_fv_phys_to_dyn (const int timeidx, const CPhys2T& Ts, const CPhys3T& uvs,
   const auto hvcoord = m_hvcoord;
   const auto dp3d = m_state.m_dp3d;
   const bool theta_hydrostatic_mode = m_data.theta_hydrostatic_mode;
-  EquationOfState eos; eos.init(theta_hydrostatic_mode, hvcoord);
+  EquationOfState<> eos; eos.init(theta_hydrostatic_mode, hvcoord);
   ElementOps ops; ops.init(hvcoord);
   const auto tu_ne = m_tu_ne;
 

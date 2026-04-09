@@ -83,7 +83,7 @@ TEST_CASE("eos", "eos") {
   const Real* hyai_ptr = hyai.data();
   init_f90(hyai_ptr,hvcoord.ps0);
 
-  EquationOfState eos;
+  EquationOfState<> eos;
   ElementOps elem_ops;
   elem_ops.init(hvcoord);
 

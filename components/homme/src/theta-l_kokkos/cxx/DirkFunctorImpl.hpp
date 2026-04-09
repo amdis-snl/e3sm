@@ -188,9 +188,9 @@ struct DirkFunctorImplST {
         const auto phi_i_c = Homme::subview(phi_i,igp,jgp);
 
         elem_ops.compute_hydrostatic_p(kv, Homme::subview(e_dp3d,ie,np1,igp,jgp), p_i_c, p_c);
-        EquationOfState::compute_phi_i(kv, e_phis(ie,igp,jgp),
-                                       Homme::subview(e_vtheta_dp,ie,np1,igp,jgp),
-                                       p_c, phi_i_c);
+        EquationOfState<>::compute_phi_i(kv, e_phis(ie,igp,jgp),
+                                         Homme::subview(e_vtheta_dp,ie,np1,igp,jgp),
+                                         p_c, phi_i_c);
 
         // Copy phi_i for use in run_newton. Don't need nlevp, since that's
         // always phis.
@@ -577,7 +577,7 @@ struct DirkFunctorImplST {
       const auto g = [&] (const int i) {
         for (int s = 0; s < ns; ++s)
           if (vtheta_dp(k,i)[s] < 0 || dphi(k,i)[s] > 0) ok = false;
-        EquationOfState::compute_pnh_and_exner(
+        EquationOfState<>::compute_pnh_and_exner(
           vtheta_dp(k,i), dphi(k,i), pnh(k,i), exner(k,i));
       };
       parallel_for(pv, g);
@@ -633,7 +633,7 @@ struct DirkFunctorImplST {
     kv.team_barrier();
     // Do most of the flops.
     loop_ki(kv, nlev, nvec, [&] (int k, int i) {
-      wrk(k,i) = EquationOfState::compute_dphi(vtheta_dp(k,i), wrk(k,i)); // dphi
+      wrk(k,i) = EquationOfState<>::compute_dphi(vtheta_dp(k,i), wrk(k,i)); // dphi
     });
     kv.team_barrier();
     // Scan to compute phi_i.

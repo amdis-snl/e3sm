@@ -281,7 +281,7 @@ public:
   ExecViewManaged<ScalarValue*                [QSIZE_D][NP][NP]> d_Q1mass;
 
   HybridVCoord      m_hvcoord;
-  EquationOfState   m_eos;
+  EquationOfState<> m_eos;
   ElementOps        m_elem_ops;
   ElementsState     m_state;
   ElementsGeometry  m_geometry;
