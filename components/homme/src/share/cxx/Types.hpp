@@ -11,16 +11,12 @@
 
 #include <Kokkos_Core.hpp>
 
-#include "Config.hpp"
-#include "ExecSpaceDefs.hpp"
-#include "Dimensions.hpp"
+#include "Hommexx_config.h"
+#include "HommeExecSpace.hpp"
 
 #include <ekat_pack.hpp>
 #include <ekat_pack_kokkos.hpp>
 #include <ekat_scalar_traits.hpp>
-
-#define __MACRO_STRING(MacroVal) #MacroVal
-#define MACRO_STRING(MacroVal) __MACRO_STRING(MacroVal)
 
 namespace Homme {
 
