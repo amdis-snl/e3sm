@@ -765,7 +765,6 @@ TEST_CASE ("dirk_toplevel_testing") {
     const auto phic1_m = cmvdc(e.m_state.m_phinh_i);
     decltype(phic1_m) phic1("phic1", phic1_m.extent_int(0));
     deep_copy(phic1, phic1_m);
-    return;
     { // C++ version with separate dispatch and Hommexx patterns.
       d.run_initial_guess(np1, e, hvcoord);
     }
