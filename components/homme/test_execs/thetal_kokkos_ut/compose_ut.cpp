@@ -113,6 +113,9 @@ struct Session {
   //Session () : r(269041989) {}
 
   void init () {
+    auto& c = Context::singleton();
+    c.create<ekat::Comm>(MPI_COMM_WORLD);
+
     const auto seed = r.gen_seed();
     printf("seed %u\n", seed);
 
@@ -124,9 +127,6 @@ struct Session {
     assert(QSIZE_D >= 4);
     parse_test_options ();
     assert(is_sphere); // planar isn't available in Hxx yet
-
-    auto& c = Context::singleton();
-    c.create<ekat::Comm>(MPI_COMM_WORLD);
 
     c.create<HybridVCoord>().random_init(seed);
     h = c.get<HybridVCoord>();
@@ -228,21 +228,14 @@ private:
     nearest_point = true;
 
     auto& ts = ekat::TestSession::get();
-    bool ok = true;
     if (ts.params.count("ne")==1) {
       ne = std::stoi(ts.params.at("ne"));
-      if (ne < 2) {
-        printf("ne must be >= 2\n");
-        ok = false;
-      }
+      EKAT_REQUIRE_MSG(ne >= 2,"ne must be >= 2\n");
       ts.params.erase("ne");
     }
     if (ts.params.count("qsize")==1) {
       qsize = std::stoi(ts.params.at("qsize"));
-      if (qsize > QSIZE_D || qsize < 1) {
-        printf("qsize must be >= 1 and <= QSIZE_D\n");
-        ok = false;
-      }
+      EKAT_REQUIRE_MSG(qsize>=1 and qsize <= QSIZE_D, "qsize must be >= 1 and <= QSIZE_D\n");
       ts.params.erase("qsize");
     }
     if (ts.params.count("hvq")==1) {
@@ -263,26 +256,17 @@ private:
     }
     if (ts.params.count("nmax")==1) {
       nmax = std::stoi(ts.params.at("nmax"));
-      if (nmax < 1) {
-        printf("nmax must be >= 1\n");
-        ok = false;
-      }
+        EKAT_REQUIRE_MSG(nmax>=1, "nmax must be >= 1\n");
       ts.params.erase("nmax");
     }
     if (ts.params.count("halo")==1) {
       halo = std::stoi(ts.params.at("halo"));
-      if (halo < 1) {
-        printf("halo must be >= 1");
-        ok = false;
-      }
+      EKAT_REQUIRE_MSG(halo>=1, "halo must be >= 1");
       ts.params.erase("halo");
     }
     if (ts.params.count("trajnsubstep")==1) {
       traj_nsubstep = std::stoi(ts.params.at("trajnsubstep"));
-      if (traj_nsubstep < 0) {
-        printf("traj_nsubstep must be >= 0");
-        ok = false;
-      }
+      EKAT_REQUIRE_MSG(traj_nsubstep>=0, "traj_nsubstep must be >= 0");
       ts.params.erase("trajnsubstep");
     }
     if (ts.flags.count("nonearest")==1) {
@@ -290,22 +274,21 @@ private:
       ts.flags.erase("nonearest");
     }
 
-    const auto& comm = get_comm();
-    if (ts.flags.size()>0 and comm.am_i_root()) {
-      EKAT_ERROR_MSG("unrecognized flags: " + ekat::join(ts.flags,[](auto it){return it->first;},",") + "\n");
-    }
-    if (ts.params.size()>0 and comm.am_i_root()) {
-      EKAT_ERROR_MSG("unrecognized flags: " + ekat::join(ts.params,[](auto it){return it->first;},",") + "\n");
-    }
-    if (ts.vec_params.size()>0 and comm.am_i_root()) {
-      EKAT_ERROR_MSG("unrecognized flags: " + ekat::join(ts.vec_params,[](auto it){return it->first;},",") + "\n");
-    }
+    auto print_key = [](const auto it) {
+      return it->first;
+    };
+    EKAT_REQUIRE_MSG(ts.flags.size()==0,
+        "Error! Unrecognized flags: " + ekat::join(ts.flags,print_key,",") + "\n");
+    EKAT_REQUIRE_MSG(ts.params.size()==0,
+        "Error! Unrecognized flags: " + ekat::join(ts.params,print_key,",") + "\n");
+    EKAT_REQUIRE_MSG(ts.vec_params.size()==0,
+        "Error! Unrecognized flags: " + ekat::join(ts.vec_params,print_key,",") + "\n");
 
     ne = std::max(2, ne);
     qsize = std::max(1, std::min(QSIZE_D, qsize));
     hv_q = std::max(0, std::min(qsize, hv_q));
 
-    if (comm.am_i_root()) {
+    if (get_comm().am_i_root()) {
       const int bfb =
 #ifdef HOMMEXX_BFB_TESTING
         1;

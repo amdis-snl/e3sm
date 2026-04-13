@@ -167,12 +167,13 @@ struct Session {
   //Session () : r(269041989) {}
 
   void init () {
+    auto& c = Context::singleton();
+    c.create<ekat::Comm>(MPI_COMM_WORLD);
+
     const auto seed = r.gen_seed();
     printf("seed %u\n", seed);
 
     parse_test_options ();
-
-    auto& c = Context::singleton();
 
     c.create<HybridVCoord>().random_init(seed);
     auto& h_ref = c.get<HybridVCoord>();
@@ -256,7 +257,6 @@ private:
     is_sphere = true;
 
     auto& ts = ekat::TestSession::get();
-    bool ok = true;
     if (ts.params.count("ne")==1) {
       ne = std::stoi(ts.params.at("ne"));
       ts.params.erase("ne");
@@ -270,21 +270,20 @@ private:
       ts.flags.erase("planar");
     }
 
-    const auto& comm = get_comm();
-    if (ts.flags.size()>0 and comm.am_i_root()) {
-      EKAT_ERROR_MSG("unrecognized flags: " + ekat::join(ts.flags,[](auto it){return it->first;},",") + "\n");
-    }
-    if (ts.params.size()>0 and comm.am_i_root()) {
-      EKAT_ERROR_MSG("unrecognized flags: " + ekat::join(ts.params,[](auto it){return it->first;},",") + "\n");
-    }
-    if (ts.vec_params.size()>0 and comm.am_i_root()) {
-      EKAT_ERROR_MSG("unrecognized flags: " + ekat::join(ts.vec_params,[](auto it){return it->first;},",") + "\n");
-    }
+    auto print_key = [](const auto it) {
+      return it->first;
+    };
+    EKAT_REQUIRE_MSG(ts.flags.size()==0,
+        "Error! Unrecognized flags: " + ekat::join(ts.flags,print_key,",") + "\n");
+    EKAT_REQUIRE_MSG(ts.params.size()==0,
+        "Error! Unrecognized flags: " + ekat::join(ts.params,print_key,",") + "\n");
+    EKAT_REQUIRE_MSG(ts.vec_params.size()==0,
+        "Error! Unrecognized flags: " + ekat::join(ts.vec_params,print_key,",") + "\n");
 
     ne = std::max(2, std::min(128, ne));
     if ( ! is_sphere) ne = std::max(4, ne);
     qsize = std::max(1, std::min(QSIZE_D, qsize));
-    if (comm.am_i_root()) {
+    if (get_comm().am_i_root()) {
       const int bfb =
 #ifdef HOMMEXX_BFB_TESTING
         1;

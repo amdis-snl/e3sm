@@ -16,26 +16,6 @@
 
 using namespace Homme;
 
-// NOTE on handling of Comm object in Context
-//
-// Catch runs these TEST_CASE blocks of code in an order that we don't control.
-// This is problematic for Context, which is a static singleton.
-// We cannot call 'create' unless we are sure the object is not already stored
-// in the context. One solution is to call 'create_if_not_there', but that's not what
-// happens in mpi_cxx_f90_interface, which is called by the geometry_interface
-// fortran module.
-// Two solutions:
-//  - cleaning up the context at the end of TEST_CASE: this would also delete
-//    the comm object in the context, so you have to re-create it, to leave
-//    the Context exactly how you found it..
-//  - change mpi_cxx_f90_interface, to create the Connectivity only if not
-//    already present.
-//
-// Among the two, the former seems cleaner, since it does not affect the
-// src folder of Homme, only the test one. So I'm going with that.
-// More precisely, I'm getting a copy of the existing Comm from the context,
-// and reset it back in it after the cleanup
-
 extern "C" {
 // Even if we don't run the f90 code in this unit test, it is easier to
 // init from f90, which takes care of creating the grid and decomposing it
@@ -63,6 +43,7 @@ TEST_CASE("caar_dp_check") {
 
   // Use stuff from Context, to increase similarity with actual runs
   auto& c = Context::singleton();
+  c.create<ekat::Comm>(MPI_COMM_WORLD);
 
   // Init parameters
   auto& params = c.create<SimulationParams>();
@@ -177,7 +158,7 @@ TEST_CASE("caar_dp_check") {
           Real scale3 = RPDF(1.0,2.0)(engine);
 
           // Sync scalars across ranks (only np1 is *really* necessary, but might as well...)
-          auto mpi_comm = Context::singleton().get<ekat::Comm>().mpi_comm();
+          auto mpi_comm = c.get<ekat::Comm>().mpi_comm();
           MPI_Bcast(&dt,1,MPI_DOUBLE,0,mpi_comm);
           MPI_Bcast(&scale1,1,MPI_DOUBLE,0,mpi_comm);
           MPI_Bcast(&scale2,1,MPI_DOUBLE,0,mpi_comm);
@@ -273,13 +254,8 @@ TEST_CASE("caar_dp_check") {
     }
   }
 
-  // Cleanup (see comment at the top for explanation of the treatment of Comm)
-  auto old_comm = c.get<ekat::Comm>();
-  c.finalize_singleton();
-  auto& new_comm = c.create<ekat::Comm>();
-  new_comm = old_comm;
-
   cleanup_f90();
+  c.finalize_singleton();
 }
 
 // Compute Dx/Dp two ways, and compare:
@@ -301,6 +277,7 @@ TEST_CASE("caar_dx_check") {
 
   // Use stuff from Context, to increase similarity with actual runs
   auto& c = Context::singleton();
+  c.create<ekat::Comm>(MPI_COMM_WORLD);
 
   // Init parameters
   auto& params = c.create<SimulationParams>();
@@ -550,13 +527,8 @@ TEST_CASE("caar_dx_check") {
     }
   }
 
-  // Cleanup (see comment at the top for explanation of the treatment of Comm)
-  auto old_comm = c.get<ekat::Comm>();
-  c.finalize_singleton();
-  auto& new_comm = c.create<ekat::Comm>();
-  new_comm = old_comm;
-
   cleanup_f90();
+  c.finalize_singleton();
 }
 
 // Verify the JtV transpose identity: <a, J*b> == <J^T*a, b>.
@@ -573,6 +545,7 @@ TEST_CASE("caar_jtv_check") {
   using RPDF = std::uniform_real_distribution<Real>;
 
   auto& c = Context::singleton();
+  c.create<ekat::Comm>(MPI_COMM_WORLD);
 
   auto& params = c.create<SimulationParams>();
   params.dp3d_thresh   = 0;
@@ -783,11 +756,6 @@ TEST_CASE("caar_jtv_check") {
     }
   }
 
-  // Cleanup (see comment at the top for explanation of the treatment of Comm)
-  auto old_comm = c.get<ekat::Comm>();
-  c.finalize_singleton();
-  auto& new_comm = c.create<ekat::Comm>();
-  new_comm = old_comm;
-
   cleanup_f90();
+  c.finalize_singleton();
 }

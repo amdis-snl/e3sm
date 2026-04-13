@@ -74,6 +74,7 @@ struct Session {
 
   void init () {
     printf("seed %u\n", r.gen_seed());
+    c.create<ekat::Comm>(MPI_COMM_WORLD);
     auto& h = c.create<HybridVCoord>();
     h.random_init(r.gen_seed());
 
@@ -107,13 +108,7 @@ struct Session {
   void cleanup () {
     cleanup_f90();
 
-    // Cleanup the singleton, but preserve the Comm,
-    // so that subsequent SECTION's in the same TEST_CASE
-    // se the same context as the first one (the comm is created
-    // in the tester.cpp unit test driver)
-    auto& comm = c.get<ekat::Comm>();
     c.finalize_singleton();
-    c.create<ekat::Comm>(comm);
 
     inited = false;
   }
