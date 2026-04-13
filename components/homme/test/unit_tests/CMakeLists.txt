@@ -1,4 +1,15 @@
-SET(UNITTESTER_DIR ${CMAKE_CURRENT_SOURCE_DIR} PARENT_SCOPE)
+# Small lib that ekat needs to init/finalize the test
+add_library(homme_testsession
+  ${HOMME_SOURCE_DIR}/src/share/cxx/utilities/ekat_test_session.cpp
+)
+target_include_directories(homme_testsession PUBLIC
+  ${HOMME_SOURCE_DIR}/src/share/cxx
+  ${HOMME_BINARY_DIR}/src/share/cxx
+)
+target_link_libraries(homme_testsession PUBLIC ekat::KokkosUtils)
+if (HOMMEXX_ENABLE_FAD_TYPES)
+  target_link_libraries(homme_testsession PUBLIC Sacado::sacado)
+endif ()
 
 function(cxx_unit_test_add_test test_name target_name NUM_CPUS)
   SET(EXTRA_ARGS ${ARGN})
@@ -22,7 +33,7 @@ macro(cxx_unit_test target_name target_f90_srcs target_cxx_srcs include_dirs con
 
   cxx_unit_test_add_test(${target_name}_test ${target_name} ${NUM_CPUS})
 
-  TARGET_LINK_LIBRARIES(${target_name} ekat::CatchMain)
+  TARGET_LINK_LIBRARIES(${target_name} ekat::CatchMain homme_testsession)
   TARGET_LINK_LIBRARIES(${target_name} timing ${BLAS_LIBRARIES} ${LAPACK_LIBRARIES})
   TARGET_LINK_LIBRARIES(${target_name} ekat::AllLibs)
   IF (HOMME_USE_MKL)
@@ -74,7 +85,7 @@ macro(cxx_unit_test target_name target_f90_srcs target_cxx_srcs include_dirs con
   ENDIF()
 
   TARGET_INCLUDE_DIRECTORIES(${target_name} PUBLIC "${include_dirs}")
-  TARGET_INCLUDE_DIRECTORIES(${target_name} PUBLIC "${SRC_SHARE};${SRC_BASE};${UNITTESTER_DIR}")
+  TARGET_INCLUDE_DIRECTORIES(${target_name} PUBLIC "${SRC_SHARE};${SRC_BASE}")
   TARGET_INCLUDE_DIRECTORIES(${target_name} PUBLIC "${PIO_INCLUDE_DIRS}")
   TARGET_INCLUDE_DIRECTORIES(${target_name} PUBLIC "${CMAKE_BINARY_DIR}/src")
 
