@@ -11,6 +11,10 @@ namespace Homme {
 
 namespace PC = PhysicalConstants;
 
+// A constants provider that perturbs Rgas by a factor (1+perturb).
+// kappa = Rgas/cp is also perturbed as a result.
+// p0 and cp are left unchanged.
+// The perturbation is a static member so it works inside KOKKOS_INLINE_FUNCTION.
 template<typename ST>
 struct PerturbedConstants {
 
@@ -19,10 +23,10 @@ struct PerturbedConstants {
   static ST perturb;
 
   // Only decl the ones used in EOS
-  static KOKKOS_FORCEINLINE_FUNCTION constexpr ST   Rgas  () { return (1+perturb)*PC::Rgas; }
-  static KOKKOS_FORCEINLINE_FUNCTION constexpr Real cp    () { return PC::cp;           }
-  static KOKKOS_FORCEINLINE_FUNCTION constexpr ST   kappa () { return Rgas() / cp();    }
-  static KOKKOS_FORCEINLINE_FUNCTION constexpr Real p0    () { return PC::p0;           }  // [mbar]
+  static KOKKOS_FORCEINLINE_FUNCTION ST   Rgas  () { return (1+perturb)*PC::Rgas; }
+  static KOKKOS_FORCEINLINE_FUNCTION Real cp    () { return PC::cp;           }
+  static KOKKOS_FORCEINLINE_FUNCTION ST   kappa () { return Rgas() / cp();    }
+  static KOKKOS_FORCEINLINE_FUNCTION Real p0    () { return PC::p0;           }  // [mbar]
 };
 
 template<typename ST>
@@ -30,6 +34,40 @@ ST PerturbedConstants<ST>::perturb; // Must instantiate static member vars
 
 template<typename Provider>
 using EOS = EquationOfState<Provider>;
+
+// Helper: compute FAD derivative and value for a scalar EOS function,
+// and compare against finite differences as the perturbation h is refined.
+// Returns true if the minimum finite-diff error is small enough.
+template<typename Func>
+bool check_fad_vs_fd (Func&& run,
+                      Real fad_val, Real fad_deriv,
+                      const std::vector<Real>& h_vals,
+                      const char* name)
+{
+  // baseline: run with perturb=0
+  PerturbedConstants<Real>::perturb = 0.0;
+  const Real f0 = run(0.0);
+
+  // Check FAD value matches the baseline
+  if (std::abs(fad_val - f0) > 1e-14 * std::abs(f0) + 1e-14) {
+    std::cout << name << ": FAD val=" << fad_val << " != baseline=" << f0 << "\n";
+    return false;
+  }
+
+  std::vector<Real> fd_errors;
+  for (Real h : h_vals) {
+    const Real fh = run(h);
+    const Real fd = (fh - f0) / h;
+    fd_errors.push_back(std::abs(fd - fad_deriv));
+  }
+
+  std::cout << name << ": FAD deriv = " << fad_deriv << "\n";
+  std::cout << "  h   = [" << ekat::join(h_vals,",") << "]\n";
+  std::cout << "  |FD-FAD| = [" << ekat::join(fd_errors,",") << "]\n";
+
+  const Real min_err = *std::min_element(fd_errors.begin(),fd_errors.end());
+  return (min_err < fd_errors[0] / 1e2);
+}
 
 TEST_CASE("eos_dp_check") {
 
@@ -42,38 +80,137 @@ TEST_CASE("eos_dp_check") {
   rngAlg engine(seed);
   using RPDF = std::uniform_real_distribution<Real>;
 
-  // Create and init hvcoord
+  // Create and init hvcoord (needed for EOS init, even though static scalar methods don't use it)
   HybridVCoord hvcoord;
   hvcoord.random_init(seed);
 
   using FadT = SFadN<Real,1>;
 
-  PerturbedConstants<Real> provider_real;
-  PerturbedConstants<FadT> provider_sfad;
-  provider_sfad.perturb.fastAccessDx(0) = 1;
-  for (bool hydrostatic : {true, false}) {
-    // Create the EOS objects
-    EOS<PerturbedConstants<Real>> eos_real;
-    EOS<PerturbedConstants<FadT>> eos_sfad;
+  // Seed the FAD perturbation: perturb has value 0, derivative 1
+  PerturbedConstants<FadT> prov_fad;
+  PerturbedConstants<FadT>::perturb.fastAccessDx(0) = 1.0;
 
-    eos_real.init(hydrostatic,hvcoord);
-    eos_sfad.init(hydrostatic,hvcoord);
+  // Real provider (perturb starts at 0 from constructor)
+  PerturbedConstants<Real> prov_real;
 
-    SECTION ("pressure_to_exner") {
+  // Step sizes for finite differences: from coarse to fine to probe convergence
+  const std::vector<Real> h_vals = {1e-2, 1e-4, 1e-6, 1e-8};
 
-      RPDF pdf(10,1000);
+  SECTION ("pressure_to_exner") {
+    RPDF pdf(10, 1000);
+    const Real p0 = pdf(engine);
 
-      Real p_real0 = pdf(engine);
-      FadT p_sfad  = p_real0;
+    // Run EOS with Fad type to get FAD derivative
+    FadT p_sfad = p0;
+    EOS<PerturbedConstants<FadT>>::pressure_to_exner(p_sfad);
+    const Real fad_val   = p_sfad.val();
+    const Real fad_deriv = p_sfad.fastAccessDx(0);
 
-      // Run eos_sfad::pressure_to_exner
-      // Run eos_real::pressure_to_exner for provider.perturb=0
-      // Run eos_real::pressure_to_exner for provider.perturb=1,0.1,0.01,0.001,...
-      // Compute finite-diff deriv dexner/dperturb, compare with Fad deriv
-    }
-    // Add similar sections for other EquationOfState methods
+    auto run = [&](Real h) {
+      PerturbedConstants<Real>::perturb = h;
+      Real p = p0;
+      EOS<PerturbedConstants<Real>>::pressure_to_exner(p);
+      PerturbedConstants<Real>::perturb = 0.0;
+      return p;
+    };
+
+    REQUIRE(check_fad_vs_fd(run, fad_val, fad_deriv, h_vals, "pressure_to_exner"));
   }
 
-}
+  SECTION ("pressure_to_recip_exner") {
+    RPDF pdf(10, 1000);
+    const Real p0 = pdf(engine);
+
+    FadT p_sfad = p0;
+    EOS<PerturbedConstants<FadT>>::pressure_to_recip_exner(p_sfad);
+    const Real fad_val   = p_sfad.val();
+    const Real fad_deriv = p_sfad.fastAccessDx(0);
+
+    auto run = [&](Real h) {
+      PerturbedConstants<Real>::perturb = h;
+      Real p = p0;
+      EOS<PerturbedConstants<Real>>::pressure_to_recip_exner(p);
+      PerturbedConstants<Real>::perturb = 0.0;
+      return p;
+    };
+
+    REQUIRE(check_fad_vs_fd(run, fad_val, fad_deriv, h_vals, "pressure_to_recip_exner"));
+  }
+
+  SECTION ("compute_dphi") {
+    RPDF pdf(1, 100);
+    const Real vtheta_dp = pdf(engine);
+    const Real p_in      = pdf(engine);
+
+    // FAD version: inputs are plain (no seed), only constants carry the Fad derivative
+    const FadT vtheta_dp_fad = vtheta_dp;
+    const FadT p_fad         = p_in;
+    const FadT dphi_sfad     = EOS<PerturbedConstants<FadT>>::compute_dphi(vtheta_dp_fad, p_fad);
+    const Real fad_val   = dphi_sfad.val();
+    const Real fad_deriv = dphi_sfad.fastAccessDx(0);
+
+    auto run = [&](Real h) {
+      PerturbedConstants<Real>::perturb = h;
+      Real dphi = EOS<PerturbedConstants<Real>>::compute_dphi(vtheta_dp, p_in);
+      PerturbedConstants<Real>::perturb = 0.0;
+      return dphi;
+    };
+
+    REQUIRE(check_fad_vs_fd(run, fad_val, fad_deriv, h_vals, "compute_dphi"));
+  }
+
+  SECTION ("compute_pnh_and_exner") {
+    // For compute_pnh_and_exner, we need:
+    //   exner_tmp = (-Rgas)*vtheta_dp / dphi  to be > 0 so that pow is valid
+    // This requires vtheta_dp > 0 and dphi < 0 (delta(phi_i) is negative since phi increases upward)
+    RPDF pdf_pos(1, 100);
+    RPDF pdf_neg(-100, -1);
+    const Real vtheta_dp = pdf_pos(engine);
+    const Real dphi      = pdf_neg(engine);
+
+    // FAD version
+    const FadT vtheta_dp_fad = vtheta_dp;
+    const FadT dphi_fad      = dphi;
+    FadT pnh_fad, exner_fad;
+    EOS<PerturbedConstants<FadT>>::compute_pnh_and_exner(vtheta_dp_fad, dphi_fad, pnh_fad, exner_fad);
+    const Real fad_pnh_val    = pnh_fad.val();
+    const Real fad_exner_val  = exner_fad.val();
+    const Real fad_dpnh_deps  = pnh_fad.fastAccessDx(0);
+    const Real fad_dexner_deps = exner_fad.fastAccessDx(0);
+
+    // Baseline Real values
+    PerturbedConstants<Real>::perturb = 0.0;
+    Real pnh_0 = 0, exner_0 = 0;
+    EOS<PerturbedConstants<Real>>::compute_pnh_and_exner(vtheta_dp, dphi, pnh_0, exner_0);
+
+    REQUIRE(std::abs(fad_pnh_val - pnh_0)   < 1e-14 * std::abs(pnh_0)   + 1e-14);
+    REQUIRE(std::abs(fad_exner_val - exner_0) < 1e-14 * std::abs(exner_0) + 1e-14);
+
+    // Finite difference for pnh
+    {
+      auto run_pnh = [&](Real h) {
+        PerturbedConstants<Real>::perturb = h;
+        Real pnh_h = 0, exner_h = 0;
+        EOS<PerturbedConstants<Real>>::compute_pnh_and_exner(vtheta_dp, dphi, pnh_h, exner_h);
+        PerturbedConstants<Real>::perturb = 0.0;
+        return pnh_h;
+      };
+      REQUIRE(check_fad_vs_fd(run_pnh, fad_pnh_val, fad_dpnh_deps, h_vals, "compute_pnh_and_exner::pnh"));
+    }
+
+    // Finite difference for exner
+    {
+      auto run_exner = [&](Real h) {
+        PerturbedConstants<Real>::perturb = h;
+        Real pnh_h = 0, exner_h = 0;
+        EOS<PerturbedConstants<Real>>::compute_pnh_and_exner(vtheta_dp, dphi, pnh_h, exner_h);
+        PerturbedConstants<Real>::perturb = 0.0;
+        return exner_h;
+      };
+      REQUIRE(check_fad_vs_fd(run_exner, fad_exner_val, fad_dexner_deps, h_vals, "compute_pnh_and_exner::exner"));
+    }
+  }
+
+} // TEST_CASE
 
 } // namespace Homme
