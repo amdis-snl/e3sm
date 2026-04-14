@@ -4,6 +4,11 @@ IF (NOT DEFINED PROJECT_NAME)
   # Best practice to put cmake required version at the top
   CMAKE_MINIMUM_REQUIRED(VERSION 3.16)
 
+  if (POLICY CMP0144)
+    # Do NOT ignore <PKGNAME>_ROOT env vars
+    cmake_policy(SET CMP0144 NEW)
+  endif()
+
   # Print the sha of the last commit,
   # useful to double check which version was build in the build folder.
   EXECUTE_PROCESS (COMMAND git rev-parse HEAD

@@ -130,6 +130,8 @@
 
 #include <utilities/MathUtils.hpp>
 
+#include <ekat_comm.hpp>
+
 namespace Homme {
 
 using CTI = ComposeTransportImpl;
@@ -746,10 +748,10 @@ void ComposeTransportImpl
     GPTLstop("compose_floating_dep_pts");
     if (m_data.diagnostics & 1) {
       const auto& c = Context::singleton();
-      const auto& comm = c.get<Comm>();
+      const auto& comm = c.get<ekat::Comm>();
       int glimcnt;
       MPI_Allreduce(&limcnt, &glimcnt, 1, MPI_INT, MPI_SUM, comm.mpi_comm());
-      if (glimcnt > 0 and comm.root())
+      if (glimcnt > 0 and comm.am_i_root())
         printf("COMPOSE> nstep %10d limiter_active_count %10d\n",
                nstep, glimcnt);
     }

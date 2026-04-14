@@ -13,7 +13,7 @@
 #include <memory>
 #include <functional>
 
-#include "ErrorDefs.hpp"
+#include <ekat_assert.hpp>
 
 namespace Homme {
 
@@ -61,16 +61,24 @@ public:
   std::shared_ptr<ConcreteType> get_ptr () const;
 
   // Exactly one singleton.
-  static Context& singleton();
+  static Context& singleton() {
+    static Context c;
+    return c;
+  }
 
-  static void finalize_singleton();
+  static void finalize_singleton() {
+    singleton().clear();
+  }
 private:
 
   std::map<std::string,std::any> m_members;
   std::map<std::string, bool>    m_is_ref_wrapper;
 
   // Clear the objects Context manages.
-  void clear();
+  void clear() {
+    m_members.clear();
+    m_is_ref_wrapper.clear();
+  }
 };
 
 // ==================== IMPLEMENTATION =================== //

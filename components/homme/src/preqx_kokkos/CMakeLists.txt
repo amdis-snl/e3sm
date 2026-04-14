@@ -153,7 +153,6 @@ MACRO(PREQX_KOKKOS_SETUP)
     ${TARGET_DIR}/cxx/HyperviscosityFunctorImpl.cpp
     ${TARGET_DIR}/cxx/prim_advance_exp.cpp
     ${SRC_SHARE_DIR}/cxx/CaarFunctor.cpp
-    ${SRC_SHARE_DIR}/cxx/Context.cpp
     ${SRC_SHARE_DIR}/cxx/Elements.cpp
     ${SRC_SHARE_DIR}/cxx/ElementsDerivedState.cpp
     ${SRC_SHARE_DIR}/cxx/ElementsGeometry.cpp
@@ -171,7 +170,6 @@ MACRO(PREQX_KOKKOS_SETUP)
     ${SRC_SHARE_DIR}/cxx/VerticalRemapManager.cpp
     ${SRC_SHARE_DIR}/cxx/mpi/BoundaryExchangeBase.cpp
     ${SRC_SHARE_DIR}/cxx/mpi/BoundaryExchange.cpp
-    ${SRC_SHARE_DIR}/cxx/mpi/Comm.cpp
     ${SRC_SHARE_DIR}/cxx/mpi/Connectivity.cpp
     ${SRC_SHARE_DIR}/cxx/mpi/MpiBuffersManager.cpp
     ${SRC_SHARE_DIR}/cxx/mpi/mpi_cxx_f90_interface.cpp

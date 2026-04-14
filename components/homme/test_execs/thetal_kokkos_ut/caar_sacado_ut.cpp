@@ -10,30 +10,11 @@
 #include "utilities/TestUtils.hpp"
 
 #include <ekat_string_utils.hpp>
+#include <ekat_comm.hpp>
 
 #include <iomanip>
 
 using namespace Homme;
-
-// NOTE on handling of Comm object in Context
-//
-// Catch runs these TEST_CASE blocks of code in an order that we don't control.
-// This is problematic for Context, which is a static singleton.
-// We cannot call 'create' unless we are sure the object is not already stored
-// in the context. One solution is to call 'create_if_not_there', but that's not what
-// happens in mpi_cxx_f90_interface, which is called by the geometry_interface
-// fortran module.
-// Two solutions:
-//  - cleaning up the context at the end of TEST_CASE: this would also delete
-//    the comm object in the context, so you have to re-create it, to leave
-//    the Context exactly how you found it..
-//  - change mpi_cxx_f90_interface, to create the Connectivity only if not
-//    already present.
-//
-// Among the two, the former seems cleaner, since it does not affect the
-// src folder of Homme, only the test one. So I'm going with that.
-// More precisely, I'm getting a copy of the existing Comm from the context,
-// and reset it back in it after the cleanup
 
 extern "C" {
 // Even if we don't run the f90 code in this unit test, it is easier to
@@ -62,6 +43,7 @@ TEST_CASE("caar_dp_check") {
 
   // Use stuff from Context, to increase similarity with actual runs
   auto& c = Context::singleton();
+  c.create<ekat::Comm>(MPI_COMM_WORLD);
 
   // Init parameters
   auto& params = c.create<SimulationParams>();
@@ -136,14 +118,14 @@ TEST_CASE("caar_dp_check") {
   rearth0.fastAccessDx(0) = PhysicalConstants::rearth0;
   sphop_dp.m_scale_factor_inv = 1/rearth0;
 
-  auto& comm = c.get<Comm>();
+  auto& comm = c.get<ekat::Comm>();
   const int rank = comm.rank();
 
   std::vector<Real> dp_factor = {1, 1e-2, 1e-4, 1e-6, 1e-8};
 
   Kokkos::MDRangePolicy<ExecSpace,Kokkos::Rank<5>> policy({0,0,0,0,0},{num_elems,2,NP,NP,NUM_PHYSICAL_LEV});
   for (const bool hydrostatic : {true,false}) {
-    if (comm.root()) {
+    if (comm.am_i_root()) {
       std::cout << " -> " << (hydrostatic ? "Hydrostatic\n" : "Non-Hydrostatic\n");
     }
     params.theta_hydrostatic_mode = hydrostatic;
@@ -151,15 +133,15 @@ TEST_CASE("caar_dp_check") {
     limiter_dp.m_theta_hydrostatic_mode = hydrostatic;
     auto adv_forms = {AdvectionForm::Conservative, AdvectionForm::NonConservative};
     for (const AdvectionForm adv_form : adv_forms) {
-      if (comm.root()) {
+      if (comm.am_i_root()) {
         std::cout << "  -> " << (adv_form==AdvectionForm::Conservative ? "Conservative" : "Non-Conservative") << " theta advection\n";
       }
       for (int rsplit : {3,0}) {
-        if (comm.root()) {
+        if (comm.am_i_root()) {
           std::cout << "   -> rsplit = " << rsplit << "\n";
         }
         for (const int pgrad : {1,0}) {
-          if (comm.root()) {
+          if (comm.am_i_root()) {
             std::cout << "    -> pgrad_correction = " << pgrad << "\n";
           }
           // Set the parameters
@@ -176,7 +158,7 @@ TEST_CASE("caar_dp_check") {
           Real scale3 = RPDF(1.0,2.0)(engine);
 
           // Sync scalars across ranks (only np1 is *really* necessary, but might as well...)
-          auto mpi_comm = Context::singleton().get<Comm>().mpi_comm();
+          auto mpi_comm = c.get<ekat::Comm>().mpi_comm();
           MPI_Bcast(&dt,1,MPI_DOUBLE,0,mpi_comm);
           MPI_Bcast(&scale1,1,MPI_DOUBLE,0,mpi_comm);
           MPI_Bcast(&scale2,1,MPI_DOUBLE,0,mpi_comm);
@@ -256,7 +238,7 @@ TEST_CASE("caar_dp_check") {
             order.push_back(std::log(err_reduction)/std::log(h_reduction));
           }
 
-          if (comm.root()) {
+          if (comm.am_i_root()) {
             std::cout << "      h = [" << ekat::join(h,",") << "]\n";
             std::cout << "      |dv/dp - FD(dvdp)|_inf = [" << ekat::join(eh,",") << "]\n";
             std::cout << "      order: [" << ekat::join(order,",") << "\n";
@@ -272,13 +254,8 @@ TEST_CASE("caar_dp_check") {
     }
   }
 
-  // Cleanup (see comment at the top for explanation of the treatment of Comm)
-  auto old_comm = c.get<Comm>();
-  c.finalize_singleton();
-  auto& new_comm = c.create<Comm>();
-  new_comm = old_comm;
-
   cleanup_f90();
+  c.finalize_singleton();
 }
 
 // Compute Dx/Dp two ways, and compare:
@@ -300,6 +277,7 @@ TEST_CASE("caar_dx_check") {
 
   // Use stuff from Context, to increase similarity with actual runs
   auto& c = Context::singleton();
+  c.create<ekat::Comm>(MPI_COMM_WORLD);
 
   // Init parameters
   auto& params = c.create<SimulationParams>();
@@ -380,7 +358,7 @@ TEST_CASE("caar_dx_check") {
     bm.set_connectivity(c.get_ptr<Connectivity>());
   }
 
-  auto& comm = c.get<Comm>();
+  auto& comm = c.get<ekat::Comm>();
   const int rank = comm.rank();
 
   auto rtol = 1e-10;
@@ -389,7 +367,7 @@ TEST_CASE("caar_dx_check") {
   auto& catch_capture = Catch::getResultCapture();
   // NOTE: cannot use hydrostatic=true, since it requires a scan sum
   for (const bool hydrostatic : {false}) {
-    if (comm.root()) {
+    if (comm.am_i_root()) {
       std::cout << " -> " << (hydrostatic ? "Hydrostatic\n" : "Non-Hydrostatic\n");
     }
     params.theta_hydrostatic_mode = hydrostatic;
@@ -397,11 +375,11 @@ TEST_CASE("caar_dx_check") {
     limiter_dp.m_theta_hydrostatic_mode = hydrostatic;
     auto adv_forms = {AdvectionForm::Conservative, AdvectionForm::NonConservative};
     for (const AdvectionForm adv_form : adv_forms) {
-      if (comm.root()) {
+      if (comm.am_i_root()) {
         std::cout << "  -> " << (adv_form==AdvectionForm::Conservative ? "Conservative" : "Non-Conservative") << " theta advection\n";
       }
       for (const int pgrad : {1,0}) {
-        if (comm.root()) {
+        if (comm.am_i_root()) {
           std::cout << "    -> pgrad_correction = " << pgrad << "\n";
         }
         // Set the parameters
@@ -417,7 +395,7 @@ TEST_CASE("caar_dx_check") {
         Real scale3 = RPDF(1.0,2.0)(engine);
 
         // Sync scalars across ranks (only np1 is *really* necessary, but might as well...)
-        auto mpi_comm = Context::singleton().get<Comm>().mpi_comm();
+        auto mpi_comm = Context::singleton().get<ekat::Comm>().mpi_comm();
         MPI_Bcast(&dt,1,MPI_DOUBLE,0,mpi_comm);
         MPI_Bcast(&scale1,1,MPI_DOUBLE,0,mpi_comm);
         MPI_Bcast(&scale2,1,MPI_DOUBLE,0,mpi_comm);
@@ -549,13 +527,8 @@ TEST_CASE("caar_dx_check") {
     }
   }
 
-  // Cleanup (see comment at the top for explanation of the treatment of Comm)
-  auto old_comm = c.get<Comm>();
-  c.finalize_singleton();
-  auto& new_comm = c.create<Comm>();
-  new_comm = old_comm;
-
   cleanup_f90();
+  c.finalize_singleton();
 }
 
 // Verify the JtV transpose identity: <a, J*b> == <J^T*a, b>.
@@ -572,6 +545,7 @@ TEST_CASE("caar_jtv_check") {
   using RPDF = std::uniform_real_distribution<Real>;
 
   auto& c = Context::singleton();
+  c.create<ekat::Comm>(MPI_COMM_WORLD);
 
   auto& params = c.create<SimulationParams>();
   params.dp3d_thresh   = 0;
@@ -637,7 +611,7 @@ TEST_CASE("caar_jtv_check") {
     bm.set_connectivity(c.get_ptr<Connectivity>());
   }
 
-  auto& comm    = c.get<Comm>();
+  auto& comm    = c.get<ekat::Comm>();
   auto mpi_comm = comm.mpi_comm();
 
   const int nm1 = 0, n0 = 1, np1 = 2;
@@ -675,20 +649,20 @@ TEST_CASE("caar_jtv_check") {
     params.theta_hydrostatic_mode       = hydrostatic;
     limiter.m_theta_hydrostatic_mode    = hydrostatic;
     limiter_dx.m_theta_hydrostatic_mode = hydrostatic;
-    if (comm.root())
+    if (comm.am_i_root())
       std::cout << " -> " << (hydrostatic ? "Hydrostatic\n" : "Non-Hydrostatic\n");
 
     for (const AdvectionForm adv_form : {AdvectionForm::Conservative,
                                          AdvectionForm::NonConservative}) {
       params.theta_adv_form = adv_form;
-      if (comm.root())
+      if (comm.am_i_root())
         std::cout << "  -> " << (adv_form==AdvectionForm::Conservative
                                  ? "Conservative" : "Non-Conservative")
                   << " theta advection\n";
 
       for (const int pgrad : {1, 0}) {
         params.pgrad_correction = (pgrad != 0);
-        if (comm.root())
+        if (comm.am_i_root())
           std::cout << "    -> pgrad_correction = " << pgrad << "\n";
 
         Real dt        = RPDF(1.0, 10.0)(engine);
@@ -774,7 +748,7 @@ TEST_CASE("caar_jtv_check") {
 
         CHECK_THAT(gdot.v[0], Catch::WithinRel(gdot.v[1], rtol) || Catch::WithinAbs(gdot.v[1], atol));
 
-        if (comm.root())
+        if (comm.am_i_root())
           std::cout << std::setprecision(15)
                     << "       <a, J*b> = " << gdot.v[0]
                     << ",  <J^T*a, b> = " << gdot.v[1] << "\n";
@@ -782,11 +756,6 @@ TEST_CASE("caar_jtv_check") {
     }
   }
 
-  // Cleanup (see comment at the top for explanation of the treatment of Comm)
-  auto old_comm = c.get<Comm>();
-  c.finalize_singleton();
-  auto& new_comm = c.create<Comm>();
-  new_comm = old_comm;
-
   cleanup_f90();
+  c.finalize_singleton();
 }

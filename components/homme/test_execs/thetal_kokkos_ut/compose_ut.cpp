@@ -3,7 +3,6 @@
 
 #include "Types.hpp"
 #include "Context.hpp"
-#include "mpi/Comm.hpp"
 #include "mpi/Connectivity.hpp"
 #include "mpi/MpiBuffersManager.hpp"
 #include "FunctorsBuffersManager.hpp"
@@ -26,13 +25,14 @@
 #include "utilities/SyncUtils.hpp"
 #include "utilities/ViewUtils.hpp"
 
+#include <ekat_comm.hpp>
+#include <ekat_string_utils.hpp>
+#include <ekat_test_utils.hpp>
+
 #include <catch2/catch.hpp>
 #include <random>
 
 using namespace Homme;
-
-extern int hommexx_catch2_argc;
-extern char** hommexx_catch2_argv;
 
 extern "C" {
   void init_compose_f90(int ne, const Real* hyai, const Real* hybi, const Real* hyam,
@@ -113,6 +113,9 @@ struct Session {
   //Session () : r(269041989) {}
 
   void init () {
+    auto& c = Context::singleton();
+    c.create<ekat::Comm>(MPI_COMM_WORLD);
+
     const auto seed = r.gen_seed();
     printf("seed %u\n", seed);
 
@@ -122,10 +125,8 @@ struct Session {
     assert(np == 4);
 
     assert(QSIZE_D >= 4);
-    parse_command_line();
+    parse_test_options ();
     assert(is_sphere); // planar isn't available in Hxx yet
-
-    auto& c = Context::singleton();
 
     c.create<HybridVCoord>().random_init(seed);
     h = c.get<HybridVCoord>();
@@ -208,13 +209,13 @@ struct Session {
     s_session = nullptr;
   }
 
-  Comm& get_comm () const { return Context::singleton().get<Comm>(); }
+  const ekat::Comm& get_comm () const { return Context::singleton().get<ekat::Comm>(); }
 
 private:
   static std::shared_ptr<Session> s_session;
 
   // compose_ut hommexx -ne NE -qsize QSIZE -hvq HV_Q -cdrcheck
-  void parse_command_line () {
+  void parse_test_options () {
     ne = 2;
     qsize = QSIZE_D;
     hv_q = 1;
@@ -226,77 +227,68 @@ private:
     traj_nsubstep = 0;
     nearest_point = true;
 
-    const bool am_root = get_comm().root();
-    bool ok = true;
-    int i;
-    for (i = 0; i < hommexx_catch2_argc; ++i) {
-      const std::string tok(hommexx_catch2_argv[i]);
-      if (tok == "-ne") {
-        if (i+1 == hommexx_catch2_argc) ok = false;
-        ne = std::atoi(hommexx_catch2_argv[++i]);
-        if (ne < 2) {
-          printf("ne must be >= 2\n");
-          ok = false;
-        }
-      } else if (tok == "-qsize") {
-        if (i+1 == hommexx_catch2_argc) ok = false;
-        qsize = std::atoi(hommexx_catch2_argv[++i]);
-        if (qsize > QSIZE_D || qsize < 1) {
-          printf("qsize must be >= 1 and <= QSIZE_D\n");
-          ok = false;
-        }
-      } else if (tok == "-hvq") {
-        if (i+1 == hommexx_catch2_argc) ok = false;
-        hv_q = std::atoi(hommexx_catch2_argv[++i]);
-      } else if (tok == "-cdrcheck") {
-        cdr_check = true;
-      } else if (tok == "-planar") {
-        is_sphere = false;
-      } else if (tok == "-convergence") {
-        // When running this as a convergence-test driver, don't run any tests
-        // except the prescribed-flow one.
-        run_only_advection_test = true;
-      } else if (tok == "-nmax") {
-        if (i+1 == hommexx_catch2_argc) ok = false;
-        nmax = std::atoi(hommexx_catch2_argv[++i]);
-        if (nmax < 1) {
-          printf("nmax must be >= 1\n");
-          ok = false;
-        }
-      } else if (tok == "-halo") {
-        if (i+1 == hommexx_catch2_argc) ok = false;
-        halo = std::atoi(hommexx_catch2_argv[++i]);
-        if (halo < 1) {
-          printf("halo must be >= 1");
-          ok = false;
-        }
-      } else if (tok == "-trajnsubstep") {
-        if (i+1 == hommexx_catch2_argc) ok = false;
-        traj_nsubstep = std::atoi(hommexx_catch2_argv[++i]);
-        if (traj_nsubstep < 0) {
-          printf("traj_nsubstep must be >= 0\n");
-          ok = false;
-        }
-      } else if (tok == "-nonearest") {
-        nearest_point = false;
-      } else {
-        printf("unrecognized token %s\n", tok.c_str());
-        ok = false;
-      }
-      if ( ! ok) break;
+    auto& ts = ekat::TestSession::get();
+    if (ts.params.count("ne")==1) {
+      ne = std::stoi(ts.params.at("ne"));
+      EKAT_REQUIRE_MSG(ne >= 2,"ne must be >= 2\n");
+      ts.params.erase("ne");
     }
+    if (ts.params.count("qsize")==1) {
+      qsize = std::stoi(ts.params.at("qsize"));
+      EKAT_REQUIRE_MSG(qsize>=1 and qsize <= QSIZE_D, "qsize must be >= 1 and <= QSIZE_D\n");
+      ts.params.erase("qsize");
+    }
+    if (ts.params.count("hvq")==1) {
+      hv_q = std::stoi(ts.params.at("hvq"));
+      ts.params.erase("hvq");
+    }
+    if (ts.flags.count("cdrcheck")==1) {
+      cdr_check = true;
+      ts.flags.erase("cdrcheck");
+    }
+    if (ts.flags.count("planar")==1) {
+      is_sphere = false;
+      ts.flags.erase("planar");
+    }
+    if (ts.flags.count("convergence")==1) {
+      run_only_advection_test = true;
+      ts.flags.erase("convergence");
+    }
+    if (ts.params.count("nmax")==1) {
+      nmax = std::stoi(ts.params.at("nmax"));
+        EKAT_REQUIRE_MSG(nmax>=1, "nmax must be >= 1\n");
+      ts.params.erase("nmax");
+    }
+    if (ts.params.count("halo")==1) {
+      halo = std::stoi(ts.params.at("halo"));
+      EKAT_REQUIRE_MSG(halo>=1, "halo must be >= 1");
+      ts.params.erase("halo");
+    }
+    if (ts.params.count("trajnsubstep")==1) {
+      traj_nsubstep = std::stoi(ts.params.at("trajnsubstep"));
+      EKAT_REQUIRE_MSG(traj_nsubstep>=0, "traj_nsubstep must be >= 0");
+      ts.params.erase("trajnsubstep");
+    }
+    if (ts.flags.count("nonearest")==1) {
+      nearest_point = false;
+      ts.flags.erase("nonearest");
+    }
+
+    auto print_key = [](const auto it) {
+      return it->first;
+    };
+    EKAT_REQUIRE_MSG(ts.flags.size()==0,
+        "Error! Unrecognized flags: " + ekat::join(ts.flags,print_key,",") + "\n");
+    EKAT_REQUIRE_MSG(ts.params.size()==0,
+        "Error! Unrecognized flags: " + ekat::join(ts.params,print_key,",") + "\n");
+    EKAT_REQUIRE_MSG(ts.vec_params.size()==0,
+        "Error! Unrecognized flags: " + ekat::join(ts.vec_params,print_key,",") + "\n");
 
     ne = std::max(2, ne);
     qsize = std::max(1, std::min(QSIZE_D, qsize));
     hv_q = std::max(0, std::min(qsize, hv_q));
 
-    if ( ! ok && am_root) {
-      printf("compose_ut> Failed to parse command line, starting with: %s\n",
-             hommexx_catch2_argv[i]);
-      EKAT_ERROR_MSG("compose_ut invalid command line");
-    }
-
-    if (am_root) {
+    if (get_comm().am_i_root()) {
       const int bfb =
 #ifdef HOMMEXX_BFB_TESTING
         1;
@@ -483,7 +475,7 @@ TEST_CASE ("compose_transport_testing") {
       if (bfb) continue;
 #endif
       ct.test_2d(bfb, nmax, eval_c);
-      if (s.get_comm().root()) {
+      if (s.get_comm().am_i_root()) {
         const Real f = bfb ? 0 : 1;
         const int n = s.nlev*s.qsize;
         // When not a BFB build, still expect l2 error to be the same to several digits.

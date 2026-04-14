@@ -73,7 +73,7 @@ void GllFvRemapImpl::reset (const SimulationParams& params) {
   m_tu_ne_qsize = TeamUtils<ExecSpace>(m_tp_ne_qsize);
   m_tu_ne_dss = TeamUtils<ExecSpace>(m_tp_ne_dss);
 
-  if (Context::singleton().get<Connectivity>().get_comm().root())
+  if (Context::singleton().get<Connectivity>().get_comm().am_i_root())
     printf("gfr> nelemd %d qsize %d\n", m_data.nelemd, m_data.qsize);
 }
 

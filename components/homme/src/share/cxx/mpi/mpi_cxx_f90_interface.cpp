@@ -5,9 +5,10 @@
  *******************************************************************************/
 
 #include "Context.hpp"
-#include "Comm.hpp"
 #include "Connectivity.hpp"
 #include "BoundaryExchange.hpp"
+
+#include <ekat_comm.hpp>
 
 #include <map>
 
@@ -21,10 +22,10 @@ void reset_cxx_comm (const MPI_Fint& f_comm)
 {
   // f_comm must be a valid Fortran handle to a communicator
   MPI_Comm c_comm = MPI_Comm_f2c(f_comm);
-  if (!Context::singleton().has<Comm>()) {
-    Context::singleton().create<Comm>();
+  if (!Context::singleton().has<ekat::Comm>()) {
+    Context::singleton().create<ekat::Comm>();
   }
-  Context::singleton().get<Comm>().reset_mpi_comm(c_comm);
+  Context::singleton().get<ekat::Comm>().reset_mpi_comm(c_comm);
 }
 
 void init_connectivity (const int& num_local_elems, const int& max_corner_elems)
@@ -32,7 +33,7 @@ void init_connectivity (const int& num_local_elems, const int& max_corner_elems)
   Connectivity& connectivity = Context::singleton().create<Connectivity>();
   connectivity.set_num_elements(num_local_elems);
   connectivity.set_max_corner_elements(max_corner_elems);
-  connectivity.set_comm(Context::singleton().get<Comm>());
+  connectivity.set_comm(Context::singleton().get<ekat::Comm>());
 }
 
 // Extract dir (in 0:7) and dir_idx (in 0:max_corner_elements-1) from

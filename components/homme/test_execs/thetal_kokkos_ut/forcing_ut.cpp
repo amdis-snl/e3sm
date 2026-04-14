@@ -14,12 +14,12 @@
 #include "Tracers.hpp"
 #include "Types.hpp"
 
-#include "mpi/Comm.hpp"
-
 #include "utilities/MathUtils.hpp"
 #include "utilities/TestUtils.hpp"
 #include "utilities/SubviewUtils.hpp"
 #include "utilities/SyncUtils.hpp"
+
+#include <ekat_comm.hpp>
 
 using namespace Homme;
 
@@ -59,6 +59,7 @@ TEST_CASE("forcing", "forcing") {
 
   // Init everything through singleton, which is what happens in normal runs
   auto& c = Context::singleton();
+  c.create<ekat::Comm>(MPI_COMM_WORLD);
   auto& p = c.create<SimulationParams>();
   p.dt_remap_factor = 1;
  
@@ -385,15 +386,7 @@ TEST_CASE("forcing", "forcing") {
     }
   }
 
-  // The tester.cpp file (where the 'main' is), inits the comm in
-  // the context. When there are multiple test_cases/sections, we
-  // need to make sure the context is returned in the same status
-  // that it was found in. The comm is the only structure that
-  // is present when we enter a test_case, so just copy it,
-  // finalize the singleton, then re-set the (same) comm in the context.
-  auto old_comm = c.get_ptr<Comm>();
-  c.finalize_singleton();
-  auto& new_comm = c.create<Comm>();
-  new_comm = *old_comm;
   cleanup_f90();
+
+  c.finalize_singleton();
 }

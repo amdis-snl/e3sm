@@ -63,6 +63,8 @@ TEST_CASE ("Boundary Exchange", "Testing the boundary exchange framework")
   constexpr int field_3d_idim = 1;
   constexpr int field_4d_outer_idim = 2;
 
+  Context::singleton().create<ekat::Comm>(MPI_COMM_WORLD);
+
   // Initialize f90 mpi stuff
   initmp_f90();
 
@@ -307,4 +309,6 @@ TEST_CASE ("Boundary Exchange", "Testing the boundary exchange framework")
   be1->clean_up();
   be2->clean_up();
   be3->clean_up();
+
+  Context::finalize_singleton();
 }

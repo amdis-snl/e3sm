@@ -4,6 +4,7 @@
 #include "Hommexx_Session.hpp"
 #include "PhysicalConstants.hpp"
 #include "Types.hpp"
+#include "utilities/IOUtils.hpp"
 
 #include <ekat_assert.hpp>
 
@@ -49,7 +50,7 @@ void enable_scalar_type (const nb::str& dtype)
 
 void toggle_screen_output (const bool enabled)
 {
-  Session::toggle_screen_output (enabled);
+  Homme::toggle_screen_output (enabled);
   toggle_screen_output_f90 (enabled);
 }
 

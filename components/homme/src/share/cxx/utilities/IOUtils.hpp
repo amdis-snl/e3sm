@@ -4,22 +4,14 @@
  * See the file 'COPYRIGHT' in the HOMMEXX/src/share/cxx directory
  *******************************************************************************/
 
-#include "Context.hpp"
+#ifndef HOMMEXX_IO_UTILS_HPP
+#define HOMMEXX_IO_UTILS_HPP
 
-namespace Homme {
+namespace Homme
+{
 
-void Context::clear() {
-  m_members.clear();
-  m_is_ref_wrapper.clear();
-}
-
-Context& Context::singleton() {
-  static Context c;
-  return c;
-}
-
-void Context::finalize_singleton() {
-  singleton().clear();
-}
+void toggle_screen_output (const bool enabled);
 
 } // namespace Homme
+
+#endif // HOMMEXX_IO_UTILS_HPP

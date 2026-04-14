@@ -20,12 +20,10 @@ ENDIF()
 ### Infrastructure unit stest
 if (HOMMEXX_BFB_TESTING)
 SET (INFRASTRUCTURE_UT_CXX_SRCS
-  ${SRC_SHARE_DIR}/cxx/Context.cpp
   ${SRC_SHARE_DIR}/cxx/ErrorDefs.cpp
   ${SRC_SHARE_DIR}/cxx/ExecSpaceDefs.cpp
   ${SRC_SHARE_DIR}/cxx/Hommexx_Session.cpp
   ${SRC_SHARE_DIR}/cxx/HybridVCoord.cpp
-  ${SRC_SHARE_DIR}/cxx/mpi/Comm.cpp
   ${SHARE_UT_DIR}/infrastructure_ut.cpp
 )
 SET (INFRASTRUCTURE_UT_F90_SRCS
@@ -81,14 +79,12 @@ SET (BOUNDARY_EXCHANGE_UT_F90_SRCS
   ${SHARE_UT_DIR}/geometry_interface.F90
 )
 SET (BOUNDARY_EXCHANGE_UT_CXX_SRCS
-  ${SRC_SHARE_DIR}/cxx/Context.cpp
   ${SRC_SHARE_DIR}/cxx/ErrorDefs.cpp
   ${SRC_SHARE_DIR}/cxx/ExecSpaceDefs.cpp
   ${SRC_SHARE_DIR}/cxx/Hommexx_Session.cpp
   ${SRC_SHARE_DIR}/cxx/mpi/mpi_cxx_f90_interface.cpp
   ${SRC_SHARE_DIR}/cxx/mpi/BoundaryExchangeBase.cpp
   ${SRC_SHARE_DIR}/cxx/mpi/BoundaryExchange.cpp
-  ${SRC_SHARE_DIR}/cxx/mpi/Comm.cpp
   ${SRC_SHARE_DIR}/cxx/mpi/Connectivity.cpp
   ${SRC_SHARE_DIR}/cxx/mpi/MpiBuffersManager.cpp
   ${SRC_SHARE_DIR}/cxx/utilities/BfbUtils.cpp
@@ -132,11 +128,9 @@ SET (SPHERE_OP_UT_F90_SRCS
   ${SHARE_UT_DIR}/sphere_op_interface.F90
 )
 SET (SPHERE_OP_UT_CXX_SRCS
-  ${SRC_SHARE_DIR}/cxx/Context.cpp
   ${SRC_SHARE_DIR}/cxx/ErrorDefs.cpp
   ${SRC_SHARE_DIR}/cxx/ExecSpaceDefs.cpp
   ${SRC_SHARE_DIR}/cxx/Hommexx_Session.cpp
-  ${SRC_SHARE_DIR}/cxx/mpi/Comm.cpp
   ${SHARE_UT_DIR}/sphere_op_sl.cpp
   ${SHARE_UT_DIR}/sphere_op_ml.cpp
 )
@@ -177,11 +171,9 @@ SET (LIMITERS_UT_F90_SRCS
   ${SHARE_UT_DIR}/limiters_interface.F90
 )
 SET (LIMITERS_UT_CXX_SRCS
-  ${SRC_SHARE_DIR}/cxx/Context.cpp
   ${SRC_SHARE_DIR}/cxx/ErrorDefs.cpp
   ${SRC_SHARE_DIR}/cxx/EulerStepFunctorImpl.hpp
   ${SRC_SHARE_DIR}/cxx/Hommexx_Session.cpp
-  ${SRC_SHARE_DIR}/cxx/mpi/Comm.cpp
   ${SRC_SHARE_DIR}/cxx/ExecSpaceDefs.cpp
   ${SHARE_UT_DIR}/limiters.cpp
 )
@@ -205,11 +197,9 @@ cxx_unit_test (limiters_ut "${LIMITERS_UT_F90_SRCS}" "${LIMITERS_UT_CXX_SRCS}" "
 ### ColumnOps unit tests
 if (HOMMEXX_BFB_TESTING)
 SET (COL_OPS_UT_CXX_SRCS
-  ${SRC_SHARE_DIR}/cxx/Context.cpp
   ${SRC_SHARE_DIR}/cxx/ErrorDefs.cpp
   ${SRC_SHARE_DIR}/cxx/ExecSpaceDefs.cpp
   ${SRC_SHARE_DIR}/cxx/Hommexx_Session.cpp
-  ${SRC_SHARE_DIR}/cxx/mpi/Comm.cpp
   ${SHARE_UT_DIR}/col_ops_ut.cpp
 )
 
@@ -245,11 +235,9 @@ SET (PPM_REMAP_UT_F90_SRCS
 )
 
 SET (PPM_REMAP_UT_CXX_SRCS
-  ${SRC_SHARE_DIR}/cxx/Context.cpp
   ${SRC_SHARE_DIR}/cxx/ErrorDefs.cpp
   ${SRC_SHARE_DIR}/cxx/ExecSpaceDefs.cpp
   ${SRC_SHARE_DIR}/cxx/Hommexx_Session.cpp
-  ${SRC_SHARE_DIR}/cxx/mpi/Comm.cpp
   ${SHARE_UT_DIR}/ppm_remap_ut.cpp
 )
 
@@ -272,11 +260,9 @@ endif ()
 
 if(HOMMEXX_ENABLE_FAD_TYPES)
   set (SACADO_UT_CXX_SRCS
-    ${SRC_SHARE_DIR}/cxx/Context.cpp
     ${SRC_SHARE_DIR}/cxx/Hommexx_Session.cpp
     ${SRC_SHARE_DIR}/cxx/ErrorDefs.cpp
     ${SRC_SHARE_DIR}/cxx/ExecSpaceDefs.cpp
-    ${SRC_SHARE_DIR}/cxx/mpi/Comm.cpp
     ${SHARE_UT_DIR}/sacado_ut.cpp
   )
   SET (CONFIG_DEFINES PLEV=12 QSIZE_D=4 _MPI=1 _PRIM ${COMMON_DEFINITIONS})

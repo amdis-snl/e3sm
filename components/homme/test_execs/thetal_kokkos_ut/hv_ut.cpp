@@ -20,6 +20,7 @@
 #include "utilities/SyncUtils.hpp"
 #include "utilities/ViewUtils.hpp"
 
+#include <ekat_comm.hpp>
 
 using namespace Homme;
 
@@ -106,27 +107,6 @@ public:
 
 TEST_CASE("hvf", "biharmonic") {
 
-  // Catch runs these blocks of code multiple times, namely once per each
-  // session within each test case. This is problematic for Context, which
-  // is a static singleton.
-  // We cannot call 'create' unless we are sure the object is not already stored
-  // in the context. One solution is to call 'create_if_not_there', but that's not what
-  // happens in mpi_cxx_f90_interface, which is called by the geometry_interface
-  // fortran module.
-  // Two solutions:
-  //  - cleaning up the context at the end of TEST_CASE: this would also delete
-  //    the comm object in the context, so you have to re-create it.
-  //    Notice, however, that the comm would *already be there* when this block
-  //    of code is executed for the first time (is created in tester.cpp),
-  //    so you need to check if it's there first.
-  //  - change mpi_cxx_f90_interface, to create the Connectivity only if not
-  //    already present.
-  //
-  // Among the two, the former seems cleaner, since it does not affect the
-  // src folder of Homme, only the test one. So I'm going with that.
-  // More precisely, I'm getting a copy of the existing Comm from the context,
-  // and reset it back in it after the cleanup
-
   constexpr int ne = 2;
 
   // The random numbers generator
@@ -141,6 +121,7 @@ TEST_CASE("hvf", "biharmonic") {
 
   // Use stuff from Context, to increase similarity with actual runs
   auto& c = Context::singleton();
+  c.create<ekat::Comm>(MPI_COMM_WORLD);
 
   // Init parameters
   auto& params = c.create<SimulationParams>();
@@ -157,14 +138,14 @@ TEST_CASE("hvf", "biharmonic") {
   params.params_set = true;
 
   // Sync params across ranks
-  MPI_Bcast(&params.nu_top,1,MPI_DOUBLE,0,c.get<Comm>().mpi_comm());
-  MPI_Bcast(&params.nu,1,MPI_DOUBLE,0,c.get<Comm>().mpi_comm());
-  MPI_Bcast(&params.nu_p,1,MPI_DOUBLE,0,c.get<Comm>().mpi_comm());
-  MPI_Bcast(&params.nu_s,1,MPI_DOUBLE,0,c.get<Comm>().mpi_comm());
-  MPI_Bcast(&params.nu_div,1,MPI_DOUBLE,0,c.get<Comm>().mpi_comm());
+  MPI_Bcast(&params.nu_top,1,MPI_DOUBLE,0,c.get<ekat::Comm>().mpi_comm());
+  MPI_Bcast(&params.nu,1,MPI_DOUBLE,0,c.get<ekat::Comm>().mpi_comm());
+  MPI_Bcast(&params.nu_p,1,MPI_DOUBLE,0,c.get<ekat::Comm>().mpi_comm());
+  MPI_Bcast(&params.nu_s,1,MPI_DOUBLE,0,c.get<ekat::Comm>().mpi_comm());
+  MPI_Bcast(&params.nu_div,1,MPI_DOUBLE,0,c.get<ekat::Comm>().mpi_comm());
   //reset below, not bcasted
-  MPI_Bcast(&params.hypervis_scaling,1,MPI_DOUBLE,0,c.get<Comm>().mpi_comm());
-  MPI_Bcast(&params.hypervis_subcycle,1,MPI_INT,0,c.get<Comm>().mpi_comm());
+  MPI_Bcast(&params.hypervis_scaling,1,MPI_DOUBLE,0,c.get<ekat::Comm>().mpi_comm());
+  MPI_Bcast(&params.hypervis_subcycle,1,MPI_INT,0,c.get<ekat::Comm>().mpi_comm());
 
   // Create and init hvcoord and ref_elem, needed to init the fortran interface
   auto& hvcoord = c.create<HybridVCoord>();
@@ -279,7 +260,7 @@ TEST_CASE("hvf", "biharmonic") {
         const Real eta_ave_w = RPDF(0.1,10.0)(engine);
         int np1 = IPDF(0,2)(engine);
         // Sync np1 across ranks. If they are not synced, we may get stuck in an mpi wait
-        MPI_Bcast(&np1,1,MPI_INT,0,c.get<Comm>().mpi_comm());
+        MPI_Bcast(&np1,1,MPI_INT,0,c.get<ekat::Comm>().mpi_comm());
 
         // Create the HVF tester
         HVFTester hvf(params,geo,state,derived);
@@ -465,7 +446,7 @@ TEST_CASE("hvf", "biharmonic") {
         const Real eta_ave_w = 1.0;
         int  np1 = IPDF(0,2)(engine);
         // Sync np1 across ranks. If they are not synced, we may get stuck in an mpi wait
-        MPI_Bcast(&np1,1,MPI_INT,0,c.get<Comm>().mpi_comm());
+        MPI_Bcast(&np1,1,MPI_INT,0,c.get<ekat::Comm>().mpi_comm());
 
         // Create the HVF tester
         HVFTester hvf(params,geo,state,derived);
@@ -684,17 +665,7 @@ TEST_CASE("hvf", "biharmonic") {
     }
   }
 
-  // The tester.cpp file (where the 'main' is), inits the comm in
-  // the context. When there are multiple test_cases/sections, we
-  // need to make sure the context is returned in the same status
-  // that it was found in. The comm is the only structure that
-  // is present when we enter a test_case, so just copy it,
-  // finalize the singleton, then re-set the (same) comm in the context.
-  auto old_comm = c.get_ptr<Comm>();
-  c.finalize_singleton();
-  auto& new_comm = c.create<Comm>();
-  new_comm = *old_comm;
-
   cleanup_f90();
 
+  c.finalize_singleton();
 }

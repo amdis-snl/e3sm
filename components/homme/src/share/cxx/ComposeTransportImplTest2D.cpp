@@ -11,7 +11,8 @@
 #include "compose_test.hpp"
 #include "profiling.hpp"
 #include "utilities/MathUtils.hpp"
-#include "mpi/Comm.hpp"
+
+#include <ekat_comm.hpp>
 
 namespace Homme {
 using CTI = ComposeTransportImpl;
@@ -83,7 +84,7 @@ static void fill_v (const ComposeTransportImpl& cti, const Real t, const int np1
   }
 }
 
-static void finish (const ComposeTransportImpl& cti, const Comm& comm,
+static void finish (const ComposeTransportImpl& cti, const ekat::Comm& comm,
                     const int n0_qdp, const int np1, std::vector<Real>& eval) {
   const int nelemd = cti.m_data.nelemd, qsize = cti.m_data.qsize, nlev = cti.num_phys_lev,
     nother_qdp = (n0_qdp + 1) % 2;
@@ -117,7 +118,7 @@ static void finish (const ComposeTransportImpl& cti, const Comm& comm,
     }
   }
   const auto mpi_comm = comm.mpi_comm();
-  const auto am_root = comm.root();
+  const auto am_root = comm.am_i_root();
   const auto fcomm = MPI_Comm_c2f(mpi_comm);
   eval.resize((nlev+1)*qsize);
   int cnt = 0;
@@ -181,7 +182,7 @@ void ComposeTransportImpl::test_2d (const bool bfb, const int nstep, std::vector
   }
   GPTLstop("compose_stt_step");
 
-  finish(*this, Context::singleton().get<Comm>(), tl.n0_qdp, tl.np1, eval);
+  finish(*this, Context::singleton().get<ekat::Comm>(), tl.n0_qdp, tl.np1, eval);
 }
 
 } // namespace Homme

@@ -11,7 +11,8 @@
 #include "ElementsDerivedState.hpp"
 #include "Tracers.hpp"
 #include "TimeLevel.hpp"
-#include "mpi/Comm.hpp"
+
+#include <ekat_comm.hpp>
 
 #include <cinttypes>
 
@@ -41,7 +42,7 @@ void print_global_state_hash (const std::string& label) {
   const auto& es = c.get<ElementsState>();
   const auto& tr = c.get<Tracers>();
   const auto& tl = c.get<TimeLevel>();
-  const auto& comm = c.get<Comm>();
+  const auto& comm = c.get<ekat::Comm>();
   HashType accum[NUM_TIME_LEVELS + Q_NUM_TIME_LEVELS] = {0};
   hash(es.hash(tl.nm1), accum[0]);
   hash(es.hash(tl.n0 ), accum[1]);
@@ -50,7 +51,7 @@ void print_global_state_hash (const std::string& label) {
   hash(tr.hash(tl.np1_qdp), accum[4]);
   HashType gaccum[NUM_TIME_LEVELS + Q_NUM_TIME_LEVELS];
   all_reduce_HashType(comm.mpi_comm(), accum, gaccum, 5);
-  if (comm.root()) {
+  if (comm.am_i_root()) {
     for (int i = 0; i < NUM_TIME_LEVELS; ++i)
       fprintf(stderr, "hxxhash> %14d %1d %16" PRIx64 " (E %s)\n",
               tl.nstep, i, gaccum[i], label.c_str());

@@ -13,6 +13,8 @@
 #include "utilities/SyncUtils.hpp"
 #include "utilities/ViewUtils.hpp"
 
+#include <ekat_comm.hpp>
+
 using namespace Homme;
 
 extern "C" {
@@ -42,27 +44,6 @@ void cleanup_f90();
 
 TEST_CASE("caar", "caar_testing") {
 
-  // Catch runs these blocks of code multiple times, namely once per each
-  // session within each test case. This is problematic for Context, which
-  // is a static singleton.
-  // We cannot call 'create' unless we are sure the object is not already stored
-  // in the context. One solution is to call 'create_if_not_there', but that's not what
-  // happens in mpi_cxx_f90_interface, which is called by the geometry_interface
-  // fortran module.
-  // Two solutions:
-  //  - cleaning up the context at the end of TEST_CASE: this would also delete
-  //    the comm object in the context, so you have to re-create it.
-  //    Notice, however, that the comm would *already be there* when this block
-  //    of code is executed for the first time (is created in tester.cpp),
-  //    so you need to check if it's there first.
-  //  - change mpi_cxx_f90_interface, to create the Connectivity only if not
-  //    already present.
-  //
-  // Among the two, the former seems cleaner, since it does not affect the
-  // src folder of Homme, only the test one. So I'm going with that.
-  // More precisely, I'm getting a copy of the existing Comm from the context,
-  // and reset it back in it after the cleanup
-
   constexpr int ne = 2;
 
   // The random numbers generator
@@ -77,6 +58,7 @@ TEST_CASE("caar", "caar_testing") {
 
   // Use stuff from Context, to increase similarity with actual runs
   auto& c = Context::singleton();
+  c.create<ekat::Comm>(MPI_COMM_WORLD);
 
   // Init parameters
   auto& params = c.create<SimulationParams>();
@@ -219,25 +201,25 @@ TEST_CASE("caar", "caar_testing") {
     return the_min;
   };
 
-  auto& comm = c.get<Comm>();
+  auto& comm = c.get<ekat::Comm>();
   const int rank = comm.rank();
 
   SECTION ("caar_run") {
     for (const bool hydrostatic : {true,false}) {
-      if (comm.root()) {
+      if (comm.am_i_root()) {
         std::cout << " -> " << (hydrostatic ? "Hydrostatic\n" : "Non-Hydrostatic\n");
       }
       auto adv_forms = {AdvectionForm::Conservative, AdvectionForm::NonConservative};
       for (const AdvectionForm adv_form : adv_forms) {
-        if (comm.root()) {
+        if (comm.am_i_root()) {
           std::cout << "  -> " << (adv_form==AdvectionForm::Conservative ? "Conservative" : "Non-Conservative") << " theta advection\n";
         }
         for (int rsplit : {3,0}) {
-          if (comm.root()) {
+          if (comm.am_i_root()) {
             std::cout << "   -> rsplit = " << rsplit << "\n";
           }
           for (const int pgrad : {1,0}) {
-            if (comm.root()) {
+            if (comm.am_i_root()) {
               std::cout << "    -> pgrad_correction = " << pgrad << "\n";
             }
             // Set the parameters
@@ -256,7 +238,7 @@ TEST_CASE("caar", "caar_testing") {
             int  np1 = IPDF(0,2)(engine);
 
             // Sync scalars across ranks (only np1 is *really* necessary, but might as well...)
-            auto mpi_comm = Context::singleton().get<Comm>().mpi_comm();
+            auto mpi_comm = Context::singleton().get<ekat::Comm>().mpi_comm();
             MPI_Bcast(&dt,1,MPI_DOUBLE,0,mpi_comm);
             MPI_Bcast(&scale1,1,MPI_DOUBLE,0,mpi_comm);
             MPI_Bcast(&scale2,1,MPI_DOUBLE,0,mpi_comm);
@@ -518,11 +500,6 @@ TEST_CASE("caar", "caar_testing") {
     }
   }
 
-  // Cleanup (see comment at the top for explanation of the treatment of Comm)
-  auto old_comm = c.get_ptr<Comm>();
-  c.finalize_singleton();
-  auto& new_comm = c.create<Comm>();
-  new_comm = *old_comm;
-
   cleanup_f90();
+  c.finalize_singleton();
 }

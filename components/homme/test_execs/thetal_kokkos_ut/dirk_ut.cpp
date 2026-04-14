@@ -6,7 +6,6 @@
 
 #include "Types.hpp"
 #include "Context.hpp"
-#include "mpi/Comm.hpp"
 #include "mpi/Connectivity.hpp"
 #include "SimulationParams.hpp"
 #include "Elements.hpp"
@@ -15,6 +14,8 @@
 #include "utilities/TestUtils.hpp"
 #include "utilities/SyncUtils.hpp"
 #include "utilities/ViewUtils.hpp"
+
+#include <ekat_comm.hpp>
 
 using namespace Homme;
 
@@ -73,6 +74,7 @@ struct Session {
 
   void init () {
     printf("seed %u\n", r.gen_seed());
+    c.create<ekat::Comm>(MPI_COMM_WORLD);
     auto& h = c.create<HybridVCoord>();
     h.random_init(r.gen_seed());
 
@@ -106,13 +108,7 @@ struct Session {
   void cleanup () {
     cleanup_f90();
 
-    // Cleanup the singleton, but preserve the Comm,
-    // so that subsequent SECTION's in the same TEST_CASE
-    // se the same context as the first one (the comm is created
-    // in the tester.cpp unit test driver)
-    auto& comm = c.get<Comm>();
     c.finalize_singleton();
-    c.create<Homme::Comm>(comm);
 
     inited = false;
   }
@@ -764,7 +760,6 @@ TEST_CASE ("dirk_toplevel_testing") {
     const auto phic1_m = cmvdc(e.m_state.m_phinh_i);
     decltype(phic1_m) phic1("phic1", phic1_m.extent_int(0));
     deep_copy(phic1, phic1_m);
-    return;
     { // C++ version with separate dispatch and Hommexx patterns.
       d.run_initial_guess(np1, e, hvcoord);
     }
