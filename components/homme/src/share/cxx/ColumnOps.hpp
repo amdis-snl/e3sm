@@ -369,12 +369,13 @@ public:
     }
   }
 
-  template<int PackLength,bool Forward,bool Inclusive,int LENGTH,typename InputProvider,typename ST>
+  template<int PackLength,bool Forward,bool Inclusive,int LENGTH,
+           typename InputProvider,typename ST,typename... Props>
   KOKKOS_INLINE_FUNCTION
   static typename std::enable_if<PackLength==1>::type
   column_scan_impl (const KernelVariables& kv,
                     const InputProvider& input_provider,
-                    const ExecViewUnmanaged<ST [ColInfo<LENGTH>::NumPacks]>& sum,
+                    const ExecView<ST [ColInfo<LENGTH>::NumPacks],Props...>& sum,
                     const typename ekat::ScalarTraits<ST>::scalar_type s0 = 0.0)
   {
     using scalar_t = typename ekat::ScalarTraits<ST>::scalar_type;
