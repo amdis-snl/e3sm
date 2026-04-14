@@ -23,10 +23,10 @@ struct PerturbedConstants {
   static ST perturb;
 
   // Only decl the ones used in EOS
-  static KOKKOS_FORCEINLINE_FUNCTION ST   Rgas  () { return (1+perturb)*PC::Rgas; }
-  static KOKKOS_FORCEINLINE_FUNCTION Real cp    () { return PC::cp;           }
-  static KOKKOS_FORCEINLINE_FUNCTION ST   kappa () { return Rgas() / cp();    }
-  static KOKKOS_FORCEINLINE_FUNCTION Real p0    () { return PC::p0;           }  // [mbar]
+  static KOKKOS_FORCEINLINE_FUNCTION ST             Rgas  () { return (1+perturb)*PC::Rgas; }
+  static KOKKOS_FORCEINLINE_FUNCTION constexpr Real cp    () { return PC::cp;           }
+  static KOKKOS_FORCEINLINE_FUNCTION ST             kappa () { return Rgas() / cp();    }
+  static KOKKOS_FORCEINLINE_FUNCTION constexpr Real p0    () { return PC::p0;           }  // [mbar]
 };
 
 template<typename ST>
@@ -65,6 +65,10 @@ bool check_fad_vs_fd (Func&& run,
   std::cout << "  h   = [" << ekat::join(h_vals,",") << "]\n";
   std::cout << "  |FD-FAD| = [" << ekat::join(fd_errors,",") << "]\n";
 
+  // Require first-order convergence: the minimum FD error must be at least
+  // 100x smaller than the coarsest-h error. With h_vals spanning 1e-2 to 1e-8,
+  // the truncation error drops by ~1e4 before round-off dominates, so the
+  // minimum is well below fd_errors[0]/100.
   const Real min_err = *std::min_element(fd_errors.begin(),fd_errors.end());
   return (min_err < fd_errors[0] / 1e2);
 }
