@@ -2,11 +2,29 @@
 #define HOMME_BFB_UTILS_HPP
 
 #include <Kokkos_Core.hpp>
+#ifdef HOMMEXX_ENABLE_FAD_TYPES
+#include <Sacado.hpp>
+#endif
 
 #include <ekat_pack.hpp>
 
+#include <type_traits>
+#include <utility>
+#include <cmath>
+
 namespace Homme
 {
+
+// Avoid sacado expressions, and figure out the final return type after evaluation
+template<typename BaseT, typename ExpT>
+struct PowRetT {
+#ifdef HOMMEXX_ENABLE_FAD_TYPES
+  using type = typename Sacado::Promote<BaseT,ExpT>::type;
+#else
+  using type = decltype(std::pow(std::declval<BaseT>(),std::declval<ExpT>()));
+#endif
+};
+
 // Set the least significant n bits of the fraction to 0. Use this for
 // BFB-testing between GPU and host. Zero the n least significant bits of y in
 //     y = pow(x, e),
@@ -108,26 +126,27 @@ ScalarType power_of_two (const ScalarType e) {
 
 // Note: force type to not be reference, so we can
 //       recycle inputs during calculations.
-template <typename ScalarType, typename ExpType>
+template <typename BaseT, typename ExpT,
+          typename = typename std::enable_if_t<!std::is_reference<BaseT>::value &&
+                                               !std::is_reference<ExpT>::value>::type>
 KOKKOS_INLINE_FUNCTION
-typename
-std::enable_if<!std::is_reference<ScalarType>::value &&
-               !std::is_reference<ExpType>::value, ScalarType>::type
-bfb_pow_impl (ScalarType val, ExpType e) {
+typename PowRetT<BaseT,ExpT>::type
+bfb_pow_impl (BaseT val, ExpT e)
+{
 #ifdef HOMMEXX_ENABLE_GPU
   // Note: this function is tailored (or taylored...eheh)
   // for -1<e<1.5 and 0.001 < b < 1e6
-  if (val<ScalarType(0)) {
+  if (val<BaseT(0)) {
     Kokkos::abort("Cannot take powers of negative numbers.\n");
   }
   if (e<-1.0 || e>1.5) {
     Kokkos::abort("bfb_pow x^a impl-ed with only -1.0<a<1.5 in mind.\n");
   }
-  if (val==ScalarType(0)) {
-    if (e==ExpType(0)) {
+  if (val==BaseT(0)) {
+    if (e==ExpT(0)) {
       Kokkos::abort("Cannot do 0^0, sorry man.\n");
     }
-    return ScalarType(0);
+    return 0;
   }
 
   if (e<0) {
@@ -135,8 +154,8 @@ bfb_pow_impl (ScalarType val, ExpType e) {
     val = 1/val;
   }
 
-  ScalarType factor = 1.0;
-  if (val>=ScalarType(1.5)) {
+  BaseT factor = 1.0;
+  if (val>=BaseT(1.5)) {
     int k=0;
     while (val>=16.0){
       k += 4;
@@ -164,8 +183,8 @@ bfb_pow_impl (ScalarType val, ExpType e) {
     factor = 1.0/int_pow(power_of_two(e),k);
   }
 
-  ScalarType x = val - ScalarType(1.0);
-  ScalarType y (1.0);
+  BaseT x = val - BaseT(1);
+  BaseT y (1.0);
 
   // (1+x)^a = 1+ax+a*(a-1)/2 x^2 + a*(a-1)*(a-2)/6 x^3 +...
   //         = 1+ax*(1+(a-1)/2 x *( 1+(a-2)/3 x * (1+...)))
@@ -182,20 +201,20 @@ bfb_pow_impl (ScalarType val, ExpType e) {
 #endif
 }
 
-template <typename PackType, typename ExpType>
+template <typename BaseT, typename ExpT, typename = std::enable_if_t<ekat::IsPack<BaseT>::value>>
 KOKKOS_INLINE_FUNCTION
-std::enable_if_t<PackType::packtag,PackType>
-bfb_pow (const PackType& a, const ExpType e)
+auto bfb_pow (const BaseT& a, const ExpT e)
 {
-  PackType b;
-  for (int s = 0; s < PackType::n; ++s) {
+  BaseT b;
+  for (int s = 0; s < BaseT::n; ++s) {
     b[s] = bfb_pow_impl(a[s], e);
   }
   return b;
 }
 
+template <typename BaseT, typename ExpT, typename = std::enable_if_t<!ekat::IsPack<BaseT>::value>>
 KOKKOS_INLINE_FUNCTION
-double bfb_pow (const double& a, const double e) {
+auto bfb_pow (const BaseT& a, const ExpT& e) {
   return bfb_pow_impl(a,e);
 }
 
