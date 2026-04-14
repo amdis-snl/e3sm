@@ -274,8 +274,8 @@ private:
       ts.flags.erase("nonearest");
     }
 
-    auto print_key = [](const auto it) {
-      return it->first;
+    auto print_key = [](const auto& it) {
+      return it.first;
     };
     EKAT_REQUIRE_MSG(ts.flags.size()==0,
         "Error! Unrecognized flags: " + ekat::join(ts.flags,print_key,",") + "\n");
