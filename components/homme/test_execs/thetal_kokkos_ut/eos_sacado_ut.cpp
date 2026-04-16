@@ -7,6 +7,12 @@
 
 #include <ekat_string_utils.hpp>
 
+#include <algorithm>   // std::min_element
+#include <cmath>       // std::abs
+#include <iostream>    // std::cout
+#include <random>      // std::random_device, std::mt19937_64, std::uniform_real_distribution
+#include <vector>      // std::vector
+
 namespace Homme {
 
 namespace PC = PhysicalConstants;
@@ -69,8 +75,10 @@ bool check_fad_vs_fd (Func&& run,
   // 100x smaller than the coarsest-h error. With h_vals spanning 1e-2 to 1e-8,
   // the truncation error drops by ~1e4 before round-off dominates, so the
   // minimum is well below fd_errors[0]/100.
+  // Special case: if the coarsest-h FD error is already zero (FAD and FD agree
+  // exactly at h[0]), there is nothing to converge from - treat as success.
   const Real min_err = *std::min_element(fd_errors.begin(),fd_errors.end());
-  return (min_err < fd_errors[0] / 1e2);
+  return (fd_errors[0] == 0.0) || (min_err < fd_errors[0] / 1e2);
 }
 
 TEST_CASE("eos_dp_check") {
@@ -90,12 +98,13 @@ TEST_CASE("eos_dp_check") {
 
   using FadT = SFadN<Real,1>;
 
-  // Seed the FAD perturbation: perturb has value 0, derivative 1
-  PerturbedConstants<FadT> prov_fad;
+  // Seed the FAD perturbation: perturb has value 0, derivative 1.
+  // The constructor call initialises the static perturb member to ST(0).
+  (void)PerturbedConstants<FadT>{};
   PerturbedConstants<FadT>::perturb.fastAccessDx(0) = 1.0;
 
-  // Real provider (perturb starts at 0 from constructor)
-  PerturbedConstants<Real> prov_real;
+  // Real provider: constructor initialises static perturb to 0.
+  (void)PerturbedConstants<Real>{};
 
   // Step sizes for finite differences: from coarse to fine to probe convergence
   const std::vector<Real> h_vals = {1e-2, 1e-4, 1e-6, 1e-8};
