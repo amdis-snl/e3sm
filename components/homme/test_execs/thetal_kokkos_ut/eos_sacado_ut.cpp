@@ -10,6 +10,7 @@
 #include <algorithm>   // std::min_element
 #include <cmath>       // std::abs
 #include <iostream>    // std::cout
+#include <limits>      // std::numeric_limits
 #include <random>      // std::random_device, std::mt19937_64, std::uniform_real_distribution
 #include <vector>      // std::vector
 
@@ -75,10 +76,11 @@ bool check_fad_vs_fd (Func&& run,
   // 100x smaller than the coarsest-h error. With h_vals spanning 1e-2 to 1e-8,
   // the truncation error drops by ~1e4 before round-off dominates, so the
   // minimum is well below fd_errors[0]/100.
-  // Special case: if the coarsest-h FD error is already zero (FAD and FD agree
-  // exactly at h[0]), there is nothing to converge from - treat as success.
+  // Special case: if the coarsest-h FD error is already at machine epsilon
+  // (FAD and FD agree to floating-point precision at h[0]), there is nothing
+  // to converge from - treat as success.
   const Real min_err = *std::min_element(fd_errors.begin(),fd_errors.end());
-  return (fd_errors[0] == 0.0) || (min_err < fd_errors[0] / 1e2);
+  return (fd_errors[0] < std::numeric_limits<Real>::epsilon()) || (min_err < fd_errors[0] / 1e2);
 }
 
 TEST_CASE("eos_dp_check") {
