@@ -28,6 +28,45 @@ namespace PhysicalConstants
   constexpr Real Tref          = 288;
 
   constexpr Real Tref_lapse_rate = 0.0065;
+}
+
+// This class simply provides the constants as device-friendly functions
+// Other classes (like EOS) can move to require a template arg, which tells
+// the compiler "where" to grab constants from. This allows us to swap in
+// the constants provider, so that we can for instance test sensitivities w.r.t
+// a physics constant. Of course, if a functor uses physics constants and we
+// want to test its sens calculation using the phys constants as param,
+// the functor impl must:
+//  - a) be templated on the constants provider
+//  - b) change PhysicalConstants::xyz to TemplateArg::xyz()
+
+struct PhysicalConstantsProvider {
+  // Thermodynamics constants
+  static KOKKOS_FORCEINLINE_FUNCTION
+  constexpr Real Rwater_vapor  () { return PhysicalConstants::Rwater_vapor;  }
+  static KOKKOS_FORCEINLINE_FUNCTION
+  constexpr Real Cpwater_vapor () { return PhysicalConstants::Cpwater_vapor; }
+  static KOKKOS_FORCEINLINE_FUNCTION
+  constexpr Real Rgas          () { return PhysicalConstants::Rgas;          }
+  static KOKKOS_FORCEINLINE_FUNCTION
+  constexpr Real cp            () { return PhysicalConstants::cp;            }
+  static KOKKOS_FORCEINLINE_FUNCTION
+  constexpr Real kappa         () { return PhysicalConstants::kappa;         }
+
+  static KOKKOS_FORCEINLINE_FUNCTION
+  constexpr Real Tref            () { return PhysicalConstants::Tref;            }
+  static KOKKOS_FORCEINLINE_FUNCTION
+  constexpr Real Tref_lapse_rate () { return PhysicalConstants::Tref_lapse_rate; }
+
+  // Earth constants
+  static KOKKOS_FORCEINLINE_FUNCTION
+  constexpr Real rearth0  () { return PhysicalConstants::rearth0;  }
+  static KOKKOS_FORCEINLINE_FUNCTION
+  constexpr Real rrearth0 () { return PhysicalConstants::rrearth0; }
+  static KOKKOS_FORCEINLINE_FUNCTION
+  constexpr Real g        () { return PhysicalConstants::g;        }
+  static KOKKOS_FORCEINLINE_FUNCTION
+  constexpr Real p0       () { return PhysicalConstants::p0;       }  // [mbar]
 };
 
 } // namespace Homme

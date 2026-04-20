@@ -270,8 +270,8 @@ private:
       ts.flags.erase("planar");
     }
 
-    auto print_key = [](const auto it) {
-      return it->first;
+    auto print_key = [](const auto& it) {
+      return it.first;
     };
     EKAT_REQUIRE_MSG(ts.flags.size()==0,
         "Error! Unrecognized flags: " + ekat::join(ts.flags,print_key,",") + "\n");
@@ -685,7 +685,7 @@ static void init_dyn_data (Session& s) {
   deep_copy(uv_s, uv);
 
   {
-    EquationOfState eos; eos.init(c.get<SimulationParams>().theta_hydrostatic_mode, s.h);
+    EquationOfState<> eos; eos.init(c.get<SimulationParams>().theta_hydrostatic_mode, s.h);
     ElementOps ops; ops.init(s.h);
     const auto phis = geometry.m_phis;
     const auto dp3d = state.m_dp3d;
@@ -731,7 +731,7 @@ static void test_get_temperature (Session& s) {
     const ExecViewManaged<Scalar*[NUM_TIME_LEVELS][NP][NP][NUM_LEV]> Td("T", s.nelemd); {
       auto& c = Context::singleton();
       const auto& sp = c.get<SimulationParams>();
-      EquationOfState eos; eos.init(theta_hydrostatic_mode, s.h);
+      EquationOfState<> eos; eos.init(theta_hydrostatic_mode, s.h);
       ElementOps ops; ops.init(s.h);
       const bool use_moisture = sp.use_moisture;
       const auto state = c.get<ElementsState>();
@@ -763,7 +763,7 @@ static void test_get_temperature (Session& s) {
                   eos.compute_pnh_and_exner(kv, vthdp_ij, Homme::subview(phi_i,ie,t,i,j), wrk_ij,
                                             exner_ij);
                 }
-                ops.get_temperature(kv, eos, use_moisture, dp3d_ij, exner_ij,
+                ops.get_temperature(kv, use_moisture, dp3d_ij, exner_ij,
                                     vthdp_ij, Homme::subview(q,ie,0,i,j), wrk_ij,
                                     Homme::subview(Td,ie,t,i,j));
               });

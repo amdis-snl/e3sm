@@ -12,6 +12,7 @@
 
 namespace Homme {
 
+template<typename Constants = PhysicalConstantsProvider>
 class EquationOfState {
 public:
 
@@ -33,11 +34,11 @@ public:
   template<typename ST>
   KOKKOS_INLINE_FUNCTION
   static void pressure_to_exner (ST& pe) {
-    pe /= PhysicalConstants::p0;
+    pe /= Constants::p0();
 #ifdef HOMMEXX_BFB_TESTING
-    pe = bfb_pow(pe,PhysicalConstants::kappa);
+    pe = bfb_pow(pe,Constants::kappa());
 #else
-    pe = pow(pe,PhysicalConstants::kappa);
+    pe = pow(pe,Constants::kappa());
 #endif
   }
 
@@ -45,11 +46,11 @@ public:
   template<typename ST>
   KOKKOS_INLINE_FUNCTION
   static void pressure_to_recip_exner (ST& pe) {
-    pe = PhysicalConstants::p0 / pe;
+    pe = Constants::p0() / pe;
 #ifdef HOMMEXX_BFB_TESTING
-    pe = bfb_pow(pe,PhysicalConstants::kappa);
+    pe = bfb_pow(pe,Constants::kappa());
 #else
-    pe = pow(pe,PhysicalConstants::kappa);
+    pe = pow(pe,Constants::kappa());
 #endif
   }
 
@@ -104,14 +105,14 @@ public:
   KOKKOS_INLINE_FUNCTION
   static void compute_pnh_and_exner (const ST& vtheta_dp, const ST& dphi,
                                      ST& pnh, ST& exner) {
-    exner = (-PhysicalConstants::Rgas)*vtheta_dp / dphi;
-    pnh = exner/PhysicalConstants::p0;
+    exner = (-Constants::Rgas())*vtheta_dp / dphi;
+    pnh = exner/Constants::p0();
 #ifndef HOMMEXX_BFB_TESTING
-    pnh = pow(pnh,1.0/(1.0-PhysicalConstants::kappa));
+    pnh = pow(pnh,1.0/(1.0-Constants::kappa()));
 #else
-    pnh = bfb_pow(pnh,1.0/(1.0-PhysicalConstants::kappa));
+    pnh = bfb_pow(pnh,1.0/(1.0-Constants::kappa()));
 #endif
-    pnh *= PhysicalConstants::p0;
+    pnh *= Constants::p0();
     exner = pnh/exner;    
   }
 
@@ -203,9 +204,9 @@ public:
   template<typename ST>
   KOKKOS_INLINE_FUNCTION static
   ST compute_dphi (const ST& vtheta_dp, const ST& p) {
-    constexpr Real p0    = PhysicalConstants::p0;
-    constexpr Real kappa = PhysicalConstants::kappa;
-    constexpr Real Rgas  = PhysicalConstants::Rgas;
+    const auto p0    = Constants::p0();
+    const auto kappa = Constants::kappa();
+    const auto Rgas  = Constants::Rgas();
 #ifdef HOMMEXX_BFB_TESTING
     return (Rgas*vtheta_dp * bfb_pow(p/p0,kappa-1)) / p0;
 #else
@@ -249,8 +250,8 @@ public:
     phi_i(LAST_INT_PACK)[LAST_INT_PACK_END] = phis;
 
     // Use ColumnOps to do the scan sum
+    const auto Rgas  = Constants::Rgas();
     auto integrand_provider = [&](const int ilev) {
-      constexpr Real Rgas  = PhysicalConstants::Rgas;
       return Rgas*vtheta_dp(ilev)*exner(ilev)/p(ilev);
     };
 

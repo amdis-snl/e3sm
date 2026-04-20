@@ -123,10 +123,16 @@ void Diagnostics::sync_diagnostics_to_host () {
       int beg[4] = {};
       int end[4] = {m_num_elems, NUM_DIAG_TIMES,NP,NP};
       Kokkos::MDRangePolicy<ExecSpace,Kokkos::Rank<4>> p(beg,end);
+      auto IE = d_IEner;
+      auto KE = d_KEner;
+      auto PE = d_PEner;
+      auto IE_r = d_IEner_r;
+      auto KE_r = d_KEner_r;
+      auto PE_r = d_PEner_r;
       auto copy_energy = KOKKOS_LAMBDA(int ie, int k, int ip, int jp) {
-        d_IEner_r(ie,k,ip,jp) = ADValue(d_IEner(ie,k,ip,jp));
-        d_KEner_r(ie,k,ip,jp) = ADValue(d_KEner(ie,k,ip,jp));
-        d_PEner_r(ie,k,ip,jp) = ADValue(d_PEner(ie,k,ip,jp));
+        IE_r(ie,k,ip,jp) = ADValue(IE(ie,k,ip,jp));
+        KE_r(ie,k,ip,jp) = ADValue(KE(ie,k,ip,jp));
+        PE_r(ie,k,ip,jp) = ADValue(PE(ie,k,ip,jp));
       };
       Kokkos::parallel_for(p,copy_energy);
     }
@@ -134,12 +140,18 @@ void Diagnostics::sync_diagnostics_to_host () {
       int beg[4] = {};
       int end[4] = {m_num_elems, QSIZE_D,NP,NP};
       Kokkos::MDRangePolicy<ExecSpace,Kokkos::Rank<4>> p(beg,end);
+      auto Qvar_r  = d_Qvar_r;
+      auto Qmass_r = d_Qmass_r;
+      auto Q1mass_r = d_Q1mass_r;
+      auto Qvar  = d_Qvar;
+      auto Qmass = d_Qmass;
+      auto Q1mass = d_Q1mass;
       auto copy_tracers = KOKKOS_LAMBDA(int ie, int iq, int ip, int jp) {
         for (int k=0; k<NUM_DIAG_TIMES; ++k) {
-          d_Qvar_r(ie,k,iq,ip,jp) = ADValue(d_Qvar(ie,k,iq,ip,jp));
-          d_Qmass_r(ie,k,iq,ip,jp) = ADValue(d_Qmass(ie,k,iq,ip,jp));
+          Qvar_r(ie,k,iq,ip,jp) = ADValue(Qvar(ie,k,iq,ip,jp));
+          Qmass_r(ie,k,iq,ip,jp) = ADValue(Qmass(ie,k,iq,ip,jp));
         }
-        d_Q1mass_r(ie,iq,ip,jp) = ADValue(d_Q1mass(ie,iq,ip,jp));
+        Q1mass_r(ie,iq,ip,jp) = ADValue(Q1mass(ie,iq,ip,jp));
       };
       Kokkos::parallel_for(p,copy_tracers);
     }

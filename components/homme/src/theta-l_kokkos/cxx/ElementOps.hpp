@@ -5,7 +5,6 @@
 #include "KernelVariables.hpp"
 #include "HybridVCoord.hpp"
 #include "ColumnOps.hpp"
-#include "EquationOfState.hpp"
 #include "PhysicalConstants.hpp"
 
 #include "utilities/BfbUtils.hpp"
@@ -57,7 +56,6 @@ public:
   template<typename InputProvider, typename PT, typename... Props>
   KOKKOS_FUNCTION
   void get_temperature (const KernelVariables& kv,
-                        const EquationOfState& eos,
                         const bool use_moisture,
                         const InputProvider& dp,
                         const InputProvider& exner,

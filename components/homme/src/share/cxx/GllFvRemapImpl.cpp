@@ -406,7 +406,7 @@ void GllFvRemapImpl
                         dp.extent_int(2)/packn);
   }
   
-  EquationOfState eos; eos.init(theta_hydrostatic_mode, hvcoord);
+  EquationOfState<> eos; eos.init(theta_hydrostatic_mode, hvcoord);
   ElementOps ops; ops.init(hvcoord);
 
   const auto tu_ne = m_tu_ne;
@@ -487,7 +487,7 @@ void GllFvRemapImpl
           eos.compute_pnh_and_exner(kv, vthdp_ij, Homme::subview(phi_i,ie,timeidx,i,j),
                                     wrk_ij, exner_ij);
         // theta_g
-        ops.get_temperature(kv, eos, use_moisture, dp3d_ij, exner_ij, vthdp_ij,
+        ops.get_temperature(kv, use_moisture, dp3d_ij, exner_ij, vthdp_ij,
                             Homme::subview(q_g,ie,0,i,j), wrk_ij, th_g_ij);
         const auto& rexner_ij = exner_ij;
         parallel_for(tvr, [&] (int k) { // could avoid this in H case but then would lose BFB
@@ -607,7 +607,7 @@ run_fv_phys_to_dyn (const int timeidx, const CPhys2T& Ts, const CPhys3T& uvs,
   const auto hvcoord = m_hvcoord;
   const auto dp3d = m_state.m_dp3d;
   const bool theta_hydrostatic_mode = m_data.theta_hydrostatic_mode;
-  EquationOfState eos; eos.init(theta_hydrostatic_mode, hvcoord);
+  EquationOfState<> eos; eos.init(theta_hydrostatic_mode, hvcoord);
   ElementOps ops; ops.init(hvcoord);
   const auto tu_ne = m_tu_ne;
 

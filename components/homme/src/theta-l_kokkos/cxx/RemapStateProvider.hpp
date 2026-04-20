@@ -25,7 +25,7 @@ namespace Remap {
 
 struct RemapStateProvider {
 
-  EquationOfState   m_eos;
+  EquationOfState<> m_eos;
   ElementOps        m_elem_ops;
   ElementsState     m_state;
   ElementsGeometry  m_geometry;
