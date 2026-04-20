@@ -127,8 +127,8 @@ ScalarType power_of_two (const ScalarType e) {
 // Note: force type to not be reference, so we can
 //       recycle inputs during calculations.
 template <typename BaseT, typename ExpT,
-          typename = typename std::enable_if_t<!std::is_reference<BaseT>::value &&
-                                               !std::is_reference<ExpT>::value>::type>
+          typename = std::enable_if_t<!std::is_reference<BaseT>::value &&
+                                      !std::is_reference<ExpT>::value>>
 KOKKOS_INLINE_FUNCTION
 typename PowRetT<BaseT,ExpT>::type
 bfb_pow_impl (BaseT val, ExpT e)
