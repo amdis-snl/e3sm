@@ -350,7 +350,7 @@ struct CaarFunctorImplST {
     Kokkos::fence();
     GPTLstop("caar compute");
     if (nerr > 0)
-      check_print_abort_on_bad_elems("CaarFunctorImpl::run TagPreExchange", data.n0);
+      m_state.check_print_abort_on_bad_elems("CaarFunctorImpl::run TagPreExchange", data.n0);
   }
 
   void run (const RKStageData& data)
@@ -365,7 +365,7 @@ struct CaarFunctorImplST {
     Kokkos::fence();
     GPTLstop("caar compute");
     if (nerr > 0)
-      check_print_abort_on_bad_elems("CaarFunctorImpl::run TagPreExchange", data.n0);
+      m_state.check_print_abort_on_bad_elems("CaarFunctorImpl::run TagPreExchange", data.n0);
 
     GPTLstart("caar_bexchV");
     m_bes[data.np1]->exchange(m_geometry.m_rspheremp);

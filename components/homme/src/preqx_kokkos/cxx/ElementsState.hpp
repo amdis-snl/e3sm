@@ -55,12 +55,12 @@ public:
 
   HashType hash(const int time_level) const;
 
+  // Not implemented.
+  void check_print_abort_on_bad_elems(const std::string& /* label */,
+                                      const int /* time_level */) const {}
 private:
   int m_num_elems;
 };
-
-// Not implemented.
-void check_print_abort_on_bad_elems(const std::string& label, const int time_level);
 
 using ElementsState = ElementsStateST<ScalarValue>;
 
