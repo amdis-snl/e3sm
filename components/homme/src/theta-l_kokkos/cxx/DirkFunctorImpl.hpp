@@ -91,6 +91,7 @@ struct DirkFunctorImplST {
   TeamPolicy m_policy, m_ig_policy;
   TeamUtils<ExecSpace> m_tu, m_tu_ig;
   int nslot;
+  bool m_verbose = true; // Set to false to suppress some warnings in unit tests
 
   DirkFunctorImplST (const int nelem)
     : m_policy(1,1,1), m_ig_policy(1,1,1), m_tu(m_policy), m_tu_ig(m_ig_policy) // throwaway settings
@@ -232,6 +233,7 @@ struct DirkFunctorImplST {
     const auto tu   = m_tu;
 
     EquationOfState<> eos;
+    const auto verbose = m_verbose;
     const auto toplevel = KOKKOS_LAMBDA (const MT& team, int& nerr) {
       KernelVariables kv(team, tu);
       const auto ie = kv.ie;
@@ -386,7 +388,7 @@ struct DirkFunctorImplST {
       } // Newton iteration
       kv.team_barrier();
 
-      if (it >= maxiter) {
+      if (it >= maxiter and verbose) {
         Kokkos::printf("[DIRK] WARNING! Newton reached max iteration count,"
                        " with deltaerr = %3.17f\n", ADValue(deltaerr));
         nerr = 1;
