@@ -21,6 +21,7 @@
 #include <ekat_comm.hpp>
 
 #include <limits>
+#include <cmath>
 #include <random>
 #include <assert.h>
 
@@ -93,25 +94,26 @@ void ElementsStateST<ST>::randomize(const int seed,
 
   auto h_phis = Kokkos::create_mirror_view(phis);
   Kokkos::deep_copy(h_phis,phis);
+  auto phinh_h = Kokkos::create_mirror_view(m_phinh_i);
+  Real phi_top = 1e5;
+  std::uniform_real_distribution<Real> pdf_dphi (0.7,1.3);
   for (int ie=0; ie<m_num_elems; ++ie) {
     for (int igp=0; igp<NP; ++igp) {
       for (int jgp=0; jgp<NP; ++ jgp) {
         const Real phis_ij = h_phis(ie,igp,jgp);
-        // Ensure generated values are larger than phis
-        std::uniform_real_distribution<Real> random_dist(1.001*phis_ij,100.0*phis_ij);
+        Real dphi_mean = (phi_top - phis_ij) / NUM_PHYSICAL_LEV;
         for (int itl=0; itl<NUM_TIME_LEVELS; ++itl) {
           // Get column
-          auto phi_col = ekat::scalarize(Homme::subview(m_phinh_i,ie,itl,igp,jgp));
-
-          // Generate values
-          genRandArray(phi_col,engine,random_dist,sort_and_chek);
-
-          // Stuff phis at the bottom
-          Kokkos::deep_copy(Kokkos::subview(phi_col,NUM_PHYSICAL_LEV),phis_ij);
+          auto phi_col = ekat::scalarize(Homme::subview(phinh_h,ie,itl,igp,jgp));
+          phi_col(NUM_PHYSICAL_LEV) = phis_ij;
+          for (int k=NUM_PHYSICAL_LEV; k>0; --k) {
+            phi_col(k-1) = phi_col(k) + dphi_mean*pdf_dphi(engine);
+          }
         }
       }
     }
   }
+  Kokkos::deep_copy(m_phinh_i,phinh_h);
 }
 
 template<typename ST>
@@ -248,8 +250,9 @@ void ElementsStateST<ST>::randomize(const int seed,
 }
 
 template<typename ST>
-void ElementsStateST<ST>::randomize(const int seed,
-                              const HybridVCoord& hvcoord) {
+void ElementsStateST<ST>::
+randomize(const int seed, const HybridVCoord& hvcoord)
+{
   // Check elements were inited
   assert (m_num_elems>0);
 
@@ -257,40 +260,57 @@ void ElementsStateST<ST>::randomize(const int seed,
   assert (hvcoord.ps0>0);
   assert (hvcoord.hybrid_ai0>=0);
 
-  // Arbitrary minimum value to generate
-  constexpr const Real min_value = 0.015625;
-
   std::mt19937_64 engine(seed);
-  std::uniform_real_distribution<Real> random_dist(min_value, 1.0 / min_value);
+  std::uniform_real_distribution<Real> pdf_v(-100,100);
+  std::uniform_real_distribution<Real> pdf_w(-10,10);
   std::uniform_real_distribution<Real> pdf_vtheta_dp(100.0, 1000.0);
 
-  genRandArray(m_v,         engine, random_dist);
-  genRandArray(m_w_i,       engine, random_dist);
+  genRandArray(m_v,         engine, pdf_v);
+  genRandArray(m_w_i,       engine, pdf_w);
   genRandArray(m_vtheta_dp, engine, pdf_vtheta_dp);
-  // Note: to avoid errors in the equation of state, we need phi to be increasing.
-  //       Rather than using a constraint (which may call the function many times,
-  //       we simply ask that there are no duplicates, then we sort it later.
-  auto sort_and_chek = [](const auto& vh)->bool {
-    auto* start = vh.data();
-    auto* end   = vh.data() + vh.size();
-    std::sort(start,end);
-    std::reverse(start,end);
-    auto it = std::unique(start,end);
-    return it==end;
-  };
+  std::uniform_real_distribution<Real> pressure_pdf(800, 1200);
+  genRandArray(m_ps_v, engine, pressure_pdf);
+
+  // Build phi_i from random perturbations around a physically consistent dphi profile.
+  // This keeps the "increment-based" randomization while avoiding pathological
+  // dphi magnitudes that can trigger non-finite values in forcing unit tests.
+  auto ps_h = Kokkos::create_mirror_view(m_ps_v);
+  auto vtheta_h = Kokkos::create_mirror_view(m_vtheta_dp);
+  auto am_h = Kokkos::create_mirror_view(hvcoord.hybrid_am);
+  auto bm_h = Kokkos::create_mirror_view(hvcoord.hybrid_bm);
+  auto phinh_h = Kokkos::create_mirror_view(m_phinh_i);
+  Kokkos::deep_copy(ps_h,m_ps_v);
+  Kokkos::deep_copy(vtheta_h,m_vtheta_dp);
+  Kokkos::deep_copy(am_h,hvcoord.hybrid_am);
+  Kokkos::deep_copy(bm_h,hvcoord.hybrid_bm);
+
+  std::uniform_real_distribution<Real> pdf_dphi (0.7,1.3);
+  constexpr Real phis = 0;
+  constexpr Real eps = std::numeric_limits<Real>::epsilon();
   for (int ie=0; ie<m_num_elems; ++ie) {
     for (int itl=0; itl<NUM_TIME_LEVELS; ++itl) {
       for (int igp=0; igp<NP; ++igp) {
-        for (int jgp=0; jgp<NP; ++ jgp) {
-          auto col = ekat::scalarize(Homme::subview(m_phinh_i,ie,itl,igp,jgp));
-          genRandArray(col,engine,random_dist,sort_and_chek);
+        for (int jgp=0; jgp<NP; ++jgp) {
+          auto phi_col = ekat::scalarize(Homme::subview(phinh_h,ie,itl,igp,jgp));
+          phi_col(NUM_PHYSICAL_LEV) = phis;
+
+          const Real ps = ADValue(ps_h(ie,itl,igp,jgp));
+          for (int k=NUM_PHYSICAL_LEV; k>0; --k) {
+            const int ilev = (k-1) / VECTOR_SIZE;
+            const int ivec = (k-1) % VECTOR_SIZE;
+            const Real p_mid = hvcoord.ps0*am_h(ilev)[ivec] + ps*bm_h(ilev)[ivec];
+            const Real p_safe = std::max(p_mid,eps);
+            const Real vtheta_dp = ADValue(vtheta_h(ie,itl,igp,jgp,ilev)[ivec]);
+            const Real dphi_ref = (PhysicalConstants::Rgas*vtheta_dp
+                                 * std::pow(p_safe/PhysicalConstants::p0,PhysicalConstants::kappa-1))
+                                 / PhysicalConstants::p0;
+            phi_col(k-1) = phi_col(k) + pdf_dphi(engine)*dphi_ref;
+          }
         }
       }
     }
   }
-
-  std::uniform_real_distribution<Real> pressure_pdf(800, 1200);
-  genRandArray(m_ps_v, engine, pressure_pdf);
+  Kokkos::deep_copy(m_phinh_i,phinh_h);
 
   auto dp = m_dp3d;
   auto ps = m_ps_v;
