@@ -478,13 +478,14 @@ TEST_CASE ("dirk_pieces_testing") {
       exnerw = dfi::get_work_slot(w, 0, 4),
       dpnh_dp_iw = dfi::get_work_slot(w, 0, 5);
 
+    EquationOfState<> eos;
     const auto f = KOKKOS_LAMBDA(const dfi::MT& t) {
       KernelVariables kv(t);
       dfi::transpose(kv, nlev, vtheta_dp, vtheta_dpw);
       dfi::transpose(kv, nlev, dp3d, dp3dw);
       dfi::transpose(kv, nlev, dphi, dphiw);
       kv.team_barrier();
-      dfi::pnh_and_exner_from_eos(kv, hvcoord, vtheta_dpw, dp3dw, dphiw,
+      dfi::pnh_and_exner_from_eos(kv, hvcoord, eos, vtheta_dpw, dp3dw, dphiw,
                                   pnhw, exnerw, dpnh_dp_iw);
     };
     parallel_for(d1.m_policy, f); fence();
@@ -739,6 +740,7 @@ TEST_CASE ("dirk_toplevel_testing") {
       const auto e_dp3d = e.m_state.m_dp3d;
       const auto e_phinh_i = e.m_state.m_phinh_i;
       const auto w = d.m_work;
+      EquationOfState<> eos;
       const auto f = KOKKOS_LAMBDA(const dfi::MT& t) {
         KernelVariables kv(t);
         const auto ie = kv.ie;
@@ -750,7 +752,7 @@ TEST_CASE ("dirk_toplevel_testing") {
         dfi::transpose(kv, nlev, subview(e_vtheta_dp,ie,np1,a,a,a), vtheta_dp);
         dfi::transpose(kv, nlev, subview(e_dp3d,ie,np1,a,a,a), dp3d);
         kv.team_barrier();
-        dfi::phi_from_eos(kv, nlev, nvec, hvcoord, subview(e_phis,ie,a,a),
+        dfi::phi_from_eos(kv, eos, nlev, nvec, hvcoord, subview(e_phis,ie,a,a),
                           vtheta_dp, dp3d, phi_np1);
         kv.team_barrier();
         dfi::transpose(kv, nlev, phi_np1, subview(e_phinh_i,ie,np1,a,a,a));

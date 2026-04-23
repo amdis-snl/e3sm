@@ -36,37 +36,38 @@ namespace PhysicalConstants
 // the constants provider, so that we can for instance test sensitivities w.r.t
 // a physics constant. Of course, if a functor uses physics constants and we
 // want to test its sens calculation using the phys constants as param,
-// the functor impl must:
-//  - a) be templated on the constants provider
-//  - b) change PhysicalConstants::xyz to TemplateArg::xyz()
+// the functor impl must use a different instantiation of the constants provider.
+// A possibility is to template on the provider type, and store an instance
+// of the provider. Sensitivity tests can then instantiate the functor with
+// an ad-hoc class that provides a way to perturb some constants
 
 struct PhysicalConstantsProvider {
   // Thermodynamics constants
-  static KOKKOS_FORCEINLINE_FUNCTION
-  constexpr Real Rwater_vapor  () { return PhysicalConstants::Rwater_vapor;  }
-  static KOKKOS_FORCEINLINE_FUNCTION
-  constexpr Real Cpwater_vapor () { return PhysicalConstants::Cpwater_vapor; }
-  static KOKKOS_FORCEINLINE_FUNCTION
-  constexpr Real Rgas          () { return PhysicalConstants::Rgas;          }
-  static KOKKOS_FORCEINLINE_FUNCTION
-  constexpr Real cp            () { return PhysicalConstants::cp;            }
-  static KOKKOS_FORCEINLINE_FUNCTION
-  constexpr Real kappa         () { return PhysicalConstants::kappa;         }
+  KOKKOS_FORCEINLINE_FUNCTION
+  constexpr Real Rwater_vapor  () const { return PhysicalConstants::Rwater_vapor;  }
+  KOKKOS_FORCEINLINE_FUNCTION
+  constexpr Real Cpwater_vapor () const { return PhysicalConstants::Cpwater_vapor; }
+  KOKKOS_FORCEINLINE_FUNCTION
+  constexpr Real Rgas          () const { return PhysicalConstants::Rgas;          }
+  KOKKOS_FORCEINLINE_FUNCTION
+  constexpr Real cp            () const { return PhysicalConstants::cp;            }
+  KOKKOS_FORCEINLINE_FUNCTION
+  constexpr Real kappa         () const { return PhysicalConstants::kappa;         }
 
-  static KOKKOS_FORCEINLINE_FUNCTION
-  constexpr Real Tref            () { return PhysicalConstants::Tref;            }
-  static KOKKOS_FORCEINLINE_FUNCTION
-  constexpr Real Tref_lapse_rate () { return PhysicalConstants::Tref_lapse_rate; }
+  KOKKOS_FORCEINLINE_FUNCTION
+  constexpr Real Tref            () const { return PhysicalConstants::Tref;            }
+  KOKKOS_FORCEINLINE_FUNCTION
+  constexpr Real Tref_lapse_rate () const { return PhysicalConstants::Tref_lapse_rate; }
 
   // Earth constants
-  static KOKKOS_FORCEINLINE_FUNCTION
-  constexpr Real rearth0  () { return PhysicalConstants::rearth0;  }
-  static KOKKOS_FORCEINLINE_FUNCTION
-  constexpr Real rrearth0 () { return PhysicalConstants::rrearth0; }
-  static KOKKOS_FORCEINLINE_FUNCTION
-  constexpr Real g        () { return PhysicalConstants::g;        }
-  static KOKKOS_FORCEINLINE_FUNCTION
-  constexpr Real p0       () { return PhysicalConstants::p0;       }  // [mbar]
+  KOKKOS_FORCEINLINE_FUNCTION
+  constexpr Real rearth0  () const { return PhysicalConstants::rearth0;  }
+  KOKKOS_FORCEINLINE_FUNCTION
+  constexpr Real rrearth0 () const { return PhysicalConstants::rrearth0; }
+  KOKKOS_FORCEINLINE_FUNCTION
+  constexpr Real g        () const { return PhysicalConstants::g;        }
+  KOKKOS_FORCEINLINE_FUNCTION
+  constexpr Real p0       () const { return PhysicalConstants::p0;       }  // [mbar]
 };
 
 } // namespace Homme

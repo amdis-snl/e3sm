@@ -33,24 +33,24 @@ public:
   // On input, pe is pressure; on output, the Exner function.
   template<typename ST>
   KOKKOS_INLINE_FUNCTION
-  static void pressure_to_exner (ST& pe) {
-    pe /= Constants::p0();
+  void pressure_to_exner (ST& pe) const {
+    pe /= m_constants.p0();
 #ifdef HOMMEXX_BFB_TESTING
-    pe = bfb_pow(pe,Constants::kappa());
+    pe = bfb_pow(pe,m_constants.kappa());
 #else
-    pe = pow(pe,Constants::kappa());
+    pe = pow(pe,m_constants.kappa());
 #endif
   }
 
   // On input, pe is pressure; on output, the reciprocal of the Exner function.
   template<typename ST>
   KOKKOS_INLINE_FUNCTION
-  static void pressure_to_recip_exner (ST& pe) {
-    pe = Constants::p0() / pe;
+  void pressure_to_recip_exner (ST& pe) const {
+    pe = m_constants.p0() / pe;
 #ifdef HOMMEXX_BFB_TESTING
-    pe = bfb_pow(pe,Constants::kappa());
+    pe = bfb_pow(pe,m_constants.kappa());
 #else
-    pe = pow(pe,Constants::kappa());
+    pe = pow(pe,m_constants.kappa());
 #endif
   }
 
@@ -103,16 +103,16 @@ public:
   //  3) exner = pnh/p_over_exner
   template<typename ST>
   KOKKOS_INLINE_FUNCTION
-  static void compute_pnh_and_exner (const ST& vtheta_dp, const ST& dphi,
-                                     ST& pnh, ST& exner) {
-    exner = (-Constants::Rgas())*vtheta_dp / dphi;
-    pnh = exner/Constants::p0();
+  void compute_pnh_and_exner (const ST& vtheta_dp, const ST& dphi,
+                                     ST& pnh, ST& exner) const {
+    exner = (-m_constants.Rgas())*vtheta_dp / dphi;
+    pnh = exner/m_constants.p0();
 #ifndef HOMMEXX_BFB_TESTING
-    pnh = pow(pnh,1.0/(1.0-Constants::kappa()));
+    pnh = pow(pnh,1.0/(1.0-m_constants.kappa()));
 #else
-    pnh = bfb_pow(pnh,1.0/(1.0-Constants::kappa()));
+    pnh = bfb_pow(pnh,1.0/(1.0-m_constants.kappa()));
 #endif
-    pnh *= Constants::p0();
+    pnh *= m_constants.p0();
     exner = pnh/exner;    
   }
 
@@ -164,12 +164,12 @@ public:
   //       p is computed using dp from pnh, this will be the discrete inverse of
   //       the compute_pnh_and_exner method.
   template<typename VThetaProvider, typename PProvider, typename ST>
-  KOKKOS_INLINE_FUNCTION static
+  KOKKOS_INLINE_FUNCTION
   void compute_phi_i (const KernelVariables& kv,
                       const ExecViewUnmanaged<const Real [NP][NP]>& phis,
                       const VThetaProvider& vtheta_dp,
                       const PProvider&      p,
-                      const ExecViewUnmanaged<PackType<ST>[NP][NP][NUM_LEV_P]>& phi_i) {
+                      const ExecViewUnmanaged<PackType<ST>[NP][NP][NUM_LEV_P]>& phi_i) const {
     Kokkos::parallel_for(Kokkos::TeamThreadRange(kv.team,NP*NP),
                          [&](const int idx) {
       const int igp = idx / NP;
@@ -184,11 +184,11 @@ public:
   // VThetaProvider can be either a 1d view or a lambda,
   // as long as vtheta_dp(ilev) returns vtheta_dp at pack ilev
   template<typename VThetaProvider, typename PProvider, typename ST>
-  KOKKOS_INLINE_FUNCTION static
+  KOKKOS_INLINE_FUNCTION
   void compute_phi_i (const KernelVariables& kv, const Real phis,
                       const VThetaProvider& vtheta_dp,
                       const PProvider& p,
-                      const ExecViewUnmanaged<PackType<ST> [NUM_LEV_P]>& phi_i)
+                      const ExecViewUnmanaged<PackType<ST> [NUM_LEV_P]>& phi_i) const
   {
     // Init phi on surface with phis
     phi_i(LAST_INT_PACK)[LAST_INT_PACK_END] = phis;
@@ -202,11 +202,11 @@ public:
   }
 
   template<typename ST>
-  KOKKOS_INLINE_FUNCTION static
-  ST compute_dphi (const ST& vtheta_dp, const ST& p) {
-    const auto p0    = Constants::p0();
-    const auto kappa = Constants::kappa();
-    const auto Rgas  = Constants::Rgas();
+  KOKKOS_INLINE_FUNCTION
+  ST compute_dphi (const ST& vtheta_dp, const ST& p) const {
+    const auto p0    = m_constants.p0();
+    const auto kappa = m_constants.kappa();
+    const auto Rgas  = m_constants.Rgas();
 #ifdef HOMMEXX_BFB_TESTING
     return (Rgas*vtheta_dp * bfb_pow(p/p0,kappa-1)) / p0;
 #else
@@ -250,7 +250,7 @@ public:
     phi_i(LAST_INT_PACK)[LAST_INT_PACK_END] = phis;
 
     // Use ColumnOps to do the scan sum
-    const auto Rgas  = Constants::Rgas();
+    const auto Rgas  = m_constants.Rgas();
     auto integrand_provider = [&](const int ilev) {
       return Rgas*vtheta_dp(ilev)*exner(ilev)/p(ilev);
     };
@@ -262,6 +262,8 @@ public:
 
   bool            m_theta_hydrostatic_mode;
   HybridVCoord    m_hvcoord;
+
+  Constants       m_constants;
 };
 
 } // namespace Homme

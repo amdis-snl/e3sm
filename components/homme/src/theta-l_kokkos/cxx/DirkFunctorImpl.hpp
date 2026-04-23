@@ -170,6 +170,7 @@ struct DirkFunctorImplST {
     const auto work = m_work;
     const auto tu   = m_tu_ig;
 
+    EquationOfState<> eos;
     const auto toplevel = KOKKOS_LAMBDA (const MT& team) {
       KernelVariables kv(team, tu);
       const auto ie = kv.ie;
@@ -188,9 +189,9 @@ struct DirkFunctorImplST {
         const auto phi_i_c = Homme::subview(phi_i,igp,jgp);
 
         elem_ops.compute_hydrostatic_p(kv, Homme::subview(e_dp3d,ie,np1,igp,jgp), p_i_c, p_c);
-        EquationOfState<>::compute_phi_i(kv, e_phis(ie,igp,jgp),
-                                         Homme::subview(e_vtheta_dp,ie,np1,igp,jgp),
-                                         p_c, phi_i_c);
+        eos.compute_phi_i(kv, e_phis(ie,igp,jgp),
+                          Homme::subview(e_vtheta_dp,ie,np1,igp,jgp),
+                          p_c, phi_i_c);
 
         // Copy phi_i for use in run_newton. Don't need nlevp, since that's
         // always phis.
@@ -230,6 +231,7 @@ struct DirkFunctorImplST {
     const auto hybi = hvcoord.hybrid_bi;
     const auto tu   = m_tu;
 
+    EquationOfState<> eos;
     const auto toplevel = KOKKOS_LAMBDA (const MT& team, int& nerr) {
       KernelVariables kv(team, tu);
       const auto ie = kv.ie;
@@ -281,7 +283,7 @@ struct DirkFunctorImplST {
           dphi(k,i) = phi_np1(k+1,i) - phi_np1(k,i);
         });
         kv.team_barrier();
-        const bool ok = pnh_and_exner_from_eos(kv, hvcoord, vtheta_dp, dp3d,
+        const bool ok = pnh_and_exner_from_eos(kv, hvcoord, eos, vtheta_dp, dp3d,
                                                dphi, pnh, wrk, dpnh_dp_i);
         if ( ! ok) nerr = 1;
         kv.team_barrier();
@@ -319,7 +321,7 @@ struct DirkFunctorImplST {
       // Initial guess for phi_np1.
       if (calc_initial_guess_in_newton_kernel) {
         // Use hydrostatic phi.
-        phi_from_eos(kv, nlev, nvec, hvcoord, subview(e_phis,ie,a,a), vtheta_dp, dp3d, phi_np1);
+        phi_from_eos(kv, eos, nlev, nvec, hvcoord, subview(e_phis,ie,a,a), vtheta_dp, dp3d, phi_np1);
       } else {
         // Copy initial guess from where run_initial_guess stashed it.
         transpose(kv, nlev, subview(e_initial_guess,ie,a,a,a), phi_np1);
@@ -345,7 +347,7 @@ struct DirkFunctorImplST {
       int it = 0;
       ST deltaerr = 0;
       for (; it < maxiter; ++it) { // Newton iteration
-        const bool ok = pnh_and_exner_from_eos(kv, hvcoord, vtheta_dp, dp3d,
+        const bool ok = pnh_and_exner_from_eos(kv, hvcoord, eos, vtheta_dp, dp3d,
                                                dphi, pnh, wrk, dpnh_dp_i);
         if ( ! ok) nerr = 1;
         kv.team_barrier();
@@ -399,7 +401,8 @@ struct DirkFunctorImplST {
     };
 
     int nerr;
-    Kokkos::parallel_reduce(m_policy, toplevel, nerr);
+    auto policy = m_policy;
+    Kokkos::parallel_reduce(policy, toplevel, nerr);
     if (nerr > 0) {
       const int nt[] = {nm1, n0, np1};
       const char* ntname[] = {"nm1", "n0", "np1"};
@@ -557,9 +560,10 @@ struct DirkFunctorImplST {
   }
 
   template <typename R, typename W, typename Wi>
-  KOKKOS_INLINE_FUNCTION
-  static bool pnh_and_exner_from_eos (
+  KOKKOS_INLINE_FUNCTION static
+  bool pnh_and_exner_from_eos (
     const KernelVariables& kv, const HybridVCoord& hvcoord,
+    const EquationOfState<>& eos,
     // All arrays are in DIRK format.
     const R& vtheta_dp, const R& dp3d, const R& dphi,
     // exner is workspace. dpnh_dp_i(nlevp,:) is not computed.
@@ -575,10 +579,12 @@ struct DirkFunctorImplST {
     // Compute pnh(1:nlev,:). pnh(nlevp,:) is not needed.
     const auto f1 = [&] (const int k) {
       const auto g = [&] (const int i) {
-        for (int s = 0; s < ns; ++s)
-          if (vtheta_dp(k,i)[s] < 0 || dphi(k,i)[s] > 0) ok = false;
-        EquationOfState<>::compute_pnh_and_exner(
-          vtheta_dp(k,i), dphi(k,i), pnh(k,i), exner(k,i));
+        for (int s = 0; s < ns; ++s) {
+          if (vtheta_dp(k,i)[s] < 0 || dphi(k,i)[s] > 0)
+            ok = false;
+        }
+
+        eos.compute_pnh_and_exner(vtheta_dp(k,i), dphi(k,i), pnh(k,i), exner(k,i));
       };
       parallel_for(pv, g);
     };
@@ -617,7 +623,8 @@ struct DirkFunctorImplST {
   // parallelization.
   template <typename Rphis, typename R, typename W>
   KOKKOS_INLINE_FUNCTION static void
-  phi_from_eos (const KernelVariables& kv, const int nlev, const int nvec,
+  phi_from_eos (const KernelVariables& kv, const EquationOfState<>& eos,
+                const int nlev, const int nvec,
                 const HybridVCoord& hvcoord, const Rphis& phis, const R& vtheta_dp, const R& dp,
                 // phi_i on output
                 const W& wrk)
@@ -633,7 +640,7 @@ struct DirkFunctorImplST {
     kv.team_barrier();
     // Do most of the flops.
     loop_ki(kv, nlev, nvec, [&] (int k, int i) {
-      wrk(k,i) = EquationOfState<>::compute_dphi(vtheta_dp(k,i), wrk(k,i)); // dphi
+      wrk(k,i) = eos.compute_dphi(vtheta_dp(k,i), wrk(k,i)); // dphi
     });
     kv.team_barrier();
     // Scan to compute phi_i.
