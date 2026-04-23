@@ -385,4 +385,12 @@ if (HOMMEXX_ENABLE_FAD_TYPES)
     LIBS thetal_kokkos_ut_lib
     LABELS AMDIS
   )
+
+  # Tridiag sacado derivatives tests
+  EkatCreateUnitTest ("tridiag_sacado_ut"
+    tridiag_sacado_ut.cpp
+    COMPILER_CXX_DEFS
+    LIBS thetal_kokkos_ut_lib
+    LABELS AMDIS
+  )
 endif()
