@@ -24,7 +24,7 @@
 
 namespace Homme {
 
-template<typename ST>
+template<typename ST, typename Constants = PhysicalConstantsProvider>
 struct DirkFunctorImplST {
   using PT = PackType<ST>;
 
@@ -91,6 +91,8 @@ struct DirkFunctorImplST {
   TeamPolicy m_policy, m_ig_policy;
   TeamUtils<ExecSpace> m_tu, m_tu_ig;
   int nslot;
+  bool m_verbose = true; // Set to false to suppress some warnings in unit tests
+  EquationOfState<Constants> m_eos;
 
   DirkFunctorImplST (const int nelem)
     : m_policy(1,1,1), m_ig_policy(1,1,1), m_tu(m_policy), m_tu_ig(m_ig_policy) // throwaway settings
@@ -170,7 +172,7 @@ struct DirkFunctorImplST {
     const auto work = m_work;
     const auto tu   = m_tu_ig;
 
-    EquationOfState<> eos;
+    auto eos = m_eos;
     const auto toplevel = KOKKOS_LAMBDA (const MT& team) {
       KernelVariables kv(team, tu);
       const auto ie = kv.ie;
@@ -209,7 +211,7 @@ struct DirkFunctorImplST {
     using Kokkos::parallel_for;
     const auto a = Kokkos::ALL();
 
-    const auto grav = PhysicalConstants::g;
+    const auto grav = m_eos.m_constants.g();
     const int nvec = npack;
     const int maxiter = 20;
 #ifdef HOMMEXX_BFB_TESTING
@@ -230,8 +232,10 @@ struct DirkFunctorImplST {
     const auto e_initial_guess = e.m_derived.m_divdp_proj;
     const auto hybi = hvcoord.hybrid_bi;
     const auto tu   = m_tu;
+    const auto eos = m_eos;
+    const auto constants = eos.m_constants;
+    const auto verbose = m_verbose;
 
-    EquationOfState<> eos;
     const auto toplevel = KOKKOS_LAMBDA (const MT& team, int& nerr) {
       KernelVariables kv(team, tu);
       const auto ie = kv.ie;
@@ -332,7 +336,7 @@ struct DirkFunctorImplST {
       kv.team_barrier();
       // If any dphi > -g in a column, set it to -g and integrate to get a
       // new initial phi_np1 and w_np1.
-      calc_whether_gt_and_set(kv, nlev, nvec, -grav, dphi, wrk);
+      calc_whether_gt_and_set(kv, nlev, nvec, -ADValue(grav), dphi, wrk);
       kv.team_barrier();
       if (wrk(1,0)[0] == 1) {
         scan_dphi(kv, nlev, nvec, wrk, dphi, phi_np1);
@@ -355,7 +359,7 @@ struct DirkFunctorImplST {
           x(k,i) = -(w_np1(k,i) - (w_n0(k,i) + grav*dt2*(dpnh_dp_i(k,i) - 1))); // -residual
         });
 
-        calc_jacobian(kv, dt2, dp3d, dphi, pnh, dl, d, du);
+        calc_jacobian(kv, constants, dt2, dp3d, dphi, pnh, dl, d, du);
         kv.team_barrier();
         if (bfb_solver) solvebfb(kv, dl, d, du, x); else solve(kv, dl, d, du, x);
         kv.team_barrier();
@@ -386,7 +390,7 @@ struct DirkFunctorImplST {
       } // Newton iteration
       kv.team_barrier();
 
-      if (it >= maxiter) {
+      if (it >= maxiter and verbose) {
         Kokkos::printf("[DIRK] WARNING! Newton reached max iteration count,"
                        " with deltaerr = %3.17f\n", ADValue(deltaerr));
         nerr = 1;
@@ -407,7 +411,7 @@ struct DirkFunctorImplST {
       const int nt[] = {nm1, n0, np1};
       const char* ntname[] = {"nm1", "n0", "np1"};
       for (int i = 0; i < 3; ++i)
-        check_print_abort_on_bad_elems(std::string("DIRK Newton loop ") + ntname[i], nt[i]);
+        e.m_state.check_print_abort_on_bad_elems(std::string("DIRK Newton loop ") + ntname[i], nt[i]);
     }
   }
 
@@ -563,7 +567,7 @@ struct DirkFunctorImplST {
   KOKKOS_INLINE_FUNCTION static
   bool pnh_and_exner_from_eos (
     const KernelVariables& kv, const HybridVCoord& hvcoord,
-    const EquationOfState<>& eos,
+    const EquationOfState<Constants>& eos,
     // All arrays are in DIRK format.
     const R& vtheta_dp, const R& dp3d, const R& dphi,
     // exner is workspace. dpnh_dp_i(nlevp,:) is not computed.
@@ -623,7 +627,7 @@ struct DirkFunctorImplST {
   // parallelization.
   template <typename Rphis, typename R, typename W>
   KOKKOS_INLINE_FUNCTION static void
-  phi_from_eos (const KernelVariables& kv, const EquationOfState<>& eos,
+  phi_from_eos (const KernelVariables& kv, const EquationOfState<Constants>& eos,
                 const int nlev, const int nvec,
                 const HybridVCoord& hvcoord, const Rphis& phis, const R& vtheta_dp, const R& dp,
                 // phi_i on output
@@ -722,7 +726,7 @@ struct DirkFunctorImplST {
   */
   template <typename R, typename W>
   KOKKOS_INLINE_FUNCTION
-  static void calc_jacobian (const KernelVariables& kv, const Real& dt2,
+  static void calc_jacobian (const KernelVariables& kv, const Constants& constants, const Real& dt2,
                              // All arrays are in DIRK format.
                              const R& dp3d, const R& dphi, const R& pnh,
                              const W& dl, const W& d, const W& du,
@@ -733,7 +737,11 @@ struct DirkFunctorImplST {
     const auto pv = Kokkos::ThreadVectorRange(kv.team, n);
     const auto pt1 = Kokkos::TeamThreadRange(kv.team, 1);
 
-    const Real a = square(dt2*PhysicalConstants::g)/(1 - PhysicalConstants::kappa);
+    const auto g = constants.g();
+    const auto kappa = constants.kappa();
+    // If the input is a Sacado expression, eval will evaluate and return the resulting Fad.
+    const auto a = eval(square(dt2*g) / (1-kappa));
+    // std::cout << "typeid(a)=" << typeid(a).name() << ", a=" << a << "\n";
 
     const auto f1 = [&] (const int) {
       const auto ks = [&] (const int i) { // first Jacobian row
@@ -798,9 +806,10 @@ struct DirkFunctorImplST {
   }
 
   // Determine a step length 0 < alpha <= 1.
+  template<typename GravST>
   KOKKOS_INLINE_FUNCTION static void
   calc_step_size (const KernelVariables& kv, const int nlev, const int nvec,
-                  const Real& grav, const Real& dt2,
+                  const GravST& grav, const Real& dt2,
                   const WorkSlot& dphi_n0, const WorkSlot& w_np1, const LinearSystemSlot& x,
                   // On input, wrk(0,i)[s] is 1 if the step length should be
                   // smaller. On output, alpha is in wrk(2,:).

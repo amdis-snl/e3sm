@@ -10,12 +10,11 @@
 #include "Elements.hpp"
 #include "Types.hpp"
 #include <memory>
+#include <any>
 
 namespace Homme {
 
 class FunctorsBuffersManager;
-template<typename ST>
-class DirkFunctorImplST;
 
 class HybridVCoord;
 
@@ -36,7 +35,7 @@ public:
            const ElementsST<ST>& elements, const HybridVCoord& hvcoord);
 
 private:
-  std::unique_ptr<DirkFunctorImplST<ST>> m_dirk_impl;
+  std::any m_dirk_impl;
 };
 
 using DirkFunctor = DirkFunctorST<ScalarValue>;

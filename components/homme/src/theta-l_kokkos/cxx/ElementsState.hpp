@@ -87,6 +87,15 @@ public:
   template<typename RST>
   void import_values (const ElementsStateST<RST>& rhs, int tl);
 
+  // Check ElementsState for NaN or incorrectly signed values. The initial check
+  // is fast and on device. If everything is fine, the routine returns
+  // immediately. If there is a bad value, a subsequent check is run on the host,
+  // and this check prints detailed information to a file called
+  // hommexx.errlog.${rank}. Then EKAT_ERROR_MSG is called with a message pointing
+  // to this file.
+  void check_print_abort_on_bad_elems(const std::string& label,    // string to ID call site
+                                      const int time_level) const; // time level index in state arrays
+
 
 #ifdef HOMMEXX_ENABLE_FAD_TYPES
   void randomize_derivs(const int seed, const int itl);
@@ -192,15 +201,6 @@ ElementsStateST<ST>::import_values_from_deriv (const ElementsStateST<RST>& rhs, 
   Kokkos::parallel_for(p,copy);
 }
 #endif // HOMMEXX_ENABLE_FAD_TYPES
-
-// Check ElementsState for NaN or incorrectly signed values. The initial check
-// is fast and on device. If everything is fine, the routine returns
-// immediately. If there is a bad value, a subsequent check is run on the host,
-// and this check prints detailed information to a file called
-// hommexx.errlog.${rank}. Then EKAT_ERROR_MSG is called with a message pointing
-// to this file.
-void check_print_abort_on_bad_elems(const std::string& label,    // string to ID call site
-                                    const int time_level);        // time level index in state arrays
 
 } // Homme
 

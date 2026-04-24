@@ -21,6 +21,7 @@
 #include <ekat_comm.hpp>
 
 #include <limits>
+#include <cmath>
 #include <random>
 #include <assert.h>
 
@@ -93,25 +94,26 @@ void ElementsStateST<ST>::randomize(const int seed,
 
   auto h_phis = Kokkos::create_mirror_view(phis);
   Kokkos::deep_copy(h_phis,phis);
+  auto phinh_h = Kokkos::create_mirror_view(m_phinh_i);
+  Real phi_top = 1e5;
+  std::uniform_real_distribution<Real> pdf_dphi (0.7,1.3);
   for (int ie=0; ie<m_num_elems; ++ie) {
     for (int igp=0; igp<NP; ++igp) {
       for (int jgp=0; jgp<NP; ++ jgp) {
         const Real phis_ij = h_phis(ie,igp,jgp);
-        // Ensure generated values are larger than phis
-        std::uniform_real_distribution<Real> random_dist(1.001*phis_ij,100.0*phis_ij);
+        Real dphi_mean = (phi_top - phis_ij) / NUM_PHYSICAL_LEV;
         for (int itl=0; itl<NUM_TIME_LEVELS; ++itl) {
           // Get column
-          auto phi_col = ekat::scalarize(Homme::subview(m_phinh_i,ie,itl,igp,jgp));
-
-          // Generate values
-          genRandArray(phi_col,engine,random_dist,sort_and_chek);
-
-          // Stuff phis at the bottom
-          Kokkos::deep_copy(Kokkos::subview(phi_col,NUM_PHYSICAL_LEV),phis_ij);
+          auto phi_col = ekat::scalarize(Homme::subview(phinh_h,ie,itl,igp,jgp));
+          phi_col(NUM_PHYSICAL_LEV) = phis_ij;
+          for (int k=NUM_PHYSICAL_LEV; k>0; --k) {
+            phi_col(k-1) = phi_col(k) + dphi_mean*pdf_dphi(engine);
+          }
         }
       }
     }
   }
+  Kokkos::deep_copy(m_phinh_i,phinh_h);
 }
 
 template<typename ST>
@@ -248,8 +250,9 @@ void ElementsStateST<ST>::randomize(const int seed,
 }
 
 template<typename ST>
-void ElementsStateST<ST>::randomize(const int seed,
-                              const HybridVCoord& hvcoord) {
+void ElementsStateST<ST>::
+randomize(const int seed, const HybridVCoord& hvcoord)
+{
   // Check elements were inited
   assert (m_num_elems>0);
 
@@ -257,40 +260,57 @@ void ElementsStateST<ST>::randomize(const int seed,
   assert (hvcoord.ps0>0);
   assert (hvcoord.hybrid_ai0>=0);
 
-  // Arbitrary minimum value to generate
-  constexpr const Real min_value = 0.015625;
-
   std::mt19937_64 engine(seed);
-  std::uniform_real_distribution<Real> random_dist(min_value, 1.0 / min_value);
+  std::uniform_real_distribution<Real> pdf_v(-100,100);
+  std::uniform_real_distribution<Real> pdf_w(-10,10);
   std::uniform_real_distribution<Real> pdf_vtheta_dp(100.0, 1000.0);
 
-  genRandArray(m_v,         engine, random_dist);
-  genRandArray(m_w_i,       engine, random_dist);
+  genRandArray(m_v,         engine, pdf_v);
+  genRandArray(m_w_i,       engine, pdf_w);
   genRandArray(m_vtheta_dp, engine, pdf_vtheta_dp);
-  // Note: to avoid errors in the equation of state, we need phi to be increasing.
-  //       Rather than using a constraint (which may call the function many times,
-  //       we simply ask that there are no duplicates, then we sort it later.
-  auto sort_and_chek = [](const auto& vh)->bool {
-    auto* start = vh.data();
-    auto* end   = vh.data() + vh.size();
-    std::sort(start,end);
-    std::reverse(start,end);
-    auto it = std::unique(start,end);
-    return it==end;
-  };
+  std::uniform_real_distribution<Real> pressure_pdf(800, 1200);
+  genRandArray(m_ps_v, engine, pressure_pdf);
+
+  // Build phi_i from random perturbations around a physically consistent dphi profile.
+  // This keeps the "increment-based" randomization while avoiding pathological
+  // dphi magnitudes that can trigger non-finite values in forcing unit tests.
+  auto ps_h = Kokkos::create_mirror_view(m_ps_v);
+  auto vtheta_h = Kokkos::create_mirror_view(m_vtheta_dp);
+  auto am_h = Kokkos::create_mirror_view(hvcoord.hybrid_am);
+  auto bm_h = Kokkos::create_mirror_view(hvcoord.hybrid_bm);
+  auto phinh_h = Kokkos::create_mirror_view(m_phinh_i);
+  Kokkos::deep_copy(ps_h,m_ps_v);
+  Kokkos::deep_copy(vtheta_h,m_vtheta_dp);
+  Kokkos::deep_copy(am_h,hvcoord.hybrid_am);
+  Kokkos::deep_copy(bm_h,hvcoord.hybrid_bm);
+
+  std::uniform_real_distribution<Real> pdf_dphi (0.7,1.3);
+  constexpr Real phis = 0;
+  constexpr Real eps = std::numeric_limits<Real>::epsilon();
   for (int ie=0; ie<m_num_elems; ++ie) {
     for (int itl=0; itl<NUM_TIME_LEVELS; ++itl) {
       for (int igp=0; igp<NP; ++igp) {
-        for (int jgp=0; jgp<NP; ++ jgp) {
-          auto col = ekat::scalarize(Homme::subview(m_phinh_i,ie,itl,igp,jgp));
-          genRandArray(col,engine,random_dist,sort_and_chek);
+        for (int jgp=0; jgp<NP; ++jgp) {
+          auto phi_col = ekat::scalarize(Homme::subview(phinh_h,ie,itl,igp,jgp));
+          phi_col(NUM_PHYSICAL_LEV) = phis;
+
+          const Real ps = ADValue(ps_h(ie,itl,igp,jgp));
+          for (int k=NUM_PHYSICAL_LEV; k>0; --k) {
+            const int ilev = (k-1) / VECTOR_SIZE;
+            const int ivec = (k-1) % VECTOR_SIZE;
+            const Real p_mid = hvcoord.ps0*am_h(ilev)[ivec] + ps*bm_h(ilev)[ivec];
+            const Real p_safe = std::max(p_mid,eps);
+            const Real vtheta_dp = ADValue(vtheta_h(ie,itl,igp,jgp,ilev)[ivec]);
+            const Real dphi_ref = (PhysicalConstants::Rgas*vtheta_dp
+                                 * std::pow(p_safe/PhysicalConstants::p0,PhysicalConstants::kappa-1))
+                                 / PhysicalConstants::p0;
+            phi_col(k-1) = phi_col(k) + pdf_dphi(engine)*dphi_ref;
+          }
         }
       }
     }
   }
-
-  std::uniform_real_distribution<Real> pressure_pdf(800, 1200);
-  genRandArray(m_ps_v, engine, pressure_pdf);
+  Kokkos::deep_copy(m_phinh_i,phinh_h);
 
   auto dp = m_dp3d;
   auto ps = m_ps_v;
@@ -435,26 +455,23 @@ static bool all_good_elems (const ElementsStateST<ST>& s, const int tlvl) {
   const int nelem = s.num_elems();
   const int nplev = NUM_PHYSICAL_LEV;
 
-  const auto vtheta_dp = Kokkos::subview(s.m_vtheta_dp, ALL, tlvl, ALL, ALL, ALL);
-  const auto dp3d = Kokkos::subview(s.m_dp3d, ALL, tlvl, ALL, ALL, ALL);
-  const auto phinh_i = Kokkos::subview(s.m_phinh_i, ALL, tlvl, ALL, ALL, ALL);
-
   // Write nerr = 1 if there is a problem; else do nothing.
   const auto check = KOKKOS_LAMBDA (const TeamMember& team, int& nerr) {
     const auto ie = team.league_rank();
     const auto g = [&] (const int idx) {
       const int igp = idx / NP;
       const int jgp = idx % NP;
-      const Real* const v = reinterpret_cast<const Real*>(&vtheta_dp(ie,igp,jgp,0));
-      const Real* const p = reinterpret_cast<const Real*>(&     dp3d(ie,igp,jgp,0));
-      const Real* const h = reinterpret_cast<const Real*>(&  phinh_i(ie,igp,jgp,0));
+
+      auto v = ekat::scalarize(Homme::subview(s.m_vtheta_dp,ie,tlvl,igp,jgp));
+      auto p = ekat::scalarize(Homme::subview(s.m_dp3d,ie,tlvl,igp,jgp));
+      auto h = ekat::scalarize(Homme::subview(s.m_phinh_i,ie,tlvl,igp,jgp));
       // Write races but doesn't matter since any single nerr = 1 write is
       // sufficient to conclude there is a problem.
-      const auto f1 = [&] (const int k) { if (v[k] < 0 || isnan(v[k])) nerr = 1; };
-      const auto f2 = [&] (const int k) { if (p[k] < 0 || isnan(p[k])) nerr = 1; };
+      const auto f1 = [&] (const int k) { if (v[k] < 0 || isnan(ADValue(v[k]))) nerr = 1; };
+      const auto f2 = [&] (const int k) { if (p[k] < 0 || isnan(ADValue(p[k]))) nerr = 1; };
       // The isnan checks on k and k+1 are redundant except for the last k, but
       // it's probably the fastest way to check all interface values.
-      const auto f3 = [&] (const int k) { if (h[k] < h[k+1] || isnan(h[k]) || isnan(h[k+1])) nerr = 1; };
+      const auto f3 = [&] (const int k) { if (h[k] < h[k+1] || isnan(ADValue(h[k])) || isnan(ADValue(h[k+1]))) nerr = 1; };
       const auto tvr = Kokkos::ThreadVectorRange(team, nplev);
       parallel_for(tvr, f1);
       parallel_for(tvr, f2);
@@ -468,31 +485,35 @@ static bool all_good_elems (const ElementsStateST<ST>& s, const int tlvl) {
   return nerr == 0;
 }
 
-void check_print_abort_on_bad_elems (const std::string& label, const int tlvl) {
-  const auto& s = Context::singleton().get<ElementsState>();
-
+template<typename ST>
+void ElementsStateST<ST>::
+check_print_abort_on_bad_elems (const std::string& label, const int tlvl) const
+{
   // On device and, thus, efficient.
-  if (all_good_elems(s, tlvl)) return;
+  if (all_good_elems(*this, tlvl)) return;
 
   // Now that we know there is an error, we can do the rest inefficiently.
-  const auto& geometry = Context::singleton().get<ElementsGeometry>();
-  const int nelem = s.num_elems();
+  const int nelem = num_elems();
   const int nplev = NUM_PHYSICAL_LEV, ntl = NUM_TIME_LEVELS, vecsz = VECTOR_SIZE;
-  const auto& comm = Context::singleton().get<Connectivity>().get_comm();
+  const auto& comm = Context::singleton().get<ekat::Comm>();
+  const auto& geometry = Context::singleton().get<ElementsGeometry>();
 
-  const auto vtheta_dp_h = Kokkos::create_mirror_view(s.m_vtheta_dp);
-  Kokkos::deep_copy(vtheta_dp_h, s.m_vtheta_dp);
-  const auto dp3d_h = Kokkos::create_mirror_view(s.m_dp3d);
-  Kokkos::deep_copy(dp3d_h, s.m_dp3d);
-  const auto phinh_i_h = Kokkos::create_mirror_view(s.m_phinh_i);
-  Kokkos::deep_copy(phinh_i_h, s.m_phinh_i);
+  const auto vtheta_dp_h = Kokkos::create_mirror_view(m_vtheta_dp);
+  Kokkos::deep_copy(vtheta_dp_h, m_vtheta_dp);
+  const auto dp3d_h = Kokkos::create_mirror_view(m_dp3d);
+  Kokkos::deep_copy(dp3d_h, m_dp3d);
+  const auto phinh_i_h = Kokkos::create_mirror_view(m_phinh_i);
+  Kokkos::deep_copy(phinh_i_h, m_phinh_i);
   const auto sphere_latlon = Kokkos::create_mirror_view(geometry.m_sphere_latlon);
   Kokkos::deep_copy(sphere_latlon, geometry.m_sphere_latlon);
 
-  HostView<Real*****>
-    vtheta_dp(reinterpret_cast<Real*>(&vtheta_dp_h(0,0,0,0,0)), nelem, ntl, NP, NP, NUM_LEV  *vecsz),
-    dp3d     (reinterpret_cast<Real*>(&dp3d_h     (0,0,0,0,0)), nelem, ntl, NP, NP, NUM_LEV  *vecsz),
-    phinh_i  (reinterpret_cast<Real*>(&phinh_i_h  (0,0,0,0,0)), nelem, ntl, NP, NP, NUM_LEV_P*vecsz);
+  auto vtheta_dp = ekat::scalarize(vtheta_dp_h);
+  auto dp3d      = ekat::scalarize(dp3d_h);
+  auto phinh_i   = ekat::scalarize(phinh_i_h);
+
+  auto isnan = [](auto val) {
+    return std::isnan(ADValue(val));
+  };
 
   bool first = true;
   FILE* fid = nullptr;
@@ -503,9 +524,9 @@ void check_print_abort_on_bad_elems (const std::string& label, const int tlvl) {
         int k_bad = -1;
         bool v = true, d = true, p = true;
         for (int k = 0; k < nplev; ++k) {
-          v = std::isnan(vtheta_dp(ie,tlvl,gi,gj,k)) || vtheta_dp(ie,tlvl,gi,gj,k) < 0;
-          d = std::isnan(dp3d(ie,tlvl,gi,gj,k)) || dp3d(ie,tlvl,gi,gj,k) < 0;
-          p = (std::isnan(phinh_i(ie,tlvl,gi,gj,k)) || std::isnan(phinh_i(ie,tlvl,gi,gj,k+1)) ||
+          v = isnan(vtheta_dp(ie,tlvl,gi,gj,k)) || vtheta_dp(ie,tlvl,gi,gj,k) < 0;
+          d = isnan(dp3d(ie,tlvl,gi,gj,k)) || dp3d(ie,tlvl,gi,gj,k) < 0;
+          p = (isnan(ADValue(phinh_i(ie,tlvl,gi,gj,k))) || isnan(ADValue(phinh_i(ie,tlvl,gi,gj,k+1))) ||
                phinh_i(ie,tlvl,gi,gj,k) < phinh_i(ie,tlvl,gi,gj,k+1));
           if (v || d || p) {
             k_bad = k;

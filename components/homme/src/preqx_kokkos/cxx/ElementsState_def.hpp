@@ -20,7 +20,7 @@
 namespace Homme {
 
 template<typename ST>
-void ElementsState<ST>::init(const int num_elems) {
+void ElementsStateST<ST>::init(const int num_elems) {
   // Sanity check
   assert (num_elems>0);
 
@@ -34,17 +34,17 @@ void ElementsState<ST>::init(const int num_elems) {
 }
 
 template<typename ST>
-void ElementsState<ST>::randomize(const int seed) {
+void ElementsStateST<ST>::randomize(const int seed) {
   randomize(seed,1.0);
 }
 
 template<typename ST>
-void ElementsState<ST>::randomize(const int seed, const Real max_pressure) {
+void ElementsStateST<ST>::randomize(const int seed, const Real max_pressure) {
   randomize(seed,max_pressure,max_pressure/100, 0.0);
 }
 
 template<typename ST>
-void ElementsState<ST>::randomize(const int seed, const Real max_pressure, const Real ps0, const Real hyai0) {
+void ElementsStateST<ST>::randomize(const int seed, const Real max_pressure, const Real ps0, const Real hyai0) {
   // Check state was inited
   assert (m_num_elems>0);
 
@@ -149,7 +149,7 @@ void ElementsState<ST>::randomize(const int seed, const Real max_pressure, const
 }
 
 template<typename ST>
-void ElementsState<ST>::pull_from_f90_pointers (CF90Ptr& state_v,    CF90Ptr& state_t,
+void ElementsStateST<ST>::pull_from_f90_pointers (CF90Ptr& state_v,    CF90Ptr& state_t,
                                             CF90Ptr& state_dp3d, CF90Ptr& state_ps_v) {
   HostViewUnmanaged<const Real *[NUM_TIME_LEVELS][NUM_PHYSICAL_LEV]   [NP][NP]> state_t_f90    (state_t,m_num_elems);
   HostViewUnmanaged<const Real *[NUM_TIME_LEVELS][NUM_PHYSICAL_LEV]   [NP][NP]> state_dp3d_f90 (state_dp3d,m_num_elems);
@@ -169,7 +169,7 @@ void ElementsState<ST>::pull_from_f90_pointers (CF90Ptr& state_v,    CF90Ptr& st
 }
 
 template<typename ST>
-void ElementsState<ST>::push_to_f90_pointers (F90Ptr& state_v, F90Ptr& state_t, F90Ptr& state_dp3d) const {
+void ElementsStateST<ST>::push_to_f90_pointers (F90Ptr& state_v, F90Ptr& state_t, F90Ptr& state_dp3d) const {
   HostViewUnmanaged<Real *[NUM_TIME_LEVELS][NUM_PHYSICAL_LEV]   [NP][NP]> state_t_f90    (state_t,m_num_elems);
   HostViewUnmanaged<Real *[NUM_TIME_LEVELS][NUM_PHYSICAL_LEV]   [NP][NP]> state_dp3d_f90 (state_dp3d,m_num_elems);
   HostViewUnmanaged<Real *[NUM_TIME_LEVELS][NUM_PHYSICAL_LEV][2][NP][NP]> state_v_f90    (state_v,m_num_elems);
@@ -179,13 +179,8 @@ void ElementsState<ST>::push_to_f90_pointers (F90Ptr& state_v, F90Ptr& state_t, 
   sync_to_host(m_v,    state_v_f90);
 }
 
-void check_print_abort_on_bad_elems (const std::string& label, const int time_level) {
-  // Not implemented.
-  return;
-}
-
 template<typename ST>
-HashType ElementsState<ST>::hash (const int) const { return 0; }
+HashType ElementsStateST<ST>::hash (const int) const { return 0; }
 
 } // namespace Homme
 

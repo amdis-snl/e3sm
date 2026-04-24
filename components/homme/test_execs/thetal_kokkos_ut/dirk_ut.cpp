@@ -347,13 +347,14 @@ TEST_CASE ("dirk_pieces_testing") {
       d  = dfi::get_ls_slot(ls, 0, 1),
       du = dfi::get_ls_slot(ls, 0, 2);
 
+    PhysicalConstantsProvider constants;
     const auto f1 = KOKKOS_LAMBDA(const dfi::MT& t) {
       KernelVariables kv(t);
       dfi::transpose(kv, nlev, dp3d, dp3dw);
       dfi::transpose(kv, nlev, dphi, dphiw);
       dfi::transpose(kv, nlev, pnh, pnhw);
       kv.team_barrier();
-      dfi::calc_jacobian(kv, dt, dp3dw, dphiw, pnhw, dl, d, du);
+      dfi::calc_jacobian(kv, constants, dt, dp3dw, dphiw, pnhw, dl, d, du);
     };
     parallel_for(d1.m_policy, f1); fence();
 

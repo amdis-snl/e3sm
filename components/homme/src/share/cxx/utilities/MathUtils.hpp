@@ -14,6 +14,20 @@
 namespace Homme
 {
 
+#ifdef HOMMEXX_ENABLE_FAD_TYPES
+template <typename T>
+KOKKOS_INLINE_FUNCTION
+auto eval(const T& x) -> typename Sacado::Promote<T,T>::type {
+    return x;
+}
+#else
+template <typename T>
+KOKKOS_INLINE_FUNCTION
+T eval(const T& x) {
+    return x;
+}
+#endif
+
 template <typename FPType>
 KOKKOS_INLINE_FUNCTION constexpr FPType min(const FPType val_1,
                                             const FPType val_2) {
@@ -37,7 +51,7 @@ KOKKOS_INLINE_FUNCTION constexpr FPType max(const FPType val, FPPack... pack) {
 }
 
 template <typename FPType>
-KOKKOS_INLINE_FUNCTION constexpr FPType square(const FPType& x) {
+KOKKOS_INLINE_FUNCTION constexpr auto square(const FPType& x) {
   return x*x;
 }
 

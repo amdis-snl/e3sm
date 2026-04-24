@@ -328,7 +328,7 @@ struct RemapFunctor : public Remapper {
       }
     }
     if ( ! ok) {
-      check_print_abort_on_bad_elems(
+      m_state.check_print_abort_on_bad_elems(
         "Vertical remap: Negative (or nan) layer thickness detected, aborting!",
         m_data.np1);
       // If check_print_abort_on_bad_elems can't see the issue -- e.g., if the
