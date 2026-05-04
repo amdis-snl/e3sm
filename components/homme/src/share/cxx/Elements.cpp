@@ -17,6 +17,7 @@ template class ElementsST<Real>;
 #ifdef HOMMEXX_ENABLE_FAD_TYPES
 template class ElementsST<DpFadType>;
 template class ElementsST<DxFadTypeCaar>;
+template class ElementsST<DxFadTypeDirk>;
 #endif
 
 } // namespace Homme
