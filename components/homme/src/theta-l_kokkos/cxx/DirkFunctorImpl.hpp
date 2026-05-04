@@ -220,28 +220,20 @@ struct DirkFunctorImplST {
   // Compute the product J*V where J = d(state(np1)) / d(state(n0)).
   // DIRK only updates w_i and phinh_i at np1; for v, vtheta_dp, dp3d the
   // Jacobian is the identity (DIRK leaves them unchanged).
+  // Preconditions: init_J(n0,e) and run(...) must have been called first.
   // On entry:  adj_state at n0 holds the vector V.
   // On exit:   adj_state at np1 holds J*V for w_i and phinh_i;
   //            adj_state at np1 holds V unchanged for v, vtheta_dp, dp3d.
   template<typename MyST = ST>
   std::enable_if_t<not std::is_same_v<MyST, DxFadTypeDirk>>
-  run_JV (int /*nm1*/, Real /*alphadt_nm1*/, int /*n0*/, Real /*alphadt_n0*/,
-          int /*np1*/, Real /*dt2*/, const ElementsST<ST>& /*e*/,
-          const HybridVCoord& /*hvcoord*/, ElementsStateST<Real>& /*adj_state*/) = delete;
+  run_JV (const int /*n0*/, const int /*np1*/, const ElementsST<ST>& /*e*/,
+          ElementsStateST<Real>& /*adj_state*/) = delete;
 
   template<typename MyST = ST>
   std::enable_if_t<std::is_same_v<MyST, DxFadTypeDirk>>
-  run_JV (int nm1, Real alphadt_nm1, int n0, Real alphadt_n0,
-          int np1, Real dt2, const ElementsST<ST>& e,
-          const HybridVCoord& hvcoord, ElementsStateST<Real>& adj_state)
+  run_JV (const int n0, const int np1, const ElementsST<ST>& e,
+          ElementsStateST<Real>& adj_state)
   {
-    // Initialize d/dx derivatives for the n0 state
-    init_J(n0, e);
-
-    // Run DIRK Newton iteration with FAD arithmetic; this propagates the
-    // derivatives through the entire implicit solve
-    run(nm1, alphadt_nm1, n0, alphadt_n0, np1, dt2, e, hvcoord);
-
     // Extract the Jacobian-vector product using the product rule.
     // dw_v(ie,np1,ip,jp,k).dx(j) = d(w_np1(ie,ip,jp,k)) / d(input_j)
     // dphi_v(ie,np1,ip,jp,k).dx(j) = d(phi_np1(ie,ip,jp,k)) / d(input_j)
