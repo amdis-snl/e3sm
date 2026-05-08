@@ -342,3 +342,150 @@ TEST_CASE ("dirk_jv_testing") {
 
   Context::finalize_singleton();
 }
+
+TEST_CASE ("dirk_jtv_testing") {
+  // Verify the transpose identity: <a[n0], J*b[np1]> == <J^T*a[np1], b[n0]>
+  // where J = d(state_np1) / d(state_n0) is assembled via DxFadTypeDirk.
+  // J*b   is computed via run_JV  and stored at np1 in adj_b.
+  // J^T*a is computed via run_JtV and stored at np1 in adj_a.
+
+  std::random_device rd;
+  const unsigned int catchRngSeed = Catch::rngSeed();
+  const unsigned int seed = catchRngSeed == 0 ? rd() : catchRngSeed;
+  std::cout << "seed: " << seed << (catchRngSeed == 0 ? " (catch rng seed was 0)\n" : "\n");
+
+  using ipdf = std::uniform_int_distribution<int>;
+  using rpdf = std::uniform_real_distribution<Real>;
+  using rngAlg = std::mt19937_64;
+
+  rngAlg engine(seed);
+
+  Context::finalize_singleton();
+  Context::singleton().create<ekat::Comm>(MPI_COMM_WORLD);
+
+  const Real rtol = 1e-8;
+  const Real atol = 1e-8;
+  const int num_elems = ipdf(5, 20)(engine);
+  int nm1 = 0;
+  int n0  = 1;
+  int np1 = 2;
+
+  HybridVCoord hvcoord;
+  hvcoord.random_init(seed);
+  const auto max_pressure = 1000 + hvcoord.ps0;
+
+  using DxFadType = DxFadTypeDirk;
+  using DirkDx = DirkFunctorImplST<DxFadType>;
+
+  ElementsST<DxFadType> elems_dx;
+  elems_dx.init(num_elems, false, true, PhysicalConstants::rearth0, -1, true);
+
+  auto& geometry = elems_dx.m_geometry;
+  Context::singleton().create_ref(geometry);
+  geometry.randomize(seed);
+
+  // Two adjoint vectors (Real), both initialized to the same random state at n0.
+  // run_JV / run_JtV only read n0 and write np1, so n0 remains unchanged throughout.
+  ElementsStateST<Real> adj_a, adj_b;
+  adj_a.init(num_elems);
+  adj_b.init(num_elems);
+  adj_a.randomize(seed + 1, max_pressure, hvcoord.ps0, hvcoord.hybrid_ai0, geometry.m_phis);
+  adj_b.import_values(adj_a, n0);
+
+  DirkDx dirk_dx(num_elems);
+  dirk_dx.m_verbose = false;
+
+  FunctorsBuffersManager fbm;
+  fbm.request_size(dirk_dx.requested_buffer_size());
+  fbm.allocate();
+  dirk_dx.init_buffers(fbm);
+
+  const Real dt2 = rpdf(0.1, 0.9)(engine);
+  const bool bfb_solver = false;
+
+  using p4_mid_t = Kokkos::MDRangePolicy<ExecSpace, Kokkos::Rank<4>>;
+  using p5_mid_t = Kokkos::MDRangePolicy<ExecSpace, Kokkos::Rank<5>>;
+  using p4_int_t = Kokkos::MDRangePolicy<ExecSpace, Kokkos::Rank<4>>;
+  const p4_mid_t p4_mid({0,0,0,0}, {num_elems, NP, NP, NUM_PHYSICAL_LEV});
+  const p5_mid_t p5_mid({0,0,0,0,0}, {num_elems, 2, NP, NP, NUM_PHYSICAL_LEV});
+  const p4_int_t p4_int({0,0,0,0}, {num_elems, NP, NP, NUM_INTERFACE_LEV});
+
+  auto sa_v   = ekat::scalarize(adj_a.m_v);
+  auto sa_vth = ekat::scalarize(adj_a.m_vtheta_dp);
+  auto sa_dp  = ekat::scalarize(adj_a.m_dp3d);
+  auto sa_phi = ekat::scalarize(adj_a.m_phinh_i);
+  auto sa_w   = ekat::scalarize(adj_a.m_w_i);
+
+  auto sb_v   = ekat::scalarize(adj_b.m_v);
+  auto sb_vth = ekat::scalarize(adj_b.m_vtheta_dp);
+  auto sb_dp  = ekat::scalarize(adj_b.m_dp3d);
+  auto sb_phi = ekat::scalarize(adj_b.m_phinh_i);
+  auto sb_w   = ekat::scalarize(adj_b.m_w_i);
+
+  for (Real alphadt_nm1 : {0.0, 0.3}) {
+    const int nm1_tl = (alphadt_nm1 == 0.0) ? -1 : nm1;
+    printf("-> alphadt_nm1: %f\n", alphadt_nm1);
+    for (Real alphadt_n0 : {0.0, 0.7}) {
+      printf("  -> alphadt_n0: %f\n", alphadt_n0);
+
+      // Randomize the DxFad state for this run
+      elems_dx.m_state.randomize(seed, max_pressure, hvcoord.ps0, hvcoord.hybrid_ai0, geometry.m_phis);
+
+      // Initialize Jacobian d/dx(n0) and run DIRK with FAD arithmetic
+      dirk_dx.init_J(n0, elems_dx);
+      dirk_dx.run(nm1_tl, alphadt_nm1, n0, alphadt_n0, np1, dt2, elems_dx, hvcoord, bfb_solver);
+      Kokkos::fence();
+
+      // J*b  -> adj_b[np1]
+      dirk_dx.run_JV (n0, np1, elems_dx, adj_b);
+      // J^T*a -> adj_a[np1]
+      dirk_dx.run_JtV(n0, np1, elems_dx, adj_a);
+      Kokkos::fence();
+
+      // Compute dot1 = <a[n0], J*b[np1]>  and  dot2 = <J^T*a[np1], b[n0]>.
+      // Both must equal a^T * J * b by the definition of the matrix transpose.
+      Real2 V_dot, vth_dot, dp_dot, phi_dot, w_dot;
+      Real2 gdot;
+
+      Kokkos::parallel_reduce(p5_mid,
+        KOKKOS_LAMBDA(int ie, int icmp, int ip, int jp, int k, Real2& acc) {
+          acc.v[0] += sa_v(ie, n0,  icmp, ip, jp, k) * sb_v(ie, np1, icmp, ip, jp, k);
+          acc.v[1] += sa_v(ie, np1, icmp, ip, jp, k) * sb_v(ie, n0,  icmp, ip, jp, k);
+        }, V_dot);
+      Kokkos::parallel_reduce(p4_mid,
+        KOKKOS_LAMBDA(int ie, int ip, int jp, int k, Real2& acc) {
+          acc.v[0] += sa_vth(ie, n0,  ip, jp, k) * sb_vth(ie, np1, ip, jp, k);
+          acc.v[1] += sa_vth(ie, np1, ip, jp, k) * sb_vth(ie, n0,  ip, jp, k);
+        }, vth_dot);
+      Kokkos::parallel_reduce(p4_mid,
+        KOKKOS_LAMBDA(int ie, int ip, int jp, int k, Real2& acc) {
+          acc.v[0] += sa_dp(ie, n0,  ip, jp, k) * sb_dp(ie, np1, ip, jp, k);
+          acc.v[1] += sa_dp(ie, np1, ip, jp, k) * sb_dp(ie, n0,  ip, jp, k);
+        }, dp_dot);
+      Kokkos::parallel_reduce(p4_int,
+        KOKKOS_LAMBDA(int ie, int ip, int jp, int k, Real2& acc) {
+          acc.v[0] += sa_phi(ie, n0,  ip, jp, k) * sb_phi(ie, np1, ip, jp, k);
+          acc.v[1] += sa_phi(ie, np1, ip, jp, k) * sb_phi(ie, n0,  ip, jp, k);
+        }, phi_dot);
+      Kokkos::parallel_reduce(p4_int,
+        KOKKOS_LAMBDA(int ie, int ip, int jp, int k, Real2& acc) {
+          acc.v[0] += sa_w(ie, n0,  ip, jp, k) * sb_w(ie, np1, ip, jp, k);
+          acc.v[1] += sa_w(ie, np1, ip, jp, k) * sb_w(ie, n0,  ip, jp, k);
+        }, w_dot);
+
+      gdot += V_dot;
+      gdot += vth_dot;
+      gdot += dp_dot;
+      gdot += phi_dot;
+      gdot += w_dot;
+
+      CHECK_THAT(gdot.v[0], Catch::WithinRel(gdot.v[1], rtol) || Catch::WithinAbs(gdot.v[1], atol));
+
+      std::cout << std::setprecision(15)
+                << "       <a, J*b> = " << gdot.v[0]
+                << ",  <J^T*a, b> = " << gdot.v[1] << "\n";
+    }
+  }
+
+  Context::finalize_singleton();
+}
