@@ -302,6 +302,116 @@ struct DirkFunctorImplST {
     Kokkos::parallel_for(p4_int, prod_rule_int);
     Kokkos::parallel_for(p4_mid, prod_rule_mid_id);
   }
+
+  // Computes the transpose Jacobian-vector product: l_new = J^T * l_old,
+  // where J = d(state(np1)) / d(state(n0)) is the same Jacobian used in run_JV.
+  // DIRK only updates w_i and phinh_i at np1; for v, vtheta_dp, dp3d the
+  // Jacobian is the identity (DIRK leaves them unchanged), so J^T also
+  // contributes an identity block for those variables.
+  // Preconditions: init_J(n0,e) and run(...) must have been called first.
+  // On entry:  adj_state at n0 holds the vector l_old.
+  // On exit:   adj_state at np1 holds J^T*l_old.
+  template<typename MyST = ST>
+  std::enable_if_t<not std::is_same_v<MyST, DxFadTypeDirk>>
+  run_JtV (const int /*n0*/, const int /*np1*/, const ElementsST<ST>& /*e*/,
+           ElementsStateST<Real>& /*adj_state*/) = delete;
+
+  template<typename MyST = ST>
+  std::enable_if_t<std::is_same_v<MyST, DxFadTypeDirk>>
+  run_JtV (const int n0, const int np1, const ElementsST<ST>& e,
+           ElementsStateST<Real>& adj_state)
+  {
+    // J has the following block structure (rows = np1 outputs, cols = n0 inputs):
+    //   - Identity block for u, v, vtheta_dp, dp3d (DIRK does not modify them)
+    //   - Full blocks for w_i and phinh_i (computed by the Newton solve)
+    //
+    // J^T therefore:
+    //   - For interface inputs (w, phi): sum Jacobian rows of w/phi at np1
+    //   - For midpoint inputs (u, v, vth, dp): identity + cross-contributions
+    //     from the w/phi rows of J (since J[w_np1(k), u_n0(k2)] != 0 in general)
+    const int nelem = e.m_state.num_elems();
+
+    auto dw_v   = ekat::scalarize(e.m_state.m_w_i);
+    auto dphi_v = ekat::scalarize(e.m_state.m_phinh_i);
+
+    auto l_V   = ekat::scalarize(adj_state.m_v);
+    auto l_vth = ekat::scalarize(adj_state.m_vtheta_dp);
+    auto l_dp  = ekat::scalarize(adj_state.m_dp3d);
+    auto l_w   = ekat::scalarize(adj_state.m_w_i);
+    auto l_phi = ekat::scalarize(adj_state.m_phinh_i);
+
+    // Local copies of offsets for lambda capture
+    const int offset_u   = fad_offset_u;
+    const int offset_v   = fad_offset_v;
+    const int offset_vth = fad_offset_vth;
+    const int offset_dp  = fad_offset_dp;
+    const int offset_w   = fad_offset_w;
+    const int offset_phi = fad_offset_phi;
+
+    using md_range_t = Kokkos::MDRangePolicy<ExecSpace, Kokkos::Rank<4>>;
+    auto p4_int = md_range_t({0,0,0,0}, {nelem, NP, NP, NUM_INTERFACE_LEV});
+    auto p4_mid = md_range_t({0,0,0,0}, {nelem, NP, NP, NUM_PHYSICAL_LEV});
+
+    // Compute (J^T * l)_w(k2) and (J^T * l)_phi(k2) for interface inputs k2.
+    // Each output sums contributions from all interface levels k of the w and phi rows of J.
+    // J^T[w_n0(k2), w_np1(k)]   = J[w_np1(k), w_n0(k2)]   = dw_v(k).dx(offset_w + k2)
+    // J^T[w_n0(k2), phi_np1(k)] = J[phi_np1(k), w_n0(k2)] = dphi_v(k).dx(offset_w + k2)
+    // (and similarly for phi input)
+    auto jtv_int = KOKKOS_LAMBDA (const int ie, const int ip, const int jp, const int k2) {
+      Real l_w_new   = 0;
+      Real l_phi_new = 0;
+
+      for (int k = 0; k < NUM_INTERFACE_LEV; ++k) {
+        const Real l_w_k   = l_w  (ie, n0, ip, jp, k);
+        const Real l_phi_k = l_phi(ie, n0, ip, jp, k);
+
+        l_w_new   += dw_v  (ie, np1, ip, jp, k).dx(offset_w   + k2) * l_w_k
+                   + dphi_v(ie, np1, ip, jp, k).dx(offset_w   + k2) * l_phi_k;
+        l_phi_new += dw_v  (ie, np1, ip, jp, k).dx(offset_phi + k2) * l_w_k
+                   + dphi_v(ie, np1, ip, jp, k).dx(offset_phi + k2) * l_phi_k;
+      }
+
+      l_w  (ie, np1, ip, jp, k2) = l_w_new;
+      l_phi(ie, np1, ip, jp, k2) = l_phi_new;
+    };
+
+    // Compute (J^T * l)_u(k2), _v(k2), _vth(k2), _dp(k2) for midpoint inputs k2.
+    // The identity block contributes the original l_old value; the off-diagonal
+    // contributions come from the w and phi rows of J (since w_np1 and phi_np1
+    // depend on u, v, vtheta_dp, dp3d at n0).
+    // J^T[u_n0(k2), u_np1(k)]   = delta(k,k2)  (identity)
+    // J^T[u_n0(k2), w_np1(k)]   = J[w_np1(k), u_n0(k2)]   = dw_v(k).dx(offset_u + k2)
+    // J^T[u_n0(k2), phi_np1(k)] = J[phi_np1(k), u_n0(k2)] = dphi_v(k).dx(offset_u + k2)
+    auto jtv_mid = KOKKOS_LAMBDA (const int ie, const int ip, const int jp, const int k2) {
+      Real contrib_u   = 0;
+      Real contrib_v   = 0;
+      Real contrib_vth = 0;
+      Real contrib_dp  = 0;
+
+      for (int k = 0; k < NUM_INTERFACE_LEV; ++k) {
+        const Real l_w_k   = l_w  (ie, n0, ip, jp, k);
+        const Real l_phi_k = l_phi(ie, n0, ip, jp, k);
+
+        contrib_u   += dw_v  (ie, np1, ip, jp, k).dx(offset_u   + k2) * l_w_k
+                     + dphi_v(ie, np1, ip, jp, k).dx(offset_u   + k2) * l_phi_k;
+        contrib_v   += dw_v  (ie, np1, ip, jp, k).dx(offset_v   + k2) * l_w_k
+                     + dphi_v(ie, np1, ip, jp, k).dx(offset_v   + k2) * l_phi_k;
+        contrib_vth += dw_v  (ie, np1, ip, jp, k).dx(offset_vth + k2) * l_w_k
+                     + dphi_v(ie, np1, ip, jp, k).dx(offset_vth + k2) * l_phi_k;
+        contrib_dp  += dw_v  (ie, np1, ip, jp, k).dx(offset_dp  + k2) * l_w_k
+                     + dphi_v(ie, np1, ip, jp, k).dx(offset_dp  + k2) * l_phi_k;
+      }
+
+      // Identity block: DIRK does not modify u, v, vtheta_dp, dp3d at np1
+      l_V  (ie, np1, 0, ip, jp, k2) = l_V  (ie, n0, 0, ip, jp, k2) + contrib_u;
+      l_V  (ie, np1, 1, ip, jp, k2) = l_V  (ie, n0, 1, ip, jp, k2) + contrib_v;
+      l_vth(ie, np1,    ip, jp, k2) = l_vth(ie, n0,    ip, jp, k2) + contrib_vth;
+      l_dp (ie, np1,    ip, jp, k2) = l_dp (ie, n0,    ip, jp, k2) + contrib_dp;
+    };
+
+    Kokkos::parallel_for(p4_int, jtv_int);
+    Kokkos::parallel_for(p4_mid, jtv_mid);
+  }
 #endif // HOMMEXX_ENABLE_FAD_TYPES
 
   // Optimal impl of phi_from_eos for the initial guess. See comments for the
