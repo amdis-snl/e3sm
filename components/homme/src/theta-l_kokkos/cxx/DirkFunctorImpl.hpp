@@ -383,30 +383,30 @@ struct DirkFunctorImplST {
     // J^T[u_n0(k2), w_np1(k)]   = J[w_np1(k), u_n0(k2)]   = dw_v(k).dx(offset_u + k2)
     // J^T[u_n0(k2), phi_np1(k)] = J[phi_np1(k), u_n0(k2)] = dphi_v(k).dx(offset_u + k2)
     auto jtv_mid = KOKKOS_LAMBDA (const int ie, const int ip, const int jp, const int k2) {
-      Real add_u   = 0;
-      Real add_v   = 0;
-      Real add_vth = 0;
-      Real add_dp  = 0;
+      Real contrib_u   = 0;
+      Real contrib_v   = 0;
+      Real contrib_vth = 0;
+      Real contrib_dp  = 0;
 
       for (int k = 0; k < NUM_INTERFACE_LEV; ++k) {
         const Real l_w_k   = l_w  (ie, n0, ip, jp, k);
         const Real l_phi_k = l_phi(ie, n0, ip, jp, k);
 
-        add_u   += dw_v  (ie, np1, ip, jp, k).dx(offset_u   + k2) * l_w_k
-                 + dphi_v(ie, np1, ip, jp, k).dx(offset_u   + k2) * l_phi_k;
-        add_v   += dw_v  (ie, np1, ip, jp, k).dx(offset_v   + k2) * l_w_k
-                 + dphi_v(ie, np1, ip, jp, k).dx(offset_v   + k2) * l_phi_k;
-        add_vth += dw_v  (ie, np1, ip, jp, k).dx(offset_vth + k2) * l_w_k
-                 + dphi_v(ie, np1, ip, jp, k).dx(offset_vth + k2) * l_phi_k;
-        add_dp  += dw_v  (ie, np1, ip, jp, k).dx(offset_dp  + k2) * l_w_k
-                 + dphi_v(ie, np1, ip, jp, k).dx(offset_dp  + k2) * l_phi_k;
+        contrib_u   += dw_v  (ie, np1, ip, jp, k).dx(offset_u   + k2) * l_w_k
+                     + dphi_v(ie, np1, ip, jp, k).dx(offset_u   + k2) * l_phi_k;
+        contrib_v   += dw_v  (ie, np1, ip, jp, k).dx(offset_v   + k2) * l_w_k
+                     + dphi_v(ie, np1, ip, jp, k).dx(offset_v   + k2) * l_phi_k;
+        contrib_vth += dw_v  (ie, np1, ip, jp, k).dx(offset_vth + k2) * l_w_k
+                     + dphi_v(ie, np1, ip, jp, k).dx(offset_vth + k2) * l_phi_k;
+        contrib_dp  += dw_v  (ie, np1, ip, jp, k).dx(offset_dp  + k2) * l_w_k
+                     + dphi_v(ie, np1, ip, jp, k).dx(offset_dp  + k2) * l_phi_k;
       }
 
       // Identity block: DIRK does not modify u, v, vtheta_dp, dp3d at np1
-      l_V  (ie, np1, 0, ip, jp, k2) = l_V  (ie, n0, 0, ip, jp, k2) + add_u;
-      l_V  (ie, np1, 1, ip, jp, k2) = l_V  (ie, n0, 1, ip, jp, k2) + add_v;
-      l_vth(ie, np1,    ip, jp, k2) = l_vth(ie, n0,    ip, jp, k2) + add_vth;
-      l_dp (ie, np1,    ip, jp, k2) = l_dp (ie, n0,    ip, jp, k2) + add_dp;
+      l_V  (ie, np1, 0, ip, jp, k2) = l_V  (ie, n0, 0, ip, jp, k2) + contrib_u;
+      l_V  (ie, np1, 1, ip, jp, k2) = l_V  (ie, n0, 1, ip, jp, k2) + contrib_v;
+      l_vth(ie, np1,    ip, jp, k2) = l_vth(ie, n0,    ip, jp, k2) + contrib_vth;
+      l_dp (ie, np1,    ip, jp, k2) = l_dp (ie, n0,    ip, jp, k2) + contrib_dp;
     };
 
     Kokkos::parallel_for(p4_int, jtv_int);
