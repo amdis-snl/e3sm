@@ -23,7 +23,12 @@ constexpr int DpFadSize = HOMMEXX_DP_SFAD_SIZE;
 using DpFadType = SFadN<double,DpFadSize>;
 
 // The fad type for the deriv w.r.t. state vars of some functors
-using DxFadTypeCaar = SFadN<double,16*NP*NP>;
+//using DxFadTypeCaar = SFadN<double,16*NP*NP>;
+//using DxFadTypeCaar = SFadN<double,1184>;
+//using DxFadTypeCaar = SFadN<double,1600>;
+//using DxFadTypeCaar = SFadN<double,1792>;
+//using DxFadTypeCaar = SFadN<double,1984>;
+using DxFadTypeCaar = SFadN<double,1568>;
 
 template<typename T, int N>
 KOKKOS_INLINE_FUNCTION

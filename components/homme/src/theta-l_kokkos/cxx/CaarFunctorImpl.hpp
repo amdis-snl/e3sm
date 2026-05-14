@@ -35,6 +35,8 @@
 
 #include <assert.h>
 
+#include <fstream>
+
 namespace Homme {
 
 template<typename ST>
@@ -46,6 +48,7 @@ struct CaarFunctorImplST {
     static constexpr int num_3d_vector_mid_buf =  5;
     static constexpr int num_3d_scalar_int_buf =  6;
     static constexpr int num_3d_vector_int_buf =  3;
+    static constexpr int num_3d_scalar_mid_all =  1; // all elements
 
     ExecViewUnmanaged<PT*    [NP][NP][NUM_LEV]  >   temp;
 
@@ -53,6 +56,7 @@ struct CaarFunctorImplST {
     ExecViewUnmanaged<PT*    [NP][NP][NUM_LEV]  >   pi;
     ExecViewUnmanaged<PT*    [NP][NP][NUM_LEV]  >   exner;
     ExecViewUnmanaged<PT*    [NP][NP][NUM_LEV]  >   div_vdp;
+    ExecViewUnmanaged<PT*    [NP][NP][NUM_LEV]  >   div_vdp_all;
     ExecViewUnmanaged<PT*    [NP][NP][NUM_LEV]  >   phi;
     ExecViewUnmanaged<PT*    [NP][NP][NUM_LEV]  >   omega_p;
     ExecViewUnmanaged<PT*    [NP][NP][NUM_LEV]  >   vort;
@@ -188,6 +192,7 @@ struct CaarFunctorImplST {
     int num_scalar_int_buf = Buffers::num_3d_scalar_int_buf;
     int num_vector_mid_buf = Buffers::num_3d_vector_mid_buf;
     int num_vector_int_buf = Buffers::num_3d_vector_int_buf;
+    int num_scalar_mid_all = Buffers::num_3d_scalar_mid_all;
 
     // Depending on rsplit/hydro-mode, we may remove some
     // buffers that are not needed from the counters above.
@@ -198,6 +203,9 @@ struct CaarFunctorImplST {
 
       // No grad_w_i/v_i
       num_vector_int_buf -= 2;
+    }
+    else {
+      num_scalar_mid_all -= 1;
     }
     if (m_rsplit>0) {
       // No theta_i/eta_dot_dpdn
@@ -213,7 +221,8 @@ struct CaarFunctorImplST {
     return (num_scalar_mid_buf  *NP*NP*NUM_LEV  *VECTOR_SIZE*nslots +
             num_scalar_int_buf  *NP*NP*NUM_LEV_P*VECTOR_SIZE*nslots +
             num_vector_mid_buf*2*NP*NP*NUM_LEV  *VECTOR_SIZE*nslots +
-            num_vector_int_buf*2*NP*NP*NUM_LEV_P*VECTOR_SIZE*nslots) * scl_sz;
+            num_vector_int_buf*2*NP*NP*NUM_LEV_P*VECTOR_SIZE*nslots + 
+            num_scalar_mid_all  *NP*NP*NUM_LEV  *VECTOR_SIZE*m_num_elems) * scl_sz;
   }
 
   void init_buffers (const FunctorsBuffersManager& fbm) {
@@ -241,6 +250,10 @@ struct CaarFunctorImplST {
     mem += m_buffers.phi.size();
     m_buffers.div_vdp    = decltype(m_buffers.div_vdp   )(mem,nslots);
     mem += m_buffers.div_vdp.size();
+    if (m_theta_hydrostatic_mode) {
+      m_buffers.div_vdp_all= decltype(m_buffers.div_vdp_all)(mem,m_num_elems);
+      mem += m_buffers.div_vdp_all.size();
+    }
     m_buffers.omega_p    = decltype(m_buffers.omega_p   )(mem,nslots);
     mem += m_buffers.omega_p.size();
     m_buffers.vort       = decltype(m_buffers.vort)(mem,nslots);
@@ -725,6 +738,11 @@ struct CaarFunctorImplST {
             dvdx_v(ie,n0,1,igp,jgp,lvl).diff(fad_idx++, num_fad);
             dvthdx_v(ie,n0,igp,jgp,lvl).diff(fad_idx++, num_fad);
             ddpdx_v(ie,n0,igp,jgp,lvl).diff(fad_idx++, num_fad);
+
+            // Extra derivatives for pi, omega in hydrostatic mode
+            if (m_theta_hydrostatic_mode) {
+              fad_idx += 2;
+            }
           }
           for (int lvl=0; lvl<NUM_INTERFACE_LEV; ++lvl) {
             dwdx_v(ie,n0,igp,jgp,lvl).zero();
@@ -778,6 +796,11 @@ struct CaarFunctorImplST {
     auto l_w = ekat::scalarize(adj_state.m_w_i);
     auto l_phi = ekat::scalarize(adj_state.m_phinh_i);
 
+    auto div_vdp_all = ekat::scalarize(m_buffers.div_vdp_all);
+    if (m_theta_hydrostatic_mode) {
+      std::cout << "Hydrostatic mode is on" << std::endl;
+    }
+
     // std::ofstream uf("u.txt");
     // std::ofstream vf("v.txt");
     // std::ofstream vthf("vth.txt");
@@ -819,6 +842,31 @@ struct CaarFunctorImplST {
                     dvdx_v(ie,np1,0,igp,jgp,lvl).dx(fad_idx++) * l_V(ie,n0,1,sigp,sjgp,slvl) + 
                     dvdx_v(ie,np1,0,igp,jgp,lvl).dx(fad_idx++) * l_vth(ie,n0,sigp,sjgp,slvl) + 
                     dvdx_v(ie,np1,0,igp,jgp,lvl).dx(fad_idx++) * l_dp(ie,n0,sigp,sjgp,slvl);
+
+                  // Include contribution of pi, omega in hydrostatic mode
+                  if (m_theta_hydrostatic_mode) {
+                    for (int tlvl=0; tlvl<=slvl; ++tlvl) {
+                      l_V(ie,np1,0,igp,jgp,lvl) += 
+                        dvdx_v(ie,np1,0,igp,jgp,lvl).dx(fad_idx)*l_dp(ie,n0,sigp,sjgp,tlvl)*(tlvl == slvl ? 0.5 : 1.0);
+                    }
+                    ++fad_idx;
+
+                    int pidx = 0;
+                    for (int tigp=0; tigp<NP; ++tigp) {
+                      for (int tjgp=0; tjgp<NP; ++tjgp) {
+                        for (int tlvl=0; tlvl<=slvl; ++tlvl) {
+                          l_V(ie,np1,0,igp,jgp,lvl) += 
+                            dvdx_v(ie,np1,0,igp,jgp,lvl).dx(fad_idx)*(tlvl == slvl ? 0.5 : 1.0)*
+                              (div_vdp_all(ie,sigp,sjgp,tlvl).dx(pidx+0)*l_V(ie,n0,0,tigp,tjgp,tlvl) +
+                               div_vdp_all(ie,sigp,sjgp,tlvl).dx(pidx+1)*l_V(ie,n0,1,tigp,tjgp,tlvl) +
+                               div_vdp_all(ie,sigp,sjgp,tlvl).dx(pidx+3)*l_dp(ie,n0,tigp,tjgp,tlvl));
+                            pidx += 4;
+                        }
+                        pidx += 2*NUM_INTERFACE_LEV;
+                      }
+                    }
+                    ++fad_idx;
+                  }
                 }
                 for (int slvl=0; slvl<NUM_INTERFACE_LEV; ++slvl) {
                   l_V(ie,np1,0,igp,jgp,lvl) +=
@@ -837,6 +885,31 @@ struct CaarFunctorImplST {
                     dvdx_v(ie,np1,1,igp,jgp,lvl).dx(fad_idx++) * l_V(ie,n0,1,sigp,sjgp,slvl) + 
                     dvdx_v(ie,np1,1,igp,jgp,lvl).dx(fad_idx++) * l_vth(ie,n0,sigp,sjgp,slvl) + 
                     dvdx_v(ie,np1,1,igp,jgp,lvl).dx(fad_idx++) * l_dp(ie,n0,sigp,sjgp,slvl);
+
+                  // Include contribution of pi, omega in hydrostatic mode
+                  if (m_theta_hydrostatic_mode) {
+                    for (int tlvl=0; tlvl<=slvl; ++tlvl) {
+                      l_V(ie,np1,1,igp,jgp,lvl) += 
+                        dvdx_v(ie,np1,1,igp,jgp,lvl).dx(fad_idx)*l_dp(ie,n0,sigp,sjgp,tlvl)*(tlvl == slvl ? 0.5 : 1.0);
+                    }
+                    ++fad_idx;
+
+                    int pidx = 0;
+                    for (int tigp=0; tigp<NP; ++tigp) {
+                      for (int tjgp=0; tjgp<NP; ++tjgp) {
+                        for (int tlvl=0; tlvl<=slvl; ++tlvl) {
+                          l_V(ie,np1,1,igp,jgp,lvl) += 
+                            dvdx_v(ie,np1,1,igp,jgp,lvl).dx(fad_idx)*(tlvl == slvl ? 0.5 : 1.0)*
+                              (div_vdp_all(ie,sigp,sjgp,tlvl).dx(pidx+0)*l_V(ie,n0,0,tigp,tjgp,tlvl) +
+                               div_vdp_all(ie,sigp,sjgp,tlvl).dx(pidx+1)*l_V(ie,n0,1,tigp,tjgp,tlvl) +
+                               div_vdp_all(ie,sigp,sjgp,tlvl).dx(pidx+3)*l_dp(ie,n0,tigp,tjgp,tlvl));
+                            pidx += 4;
+                        }
+                        pidx += 2*NUM_INTERFACE_LEV;
+                      }
+                    }
+                    ++fad_idx;
+                  }
                 }
                 for (int slvl=0; slvl<NUM_INTERFACE_LEV; ++slvl) {
                   l_V(ie,np1,1,igp,jgp,lvl) +=
@@ -855,6 +928,31 @@ struct CaarFunctorImplST {
                     dvthdx_v(ie,np1,igp,jgp,lvl).dx(fad_idx++) * l_V(ie,n0,1,sigp,sjgp,slvl) + 
                     dvthdx_v(ie,np1,igp,jgp,lvl).dx(fad_idx++) * l_vth(ie,n0,sigp,sjgp,slvl) + 
                     dvthdx_v(ie,np1,igp,jgp,lvl).dx(fad_idx++) * l_dp(ie,n0,sigp,sjgp,slvl);
+
+                  // Include contribution of pi, omega in hydrostatic mode
+                  if (m_theta_hydrostatic_mode) {
+                    for (int tlvl=0; tlvl<=slvl; ++tlvl) {
+                      l_vth(ie,np1,igp,jgp,lvl) += 
+                        dvthdx_v(ie,np1,igp,jgp,lvl).dx(fad_idx)*l_dp(ie,n0,sigp,sjgp,tlvl)*(tlvl == slvl ? 0.5 : 1.0);
+                    }
+                    ++fad_idx;
+
+                    int pidx = 0;
+                    for (int tigp=0; tigp<NP; ++tigp) {
+                      for (int tjgp=0; tjgp<NP; ++tjgp) {
+                        for (int tlvl=0; tlvl<=slvl; ++tlvl) {
+                          l_vth(ie,np1,igp,jgp,lvl) += 
+                            dvthdx_v(ie,np1,igp,jgp,lvl).dx(fad_idx)*(tlvl == slvl ? 0.5 : 1.0)*
+                              (div_vdp_all(ie,sigp,sjgp,tlvl).dx(pidx+0)*l_V(ie,n0,0,tigp,tjgp,tlvl) +
+                               div_vdp_all(ie,sigp,sjgp,tlvl).dx(pidx+1)*l_V(ie,n0,1,tigp,tjgp,tlvl) +
+                               div_vdp_all(ie,sigp,sjgp,tlvl).dx(pidx+3)*l_dp(ie,n0,tigp,tjgp,tlvl));
+                            pidx += 4;
+                        }
+                        pidx += 2*NUM_INTERFACE_LEV;
+                      }
+                    }
+                    ++fad_idx;
+                  }
                 }
                 for (int slvl=0; slvl<NUM_INTERFACE_LEV; ++slvl) {
                   l_vth(ie,np1,igp,jgp,lvl) +=
@@ -873,6 +971,31 @@ struct CaarFunctorImplST {
                     ddpdx_v(ie,np1,igp,jgp,lvl).dx(fad_idx++) * l_V(ie,n0,1,sigp,sjgp,slvl) + 
                     ddpdx_v(ie,np1,igp,jgp,lvl).dx(fad_idx++) * l_vth(ie,n0,sigp,sjgp,slvl) + 
                     ddpdx_v(ie,np1,igp,jgp,lvl).dx(fad_idx++) * l_dp(ie,n0,sigp,sjgp,slvl);
+
+                  // Include contribution of pi, omega in hydrostatic mode
+                  if (m_theta_hydrostatic_mode) {
+                    for (int tlvl=0; tlvl<=slvl; ++tlvl) {
+                      l_dp(ie,np1,igp,jgp,lvl) += 
+                        ddpdx_v(ie,np1,igp,jgp,lvl).dx(fad_idx)*l_dp(ie,n0,sigp,sjgp,tlvl)*(tlvl == slvl ? 0.5 : 1.0);
+                    }
+                    ++fad_idx;
+
+                    int pidx = 0;
+                    for (int tigp=0; tigp<NP; ++tigp) {
+                      for (int tjgp=0; tjgp<NP; ++tjgp) {
+                        for (int tlvl=0; tlvl<=slvl; ++tlvl) {
+                          l_dp(ie,np1,igp,jgp,lvl) += 
+                            ddpdx_v(ie,np1,igp,jgp,lvl).dx(fad_idx)*(tlvl == slvl ? 0.5 : 1.0)*
+                              (div_vdp_all(ie,sigp,sjgp,tlvl).dx(pidx+0)*l_V(ie,n0,0,tigp,tjgp,tlvl) +
+                               div_vdp_all(ie,sigp,sjgp,tlvl).dx(pidx+1)*l_V(ie,n0,1,tigp,tjgp,tlvl) +
+                               div_vdp_all(ie,sigp,sjgp,tlvl).dx(pidx+3)*l_dp(ie,n0,tigp,tjgp,tlvl));
+                            pidx += 4;
+                        }
+                        pidx += 2*NUM_INTERFACE_LEV;
+                      }
+                    }
+                    ++fad_idx;
+                  }
                 }
                 for (int slvl=0; slvl<NUM_INTERFACE_LEV; ++slvl) {
                   l_dp(ie,np1,igp,jgp,lvl) +=
@@ -909,6 +1032,31 @@ struct CaarFunctorImplST {
                     dwdx_v(ie,np1,igp,jgp,lvl).dx(fad_idx++) * l_V(ie,n0,1,sigp,sjgp,slvl) + 
                     dwdx_v(ie,np1,igp,jgp,lvl).dx(fad_idx++) * l_vth(ie,n0,sigp,sjgp,slvl) + 
                     dwdx_v(ie,np1,igp,jgp,lvl).dx(fad_idx++) * l_dp(ie,n0,sigp,sjgp,slvl);
+
+                  // Include contribution of pi, omega in hydrostatic mode
+                  if (m_theta_hydrostatic_mode) {
+                    for (int tlvl=0; tlvl<=slvl; ++tlvl) {
+                      l_w(ie,np1,igp,jgp,lvl) += 
+                        dwdx_v(ie,np1,igp,jgp,lvl).dx(fad_idx)*l_dp(ie,n0,sigp,sjgp,tlvl)*(tlvl == slvl ? 0.5 : 1.0);
+                    }
+                    ++fad_idx;
+
+                    int pidx = 0;
+                    for (int tigp=0; tigp<NP; ++tigp) {
+                      for (int tjgp=0; tjgp<NP; ++tjgp) {
+                        for (int tlvl=0; tlvl<=slvl; ++tlvl) {
+                          l_w(ie,np1,igp,jgp,lvl) += 
+                            dwdx_v(ie,np1,igp,jgp,lvl).dx(fad_idx)*(tlvl == slvl ? 0.5 : 1.0)*
+                              (div_vdp_all(ie,sigp,sjgp,tlvl).dx(pidx+0)*l_V(ie,n0,0,tigp,tjgp,tlvl) +
+                               div_vdp_all(ie,sigp,sjgp,tlvl).dx(pidx+1)*l_V(ie,n0,1,tigp,tjgp,tlvl) +
+                               div_vdp_all(ie,sigp,sjgp,tlvl).dx(pidx+3)*l_dp(ie,n0,tigp,tjgp,tlvl));
+                            pidx += 4;
+                        }
+                        pidx += 2*NUM_INTERFACE_LEV;
+                      }
+                    }
+                    ++fad_idx;
+                  }
                 } 
                 for (int slvl=0; slvl<NUM_INTERFACE_LEV; ++slvl) {
                   l_w(ie,np1,igp,jgp,lvl) +=
@@ -927,6 +1075,31 @@ struct CaarFunctorImplST {
                     dphidx_v(ie,np1,igp,jgp,lvl).dx(fad_idx++) * l_V(ie,n0,1,sigp,sjgp,slvl) + 
                     dphidx_v(ie,np1,igp,jgp,lvl).dx(fad_idx++) * l_vth(ie,n0,sigp,sjgp,slvl) + 
                     dphidx_v(ie,np1,igp,jgp,lvl).dx(fad_idx++) * l_dp(ie,n0,sigp,sjgp,slvl);
+
+                  // Include contribution of pi, omega in hydrostatic mode
+                  if (m_theta_hydrostatic_mode) {
+                    for (int tlvl=0; tlvl<=slvl; ++tlvl) {
+                      l_phi(ie,np1,igp,jgp,lvl) += 
+                        dphidx_v(ie,np1,igp,jgp,lvl).dx(fad_idx)*l_dp(ie,n0,sigp,sjgp,tlvl)*(tlvl == slvl ? 0.5 : 1.0);
+                    }
+                    ++fad_idx;
+
+                    int pidx = 0;
+                    for (int tigp=0; tigp<NP; ++tigp) {
+                      for (int tjgp=0; tjgp<NP; ++tjgp) {
+                        for (int tlvl=0; tlvl<=slvl; ++tlvl) {
+                          l_phi(ie,np1,igp,jgp,lvl) += 
+                            dphidx_v(ie,np1,igp,jgp,lvl).dx(fad_idx)*(tlvl == slvl ? 0.5 : 1.0)*
+                              (div_vdp_all(ie,sigp,sjgp,tlvl).dx(pidx+0)*l_V(ie,n0,0,tigp,tjgp,tlvl) +
+                               div_vdp_all(ie,sigp,sjgp,tlvl).dx(pidx+1)*l_V(ie,n0,1,tigp,tjgp,tlvl) +
+                               div_vdp_all(ie,sigp,sjgp,tlvl).dx(pidx+3)*l_dp(ie,n0,tigp,tjgp,tlvl));
+                            pidx += 4;
+                        }
+                        pidx += 2*NUM_INTERFACE_LEV;
+                      }
+                    }
+                    ++fad_idx;
+                  }
                 } 
                 for (int slvl=0; slvl<NUM_INTERFACE_LEV; ++slvl) {
                   l_phi(ie,np1,igp,jgp,lvl) +=
@@ -1566,6 +1739,147 @@ struct CaarFunctorImplST {
       //   omega=v*grad(pi)-average(omega_i)
       auto omega = Homme::subview(m_buffers.omega_p,kv.team_idx,igp,jgp);
       ColumnOps::compute_midpoint_values<CombineMode::Scale>(kv,omega_i,omega,-1.0);
+
+      if constexpr (std::is_same_v<ST,DxFadTypeCaar>) {
+        if (kv.ie == 0 && igp == 0 && jgp == 0) {
+          auto dps = ekat::scalarize(dp);
+          std::cout << std::endl;
+          for (int lvl=0; lvl<NUM_PHYSICAL_LEV; ++lvl) {
+            std::cout << "dps(" << lvl << ") = [ ";
+            for (int slvl=0; slvl<NUM_PHYSICAL_LEV; ++slvl) {
+              std::cout << dps(lvl).dx(slvl*6+3) << " ";
+            }
+            std::cout << "]" << std::endl;
+          }
+
+          auto pi_is = ekat::scalarize(pi_i);
+          std::cout << std::endl;
+          for (int lvl=0; lvl<NUM_PHYSICAL_LEV; ++lvl) {
+            std::cout << "pi_i(" << lvl << ") = [ ";
+            for (int slvl=0; slvl<NUM_PHYSICAL_LEV; ++slvl) {
+              std::cout << pi_is(lvl).dx(slvl*6+3) << " ";
+            }
+            std::cout << "]" << std::endl;
+          }
+
+          auto pis = ekat::scalarize(pi);
+          std::cout << std::endl;
+          for (int lvl=0; lvl<NUM_PHYSICAL_LEV; ++lvl) {
+            std::cout << "pi(" << lvl << ") = [ ";
+            for (int slvl=0; slvl<NUM_PHYSICAL_LEV; ++slvl) {
+              std::cout << pis(lvl).dx(slvl*6+3) << " ";
+            }
+            std::cout << "]" << std::endl;
+          }
+
+          auto divs = ekat::scalarize(div_vdp);
+          std::cout << std::endl;
+          for (int lvl=0; lvl<NUM_PHYSICAL_LEV; ++lvl) {
+            std::cout << "divs(" << lvl << ") = [ ";
+            for (int slvl=0; slvl<NUM_PHYSICAL_LEV; ++slvl) {
+              std::cout << divs(lvl).dx(slvl*6+3) << " ";
+            }
+            std::cout << "]" << std::endl;
+          }
+
+          auto omega_is = ekat::scalarize(omega_i);
+          std::cout << std::endl;
+          for (int lvl=0; lvl<NUM_PHYSICAL_LEV; ++lvl) {
+            std::cout << "omega_i(" << lvl << ") = [ ";
+            for (int slvl=0; slvl<NUM_PHYSICAL_LEV; ++slvl) {
+              std::cout << omega_is(lvl).dx(slvl*6+3) << " ";
+            }
+            std::cout << "]" << std::endl;
+          }
+
+          auto omegas = ekat::scalarize(omega);
+          std::cout << std::endl;
+          for (int lvl=0; lvl<NUM_PHYSICAL_LEV; ++lvl) {
+            std::cout << "omega(" << lvl << ") = [ ";
+            for (int slvl=0; slvl<NUM_PHYSICAL_LEV; ++slvl) {
+              std::cout << omegas(lvl).dx(slvl*6+3) << " ";
+            }
+            std::cout << "]" << std::endl;
+          }
+        }
+      }
+
+      // Treat pi and omega at each interface level as a new independent variable
+      if constexpr (std::is_same_v<ST,DxFadTypeCaar>) {
+        if (m_theta_hydrostatic_mode) {
+          auto pi_is       = ekat::scalarize(pi_i);
+          auto pis         = ekat::scalarize(pi);
+          auto omegas      = ekat::scalarize(omega);
+          auto omega_is    = ekat::scalarize(omega_i);
+          auto div_vdps    = ekat::scalarize(div_vdp);
+          auto div_vdp_alls = ekat::scalarize(Homme::subview(m_buffers.div_vdp_all,kv.ie,igp,jgp));
+          int offset       = (igp*NP+jgp)*(6*NUM_PHYSICAL_LEV + 2*NUM_INTERFACE_LEV); // dx offset for beginning of physical level loop
+          Kokkos::single(Kokkos::PerThread(kv.team),[&]() {
+            for (int lvl=0; lvl<NUM_PHYSICAL_LEV; ++lvl) {
+              offset += 4;
+              pis(lvl).zero();
+              pis(lvl).fastAccessDx(offset++) = 1.0;
+              omegas(lvl).zero();
+              omegas(lvl).fastAccessDx(offset++) = 1.0;
+              div_vdp_alls(lvl) = div_vdps(lvl); // save div_vdp for all elements for use in run_JV
+            }
+            // for (int lvl=0; lvl<NUM_INTERFACE_LEV; ++lvl) {
+            //   offset += 2;
+            //   pi_is(lvl).zero();
+            //   omega_is(lvl).zero();
+            //   // pi_is(lvl).fastAccessDx(offset++) = 1.0;
+            //   // omega_is(lvl).fastAccessDx(offset++) = 1.0;
+            // }
+          });
+        }
+      }
+
+      if constexpr (std::is_same_v<ST,DxFadTypeCaar>) {
+        if (kv.ie == 0 && igp == 0 && jgp == 0) {
+          std::cout << "after resetting derivatives..." << std::endl;
+
+          auto pis = ekat::scalarize(pi);
+          std::cout << std::endl;
+          for (int lvl=0; lvl<NUM_PHYSICAL_LEV; ++lvl) {
+            std::cout << "pi(" << lvl << ") = [ ";
+            for (int slvl=0; slvl<NUM_PHYSICAL_LEV; ++slvl) {
+              std::cout << pis(lvl).dx(slvl*6+4) << " ";
+            }
+            std::cout << "]" << std::endl;
+          }
+
+          // auto pi_is = ekat::scalarize(pi_i);
+          // std::cout << std::endl;
+          // for (int lvl=0; lvl<NUM_INTERFACE_LEV; ++lvl) {
+          //   std::cout << "pi_i(" << lvl << ") = [ ";
+          //   for (int slvl=0; slvl<NUM_INTERFACE_LEV; ++slvl) {
+          //     std::cout << pi_is(lvl).dx(6*NUM_PHYSICAL_LEV+slvl*4+2) << " ";
+          //   }
+          //   std::cout << "]" << std::endl;
+          // }
+
+          auto omegas = ekat::scalarize(omega);
+          std::cout << std::endl;
+          for (int lvl=0; lvl<NUM_PHYSICAL_LEV; ++lvl) {
+            std::cout << "omega(" << lvl << ") = [ ";
+            for (int slvl=0; slvl<NUM_PHYSICAL_LEV; ++slvl) {
+              std::cout << omegas(lvl).dx(slvl*6+5) << " ";
+            }
+            std::cout << "]" << std::endl;
+          }
+
+          // auto omega_is = ekat::scalarize(omega_i);
+          // std::cout << std::endl;
+          // for (int lvl=0; lvl<NUM_INTERFACE_LEV; ++lvl) {
+          //   std::cout << "omega_i(" << lvl << ") = [ ";
+          //   for (int slvl=0; slvl<NUM_INTERFACE_LEV; ++slvl) {
+          //     std::cout << omega_is(lvl).dx(6*NUM_PHYSICAL_LEV+slvl*4+3) << " ";
+          //   }
+          //   std::cout << "]" << std::endl;
+          // }
+        }
+      }
+
     });
     kv.team_barrier();
 

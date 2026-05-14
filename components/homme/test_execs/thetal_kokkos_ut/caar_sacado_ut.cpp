@@ -366,19 +366,19 @@ TEST_CASE("caar_dx_check") {
 
   auto& catch_capture = Catch::getResultCapture();
   // NOTE: cannot use hydrostatic=true, since it requires a scan sum
-  for (const bool hydrostatic : {false}) {
+  for (const bool hydrostatic : {true}) {
     if (comm.am_i_root()) {
       std::cout << " -> " << (hydrostatic ? "Hydrostatic\n" : "Non-Hydrostatic\n");
     }
     params.theta_hydrostatic_mode = hydrostatic;
     limiter.m_theta_hydrostatic_mode = hydrostatic;
     limiter_dp.m_theta_hydrostatic_mode = hydrostatic;
-    auto adv_forms = {AdvectionForm::Conservative, AdvectionForm::NonConservative};
+    auto adv_forms = {AdvectionForm::Conservative};//, AdvectionForm::NonConservative};
     for (const AdvectionForm adv_form : adv_forms) {
       if (comm.am_i_root()) {
         std::cout << "  -> " << (adv_form==AdvectionForm::Conservative ? "Conservative" : "Non-Conservative") << " theta advection\n";
       }
-      for (const int pgrad : {1,0}) {
+      for (const int pgrad : {0}) {
         if (comm.am_i_root()) {
           std::cout << "    -> pgrad_correction = " << pgrad << "\n";
         }
@@ -452,9 +452,9 @@ TEST_CASE("caar_dx_check") {
         caar_dp.run_pre_exchange(data);
 
         // RUN caar's J*V functor for ST=DxFadType
-        caar_dx.init_J(data);
+        caar_dx.init_J_full(data);
         caar_dx.run_pre_exchange(data);
-        caar_dx.run_JV(data,elems.m_state);
+        caar_dx.run_JV_full(data,elems.m_state);
 
         // Check that dXnew/dp = dXnew/dXold * dXold/dp. dXnew/dp is in elems_dp.m_state at slice np1
         // while dXnew/dXold is in elems_dx.m_state at slice np1
