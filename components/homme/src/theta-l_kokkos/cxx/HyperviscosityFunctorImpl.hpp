@@ -7,12 +7,11 @@
 #ifndef HOMMEXX_HYPERVISCOSITY_FUNCTOR_IMPL_HPP
 #define HOMMEXX_HYPERVISCOSITY_FUNCTOR_IMPL_HPP
 
-#include "ElementsGeometry.hpp"
-#include "ElementsState.hpp"
-#include "ElementsDerivedState.hpp"
+#include "Elements.hpp"
 #include "ColumnOps.hpp"
 #include "EquationOfState.hpp"
 #include "ElementOps.hpp"
+#include "FunctorsBuffersManager.hpp"
 #include "HybridVCoord.hpp"
 #include "KernelVariables.hpp"
 #include "SimulationParams.hpp"
@@ -113,6 +112,316 @@ public:
   void run (const int np1, const Real dt, const Real eta_ave_w);
 
   void biharmonic_wk_theta () const;
+
+#ifdef HOMMEXX_ENABLE_FAD_TYPES
+  // Hyperviscosity Dx FAD layout (2*NP*NP derivatives per level).
+  // The Jacobian is block-diagonal; slots are reused across decoupled groups:
+  //   Slots 0..NP*NP-1:       u (Group A), vtheta_dp (Group B), w_i (Group C), phinh_i (Group D)
+  //   Slots NP*NP..2*NP*NP-1: v (Group A), dp3d      (Group B)
+  // At the surface interface level, run_w_surf overwrites w_i with f(u_surf,v_surf),
+  // so its slots carry d(w_surf)/d(u) and d(w_surf)/d(v) instead of d/d(w_init).
+  // run_JV / run_JtV apply ad-hoc per-variable logic to interpret slots correctly.
+  static constexpr int fad_offset_u   = 0;
+  static constexpr int fad_offset_v   = NP*NP;
+  static constexpr int fad_offset_vth = 0;      // shared with u (Groups A,B decoupled)
+  static constexpr int fad_offset_dp  = NP*NP;  // shared with v
+  static constexpr int fad_offset_w   = 0;      // shared with u (Group C decoupled)
+  static constexpr int fad_offset_phi = 0;      // shared with u (Group D decoupled)
+
+  template<typename MyST = ST>
+  std::enable_if_t<not std::is_same_v<MyST, DxFadTypeHypervis>>
+  init_JV (const int, const ElementsST<ST>&) = delete;
+
+  template<typename MyST = ST>
+  std::enable_if_t<std::is_same_v<MyST, DxFadTypeHypervis>>
+  init_JV (const int np1, const ElementsST<ST>& e) {
+    using md_range_t = Kokkos::MDRangePolicy<ExecSpace,Kokkos::Rank<4>>;
+    const int nelem = e.m_state.num_elems();
+    auto p4_mid = md_range_t({0,0,0,0}, {nelem,NP,NP,NUM_PHYSICAL_LEV});
+    auto p4_int = md_range_t({0,0,0,0}, {nelem,NP,NP,NUM_INTERFACE_LEV});
+
+    auto dvdx_v   = ekat::scalarize(e.m_state.m_v);
+    auto ddpdx_v  = ekat::scalarize(e.m_state.m_dp3d);
+    auto dvthdx_v = ekat::scalarize(e.m_state.m_vtheta_dp);
+    auto dwdx_v   = ekat::scalarize(e.m_state.m_w_i);
+    auto dphidx_v = ekat::scalarize(e.m_state.m_phinh_i);
+
+    const int offset_u   = fad_offset_u;
+    const int offset_v   = fad_offset_v;
+    const int offset_dp  = fad_offset_dp;
+    const int offset_vth = fad_offset_vth;
+    const int offset_w   = fad_offset_w;
+    const int offset_phi = fad_offset_phi;
+
+    auto init_dx_mid = KOKKOS_LAMBDA (const int ie, const int ip, const int jp, const int k) {
+      const int gp_idx = ip*NP + jp;
+      auto& dudx   = dvdx_v  (ie,np1,0,ip,jp,k);
+      auto& dvdx   = dvdx_v  (ie,np1,1,ip,jp,k);
+      auto& ddpdx  = ddpdx_v (ie,np1,ip,jp,k);
+      auto& dvthdx = dvthdx_v(ie,np1,ip,jp,k);
+      dudx.zero();
+      dvdx.zero();
+      ddpdx.zero();
+      dvthdx.zero();
+      dudx.fastAccessDx  (offset_u   + gp_idx) = 1;
+      dvdx.fastAccessDx  (offset_v   + gp_idx) = 1;
+      ddpdx.fastAccessDx (offset_dp  + gp_idx) = 1;
+      dvthdx.fastAccessDx(offset_vth + gp_idx) = 1;
+    };
+    auto init_dx_int = KOKKOS_LAMBDA (const int ie, const int ip, const int jp, const int k) {
+      const int gp_idx = ip*NP + jp;
+      auto& dwdx   = dwdx_v  (ie,np1,ip,jp,k);
+      auto& dphidx = dphidx_v(ie,np1,ip,jp,k);
+      dwdx.zero();
+      dphidx.zero();
+      dwdx.fastAccessDx  (offset_w   + gp_idx) = 1;
+      dphidx.fastAccessDx(offset_phi + gp_idx) = 1;
+    };
+    Kokkos::parallel_for(p4_mid, init_dx_mid);
+    Kokkos::parallel_for(p4_int, init_dx_int);
+  }
+
+  template<typename MyST = ST>
+  std::enable_if_t<not std::is_same_v<MyST, DxFadTypeHypervis>>
+  run_JV (const int, const ElementsST<ST>&, ElementsStateST<Real>&) = delete;
+
+  template<typename MyST = ST>
+  std::enable_if_t<std::is_same_v<MyST, DxFadTypeHypervis>>
+  run_JV (const int np1, const ElementsST<ST>& e, ElementsStateST<Real>& adj_state)
+  {
+    const int nelem = e.m_state.num_elems();
+
+    auto dV_v   = ekat::scalarize(e.m_state.m_v);
+    auto ddp_v  = ekat::scalarize(e.m_state.m_dp3d);
+    auto dvth_v = ekat::scalarize(e.m_state.m_vtheta_dp);
+    auto dw_v   = ekat::scalarize(e.m_state.m_w_i);
+    auto dphi_v = ekat::scalarize(e.m_state.m_phinh_i);
+
+    auto l_V    = ekat::scalarize(adj_state.m_v);
+    auto l_dp   = ekat::scalarize(adj_state.m_dp3d);
+    auto l_vth  = ekat::scalarize(adj_state.m_vtheta_dp);
+    auto l_w    = ekat::scalarize(adj_state.m_w_i);
+    auto l_phi  = ekat::scalarize(adj_state.m_phinh_i);
+
+    ExecViewManaged<Real*[2][NP][NP][NUM_LEV]> out_V("", nelem);
+    ExecViewManaged<Real*[NP][NP][NUM_LEV]> out_dp("", nelem);
+    ExecViewManaged<Real*[NP][NP][NUM_LEV]> out_vth("", nelem);
+    ExecViewManaged<Real*[NP][NP][NUM_LEV_P]> out_w_pack("", nelem);
+    ExecViewManaged<Real*[NP][NP][NUM_LEV_P]> out_phi_pack("", nelem);
+    auto out_w = ekat::scalarize(out_w_pack);
+    auto out_phi = ekat::scalarize(out_phi_pack);
+
+    using md_range_t = Kokkos::MDRangePolicy<ExecSpace,Kokkos::Rank<4>>;
+    auto p4_mid = md_range_t({0,0,0,0}, {nelem,NP,NP,NUM_PHYSICAL_LEV});
+    auto p4_int = md_range_t({0,0,0,0}, {nelem,NP,NP,NUM_INTERFACE_LEV});
+
+    // JV product rule for midpoint variables.
+    // Block-diagonal structure: Group A {u,v} and Group B {vth,dp} are decoupled.
+    // Slot gp_idx        = d/du[gp]  for u/v outputs = d/dvth[gp]  for vth/dp outputs
+    // Slot NP*NP+gp_idx  = d/dv[gp]  for u/v outputs = d/ddp[gp]   for vth/dp outputs
+    auto prod_rule_mid = KOKKOS_LAMBDA (const int ie, const int ip, const int jp, const int k) {
+      const auto& Ju   = dV_v  (ie,np1,0,ip,jp,k).dx();
+      const auto& Jv   = dV_v  (ie,np1,1,ip,jp,k).dx();
+      const auto& Jdp  = ddp_v (ie,np1,ip,jp,k).dx();
+      const auto& Jvth = dvth_v(ie,np1,ip,jp,k).dx();
+
+      Real l_u_new   = 0;
+      Real l_v_new   = 0;
+      Real l_dp_new  = 0;
+      Real l_vth_new = 0;
+      for (int m = 0; m < NP; ++m) {
+        for (int n = 0; n < NP; ++n) {
+          const int gp_idx = m*NP + n;
+          // Group A {u,v}: slot gp_idx = d/du[gp], slot NP*NP+gp_idx = d/dv[gp]
+          l_u_new   += Ju [gp_idx      ] * l_V  (ie,np1,0,m,n,k)
+                    +  Ju [NP*NP+gp_idx] * l_V  (ie,np1,1,m,n,k);
+          l_v_new   += Jv [gp_idx      ] * l_V  (ie,np1,0,m,n,k)
+                    +  Jv [NP*NP+gp_idx] * l_V  (ie,np1,1,m,n,k);
+          // Group B {vth,dp}: slot gp_idx = d/dvth[gp], slot NP*NP+gp_idx = d/ddp[gp]
+          l_vth_new += Jvth[gp_idx      ] * l_vth(ie,np1,m,n,k)
+                    +  Jvth[NP*NP+gp_idx] * l_dp (ie,np1,m,n,k);
+          l_dp_new  += Jdp [gp_idx      ] * l_vth(ie,np1,m,n,k)
+                    +  Jdp [NP*NP+gp_idx] * l_dp (ie,np1,m,n,k);
+        }
+      }
+      out_V  (ie,0,ip,jp,k) = l_u_new;
+      out_V  (ie,1,ip,jp,k) = l_v_new;
+      out_dp (ie,ip,jp,k) = l_dp_new;
+      out_vth(ie,ip,jp,k) = l_vth_new;
+    };
+
+    // JV product rule for interface variables.
+    // Group C {w_i}: at interior levels slot gp_idx = d/dw[gp].
+    //   At the surface level, run_w_surf overwrites w with f(u,v), so
+    //   slot gp_idx = d/du[gp] and slot NP*NP+gp_idx = d/dv[gp].
+    // Group D {phi}: slot gp_idx = d/dphi[gp] at all interface levels.
+    auto prod_rule_int = KOKKOS_LAMBDA (const int ie, const int ip, const int jp, const int k) {
+      const auto& Jw   = dw_v  (ie,np1,ip,jp,k).dx();
+      const auto& Jphi = dphi_v(ie,np1,ip,jp,k).dx();
+      constexpr int last_physical_lev_idx = NUM_PHYSICAL_LEV-1;
+      const int km = k < NUM_PHYSICAL_LEV ? k : last_physical_lev_idx;
+      const bool is_surf = (k >= NUM_PHYSICAL_LEV);
+
+      Real l_w_new   = 0;
+      Real l_phi_new = 0;
+      for (int m = 0; m < NP; ++m) {
+        for (int n = 0; n < NP; ++n) {
+          const int gp_idx = m*NP + n;
+          if (!is_surf) {
+            // Interior w (Group C): slot gp_idx = d(w)/d(w_init[gp])
+            l_w_new += Jw[gp_idx] * l_w(ie,np1,m,n,k);
+          } else {
+            // Surface w: slots carry d(w_surf)/d(u[gp]) and d(w_surf)/d(v[gp])
+            l_w_new += Jw[gp_idx      ] * l_V(ie,np1,0,m,n,km)
+                    +  Jw[NP*NP+gp_idx] * l_V(ie,np1,1,m,n,km);
+          }
+          // phi (Group D): slot gp_idx = d(phi)/d(phi_init[gp]) at all levels
+          l_phi_new += Jphi[gp_idx] * l_phi(ie,np1,m,n,k);
+        }
+      }
+      out_w  (ie,ip,jp,k) = l_w_new;
+      out_phi(ie,ip,jp,k) = l_phi_new;
+    };
+
+    auto copy_back_mid = KOKKOS_LAMBDA (const int ie, const int ip, const int jp, const int k) {
+      l_V  (ie,np1,0,ip,jp,k) = out_V  (ie,0,ip,jp,k);
+      l_V  (ie,np1,1,ip,jp,k) = out_V  (ie,1,ip,jp,k);
+      l_dp (ie,np1,ip,jp,k) = out_dp (ie,ip,jp,k);
+      l_vth(ie,np1,ip,jp,k) = out_vth(ie,ip,jp,k);
+    };
+
+    auto copy_back_int = KOKKOS_LAMBDA (const int ie, const int ip, const int jp, const int k) {
+      l_w  (ie,np1,ip,jp,k) = out_w  (ie,ip,jp,k);
+      l_phi(ie,np1,ip,jp,k) = out_phi(ie,ip,jp,k);
+    };
+
+    Kokkos::parallel_for(p4_mid, prod_rule_mid);
+    Kokkos::parallel_for(p4_int, prod_rule_int);
+    Kokkos::parallel_for(p4_mid, copy_back_mid);
+    Kokkos::parallel_for(p4_int, copy_back_int);
+  }
+
+  template<typename MyST = ST>
+  std::enable_if_t<not std::is_same_v<MyST, DxFadTypeHypervis>>
+  run_JtV (const int, const ElementsST<ST>&, ElementsStateST<Real>&) = delete;
+
+  template<typename MyST = ST>
+  std::enable_if_t<std::is_same_v<MyST, DxFadTypeHypervis>>
+  run_JtV (const int np1, const ElementsST<ST>& e, ElementsStateST<Real>& adj_state)
+  {
+    const int nelem = e.m_state.num_elems();
+
+    auto dV_v   = ekat::scalarize(e.m_state.m_v);
+    auto ddp_v  = ekat::scalarize(e.m_state.m_dp3d);
+    auto dvth_v = ekat::scalarize(e.m_state.m_vtheta_dp);
+    auto dw_v   = ekat::scalarize(e.m_state.m_w_i);
+    auto dphi_v = ekat::scalarize(e.m_state.m_phinh_i);
+
+    auto l_V    = ekat::scalarize(adj_state.m_v);
+    auto l_dp   = ekat::scalarize(adj_state.m_dp3d);
+    auto l_vth  = ekat::scalarize(adj_state.m_vtheta_dp);
+    auto l_w    = ekat::scalarize(adj_state.m_w_i);
+    auto l_phi  = ekat::scalarize(adj_state.m_phinh_i);
+
+    ExecViewManaged<Real*[2][NP][NP][NUM_LEV]> out_V("", nelem);
+    ExecViewManaged<Real*[NP][NP][NUM_LEV]> out_dp("", nelem);
+    ExecViewManaged<Real*[NP][NP][NUM_LEV]> out_vth("", nelem);
+    ExecViewManaged<Real*[NP][NP][NUM_LEV_P]> out_w_pack("", nelem);
+    ExecViewManaged<Real*[NP][NP][NUM_LEV_P]> out_phi_pack("", nelem);
+    auto out_w = ekat::scalarize(out_w_pack);
+    auto out_phi = ekat::scalarize(out_phi_pack);
+
+    using md_range_t = Kokkos::MDRangePolicy<ExecSpace,Kokkos::Rank<4>>;
+    auto p4_mid = md_range_t({0,0,0,0}, {nelem,NP,NP,NUM_PHYSICAL_LEV});
+    auto p4_int = md_range_t({0,0,0,0}, {nelem,NP,NP,NUM_INTERFACE_LEV});
+
+    // JtV (transpose) for midpoint variables.
+    // Block-diagonal: only u/v outputs contribute to the u/v adjoint (Group A),
+    // and only vth/dp outputs contribute to the vth/dp adjoint (Group B).
+    // Slot gp_idx       carries d/d(first-var-in-group)[gp]
+    // Slot NP*NP+gp_idx carries d/d(second-var-in-group)[gp]
+    auto jtv_mid = KOKKOS_LAMBDA (const int ie, const int ip, const int jp, const int k) {
+      const int gp_idx = ip*NP + jp;
+
+      const auto Ju   = Homme::subview(dV_v  ,ie,np1,0);
+      const auto Jv   = Homme::subview(dV_v  ,ie,np1,1);
+      const auto Jdp  = Homme::subview(ddp_v ,ie,np1);
+      const auto Jvth = Homme::subview(dvth_v,ie,np1);
+
+      Real l_u_new   = 0;
+      Real l_v_new   = 0;
+      Real l_dp_new  = 0;
+      Real l_vth_new = 0;
+      for (int m = 0; m < NP; ++m) {
+        for (int n = 0; n < NP; ++n) {
+          // Group A: u-adjoint from slot gp_idx, v-adjoint from slot NP*NP+gp_idx
+          // Only u,v outputs carry non-zero derivs at these slots (block-diagonal)
+          l_u_new   += Ju  (m,n,k).dx(gp_idx      ) * l_V  (ie,np1,0,m,n,k)
+                    +  Jv  (m,n,k).dx(gp_idx      ) * l_V  (ie,np1,1,m,n,k);
+          l_v_new   += Ju  (m,n,k).dx(NP*NP+gp_idx) * l_V  (ie,np1,0,m,n,k)
+                    +  Jv  (m,n,k).dx(NP*NP+gp_idx) * l_V  (ie,np1,1,m,n,k);
+          // Group B: vth-adjoint from slot gp_idx, dp-adjoint from slot NP*NP+gp_idx
+          // Only vth,dp outputs carry non-zero derivs at these slots (block-diagonal)
+          l_vth_new += Jvth(m,n,k).dx(gp_idx      ) * l_vth(ie,np1,m,n,k)
+                    +  Jdp (m,n,k).dx(gp_idx      ) * l_dp (ie,np1,m,n,k);
+          l_dp_new  += Jvth(m,n,k).dx(NP*NP+gp_idx) * l_vth(ie,np1,m,n,k)
+                    +  Jdp (m,n,k).dx(NP*NP+gp_idx) * l_dp (ie,np1,m,n,k);
+        }
+      }
+      out_V  (ie,0,ip,jp,k) = l_u_new;
+      out_V  (ie,1,ip,jp,k) = l_v_new;
+      out_dp (ie,ip,jp,k) = l_dp_new;
+      out_vth(ie,ip,jp,k) = l_vth_new;
+    };
+
+    // JtV (transpose) for interface variables.
+    // Group C {w_i}: interior levels — only w output contributes at slot gp_idx.
+    //   Surface level — run_w_surf overwrites w_surf with f(u,v), so w_init at the
+    //   surface is never read; its adjoint is 0.
+    // Group D {phi}: only phi output contributes at slot gp_idx at all levels.
+    auto jtv_int = KOKKOS_LAMBDA (const int ie, const int ip, const int jp, const int k) {
+      const int gp_idx = ip*NP + jp;
+      const bool is_surf = (k >= NUM_PHYSICAL_LEV);
+
+      const auto Jw   = Homme::subview(dw_v  ,ie,np1);
+      const auto Jphi = Homme::subview(dphi_v,ie,np1);
+
+      Real l_w_new   = 0;
+      Real l_phi_new = 0;
+      for (int m = 0; m < NP; ++m) {
+        for (int n = 0; n < NP; ++n) {
+          if (!is_surf) {
+            // Interior w (Group C): gradient w.r.t. w_init[ip,jp] at slot gp_idx
+            l_w_new += Jw(m,n,k).dx(gp_idx) * l_w(ie,np1,m,n,k);
+          }
+          // Surface w: w_init at the surface is overwritten by run_w_surf and never
+          // used, so the adjoint l_w_new remains 0 (left unchanged above).
+          // phi (Group D): gradient w.r.t. phi_init[ip,jp] at slot gp_idx
+          l_phi_new += Jphi(m,n,k).dx(gp_idx) * l_phi(ie,np1,m,n,k);
+        }
+      }
+      out_w  (ie,ip,jp,k) = l_w_new;
+      out_phi(ie,ip,jp,k) = l_phi_new;
+    };
+
+    auto copy_back_mid = KOKKOS_LAMBDA (const int ie, const int ip, const int jp, const int k) {
+      l_V  (ie,np1,0,ip,jp,k) = out_V  (ie,0,ip,jp,k);
+      l_V  (ie,np1,1,ip,jp,k) = out_V  (ie,1,ip,jp,k);
+      l_dp (ie,np1,ip,jp,k) = out_dp (ie,ip,jp,k);
+      l_vth(ie,np1,ip,jp,k) = out_vth(ie,ip,jp,k);
+    };
+
+    auto copy_back_int = KOKKOS_LAMBDA (const int ie, const int ip, const int jp, const int k) {
+      l_w  (ie,np1,ip,jp,k) = out_w  (ie,ip,jp,k);
+      l_phi(ie,np1,ip,jp,k) = out_phi(ie,ip,jp,k);
+    };
+
+    Kokkos::parallel_for(p4_mid, jtv_mid);
+    Kokkos::parallel_for(p4_int, jtv_int);
+    Kokkos::parallel_for(p4_mid, copy_back_mid);
+    Kokkos::parallel_for(p4_int, copy_back_int);
+  }
+#endif // HOMMEXX_ENABLE_FAD_TYPES
 
   // first iter of laplace, const hv
   KOKKOS_INLINE_FUNCTION

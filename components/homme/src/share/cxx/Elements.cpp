@@ -18,6 +18,7 @@ template class ElementsST<Real>;
 template class ElementsST<DpFadType>;
 template class ElementsST<DxFadTypeCaar>;
 template class ElementsST<DxFadTypeDirk>;
+template class ElementsST<DxFadTypeHypervis>;
 #endif
 
 } // namespace Homme

@@ -17,6 +17,7 @@ template class BoundaryExchangeST<Real>;
 #ifdef HOMMEXX_ENABLE_FAD_TYPES
 template class BoundaryExchangeST<DpFadType>;
 template class BoundaryExchangeST<DxFadTypeCaar>;
+template class BoundaryExchangeST<DxFadTypeHypervis>;
 #endif
 
 } // namespace Homme

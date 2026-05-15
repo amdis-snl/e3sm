@@ -12,6 +12,7 @@ template class ElementsForcingST<Real>;
 template class ElementsForcingST<DpFadType>;
 template class ElementsForcingST<DxFadTypeCaar>;
 template class ElementsForcingST<DxFadTypeDirk>;
+template class ElementsForcingST<DxFadTypeHypervis>;
 #endif
 
 } // namespace Homme
