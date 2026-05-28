@@ -6,6 +6,7 @@
 #include "Types.hpp"
 #include "Context.hpp"
 #include "Elements.hpp"
+#include "ElementsGeometry.hpp"
 #include "HyperviscosityFunctorImpl.hpp"
 #include "HybridVCoord.hpp"
 #include "ReferenceElement.hpp"
@@ -16,9 +17,27 @@
 
 #include "utilities/TestUtils.hpp"
 
+#include <ekat_comm.hpp>
 #include <ekat_string_utils.hpp>
 
 using namespace Homme;
+
+extern "C" {
+void init_hv_f90 (const int& ne,
+               const Real* hyai_ptr, const Real* hybi_ptr,
+               const Real* hyam_ptr, const Real* hybm_ptr,
+               Real* dvv, Real* mp,
+               const Real& ps0, const int& hypervis_subcycle,
+               const Real& nu, const Real& nu_div, const Real& nu_top,
+               const Real& nu_p, const Real& nu_s);
+void init_geo_views_f90 (Real*& d_ptr,Real*& dinv_ptr,
+               const Real*& phis_ptr, const Real*& gradphis_ptr,
+               Real*& fcor,
+               Real*& sphmp_ptr, Real*& rspmp_ptr,
+               Real*& tVisc_ptr, Real*& sph2c_ptr,
+               Real*& metdet_ptr, Real*& metinv_ptr);
+void cleanup_f90();
+} // extern "C"
 
 namespace {
 constexpr int last_interface_lev_idx = NUM_INTERFACE_LEV - 1;
@@ -79,7 +98,6 @@ TEST_CASE ("hyperviscosity_dp_and_jv_testing")
   auto& c = Context::singleton();
   c.create<ekat::Comm>(MPI_COMM_WORLD);
 
-  constexpr int num_elems = 1;
   const int np1 = 1;
   const Real dt = rpdf(1e-4,1e-2)(engine);
   const Real eta_ave_w = 1.0;
@@ -91,10 +109,40 @@ TEST_CASE ("hyperviscosity_dp_and_jv_testing")
   hvcoord.random_init(seed);
   c.create<SimulationParams>() = params;
 
+  // Init reference element and connectivity from a real cube-sphere mesh (ne=2).
+  // This is required for correct boundary exchanges in run_JV.
   auto& ref_FE = c.create<ReferenceElement>();
-  ref_FE.random_init(seed);
+  {
+    auto hyai = Kokkos::create_mirror_view(hvcoord.hybrid_ai);
+    auto hybi = Kokkos::create_mirror_view(hvcoord.hybrid_bi);
+    auto hyam = Kokkos::create_mirror_view(hvcoord.hybrid_am);
+    auto hybm = Kokkos::create_mirror_view(hvcoord.hybrid_bm);
+    Kokkos::deep_copy(hyai, hvcoord.hybrid_ai);
+    Kokkos::deep_copy(hybi, hvcoord.hybrid_bi);
+    Kokkos::deep_copy(hyam, hvcoord.hybrid_am);
+    Kokkos::deep_copy(hybm, hvcoord.hybrid_bm);
+    HostViewManaged<Real[NUM_PHYSICAL_LEV]> hyam_r(""), hybm_r("");
+    for (int i = 0; i < NUM_PHYSICAL_LEV; ++i) {
+      const int ilev = i / VECTOR_SIZE;
+      const int ivec = i % VECTOR_SIZE;
+      hyam_r(i) = ADValue(hyam(ilev)[ivec]);
+      hybm_r(i) = ADValue(hybm(ilev)[ivec]);
+    }
+    std::vector<Real> dvv(NP*NP), mp(NP*NP);
+    constexpr int ne = 2;
+    init_hv_f90(ne, hyai.data(), hybi.data(), hyam_r.data(), hybm_r.data(),
+                dvv.data(), mp.data(), hvcoord.ps0, params.hypervis_subcycle,
+                params.nu, params.nu_div, params.nu_top, params.nu_p, params.nu_s);
+    ref_FE.init_mass(mp.data());
+    ref_FE.init_deriv(dvv.data());
+  }
 
-  init_connectivity_and_buffers(c, num_elems);
+  const int num_elems = c.get<Connectivity>().get_num_local_elements();
+
+  auto& bmm = c.create<MpiBuffersManagerMap>();
+  if (!bmm.is_connectivity_set()) {
+    bmm.set_connectivity(c.get_ptr<Connectivity>());
+  }
 
   ElementsST<Real> elems_ref, elems_0, elems_h, elems_jv;
   ElementsST<DpFadType> elems_dp;
@@ -106,9 +154,54 @@ TEST_CASE ("hyperviscosity_dp_and_jv_testing")
   elems_dp.init(num_elems,false,true,PhysicalConstants::rearth0,-1,true);
   elems_dx.init(num_elems,false,true,PhysicalConstants::rearth0,-1,true);
 
+  // Create geometry in Context and fill metric/mapping terms from Fortran.
+  // The phis/gradphis fields are provided randomly (inputs to init_geo_views_f90),
+  // while d, dinv, spheremp, rspheremp, etc. are outputs filled by Fortran.
+  auto& geo_ctx = c.create<ElementsGeometry>();
+  geo_ctx.init(num_elems, false, true, PhysicalConstants::rearth0);
+  geo_ctx.randomize(seed);
+  {
+    auto d        = Kokkos::create_mirror_view(geo_ctx.m_d);
+    auto dinv     = Kokkos::create_mirror_view(geo_ctx.m_dinv);
+    auto phis     = Kokkos::create_mirror_view(geo_ctx.m_phis);
+    auto gradphis = Kokkos::create_mirror_view(geo_ctx.m_gradphis);
+    auto fcor     = Kokkos::create_mirror_view(geo_ctx.m_fcor);
+    auto spmp     = Kokkos::create_mirror_view(geo_ctx.m_spheremp);
+    auto rspmp    = Kokkos::create_mirror_view(geo_ctx.m_rspheremp);
+    auto tVisc    = Kokkos::create_mirror_view(geo_ctx.m_tensorvisc);
+    auto sph2c    = Kokkos::create_mirror_view(geo_ctx.m_vec_sph2cart);
+    auto mdet     = Kokkos::create_mirror_view(geo_ctx.m_metdet);
+    auto minv     = Kokkos::create_mirror_view(geo_ctx.m_metinv);
+    Kokkos::deep_copy(phis,     geo_ctx.m_phis);
+    Kokkos::deep_copy(gradphis, geo_ctx.m_gradphis);
+
+    Real*       d_ptr        = d.data();
+    Real*       dinv_ptr     = dinv.data();
+    Real*       fcor_ptr     = fcor.data();
+    Real*       spmp_ptr     = spmp.data();
+    Real*       rspmp_ptr    = rspmp.data();
+    Real*       tVisc_ptr    = tVisc.data();
+    Real*       sph2c_ptr    = sph2c.data();
+    Real*       mdet_ptr     = mdet.data();
+    Real*       minv_ptr     = minv.data();
+    const Real* phis_ptr     = phis.data();
+    const Real* gradphis_ptr = gradphis.data();
+    init_geo_views_f90(d_ptr, dinv_ptr, phis_ptr, gradphis_ptr, fcor_ptr,
+                       spmp_ptr, rspmp_ptr, tVisc_ptr, sph2c_ptr, mdet_ptr, minv_ptr);
+
+    Kokkos::deep_copy(geo_ctx.m_d,            d);
+    Kokkos::deep_copy(geo_ctx.m_dinv,         dinv);
+    Kokkos::deep_copy(geo_ctx.m_spheremp,     spmp);
+    Kokkos::deep_copy(geo_ctx.m_rspheremp,    rspmp);
+    Kokkos::deep_copy(geo_ctx.m_tensorvisc,   tVisc);
+    Kokkos::deep_copy(geo_ctx.m_vec_sph2cart, sph2c);
+    Kokkos::deep_copy(geo_ctx.m_metdet,       mdet);
+    Kokkos::deep_copy(geo_ctx.m_metinv,       minv);
+  }
+
+  // Share geometry across all ElementsST instances
   auto& geo = elems_ref.m_geometry = elems_0.m_geometry = elems_h.m_geometry
-            = elems_jv.m_geometry = elems_dp.m_geometry = elems_dx.m_geometry;
-  geo.randomize(seed);
+            = elems_jv.m_geometry = elems_dp.m_geometry = elems_dx.m_geometry = geo_ctx;
 
   init_ref_and_derived(elems_ref);
   init_ref_and_derived(elems_0);
@@ -334,6 +427,7 @@ TEST_CASE ("hyperviscosity_dp_and_jv_testing")
     }
   }
 
+  cleanup_f90();
   Context::finalize_singleton();
 }
 
@@ -379,6 +473,7 @@ TEST_CASE ("hyperviscosity_jtv_testing") {
   in_a.init(num_elems);
   in_b.init(num_elems);
 
+  c.create<SphereOperatorsST<Real>>().setup(elems_dx.m_geometry, ref_FE);
   c.create<SphereOperatorsST<DxFadTypeHypervis>>().setup(elems_dx.m_geometry, ref_FE);
 
   const auto max_pressure = 1000.0 + hvcoord.ps0;

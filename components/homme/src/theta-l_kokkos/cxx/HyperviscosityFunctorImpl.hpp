@@ -92,6 +92,17 @@ public:
   struct TagNutopUpdateStates {};
   struct TagNutopLaplace {};
 
+#ifdef HOMMEXX_ENABLE_FAD_TYPES
+  // JV sub-function tags: propagate the perturbation V through each linear
+  // sub-step of run() using the direct (matrix-free) linearisation approach.
+  // These are only meaningful when ST == DxFadTypeHypervis.
+  struct TagFirstLaplaceHV_JV {};
+  struct TagSecondLaplaceConstHV_JV {};
+  struct TagSecondLaplaceTensorHV_JV {};
+  struct TagHyperPreExchange_JV {};
+  struct TagUpdateStates_JV {};
+#endif // HOMMEXX_ENABLE_FAD_TYPES
+
   HyperviscosityFunctorImplST (const SimulationParams&           params,
                                const ElementsGeometry&           geometry,
                                const ElementsStateST<ST>&        state,
@@ -153,6 +164,7 @@ public:
     const int offset_w   = fad_offset_w;
     const int offset_phi = fad_offset_phi;
 
+    // Set up DxFAD identity derivatives (used by run_JtV)
     auto init_dx_mid = KOKKOS_LAMBDA (const int ie, const int ip, const int jp, const int k) {
       const int gp_idx = ip*NP + jp;
       auto& dudx   = dvdx_v  (ie,np1,0,ip,jp,k);
@@ -179,126 +191,195 @@ public:
     };
     Kokkos::parallel_for(p4_mid, init_dx_mid);
     Kokkos::parallel_for(p4_int, init_dx_int);
+
+    // Save the base (pre-run) state for linearisation of the nonlinear
+    // vtheta_dp <-> theta conversions that bracket run().
+    m_jv_base_dp    = ExecViewManaged<Real*[NP][NP][NUM_PHYSICAL_LEV]>("jv_base_dp",    nelem);
+    m_jv_base_theta = ExecViewManaged<Real*[NP][NP][NUM_PHYSICAL_LEV]>("jv_base_theta", nelem);
+    {
+      auto dp_sc    = ekat::scalarize(e.m_state.m_dp3d);
+      auto vth_sc   = ekat::scalarize(e.m_state.m_vtheta_dp);
+      auto bdp      = m_jv_base_dp;
+      auto btheta   = m_jv_base_theta;
+      Kokkos::parallel_for(p4_mid, KOKKOS_LAMBDA(int ie, int ip, int jp, int k) {
+        const Real dp_r  = ADValue(dp_sc (ie,np1,ip,jp,k));
+        const Real vth_r = ADValue(vth_sc(ie,np1,ip,jp,k));
+        bdp   (ie,ip,jp,k) = dp_r;
+        btheta(ie,ip,jp,k) = vth_r / dp_r;   // theta = vtheta / dp
+      });
+    }
+
+    // Allocate companion Real-typed buffers for the JV sub-function pass.
+    using PTr = PackType<Real>;
+    m_jv_buffers.dptens = ExecViewManaged<PTr*[NP][NP][NUM_LEV]>   ("jv_dptens", nelem);
+    m_jv_buffers.ttens  = ExecViewManaged<PTr*[NP][NP][NUM_LEV]>   ("jv_ttens",  nelem);
+    m_jv_buffers.vtens  = ExecViewManaged<PTr*[2][NP][NP][NUM_LEV]>("jv_vtens",  nelem);
+    if (m_process_nh_vars) {
+      m_jv_buffers.wtens   = ExecViewManaged<PTr*[NP][NP][NUM_LEV_P]>("jv_wtens",   nelem);
+      m_jv_buffers.phitens = ExecViewManaged<PTr*[NP][NP][NUM_LEV_P]>("jv_phitens", nelem);
+    }
+
+    // Create BoundaryExchange<Real> for the JV buffers.
+    auto bm_exchange = Context::singleton().get<MpiBuffersManagerMap>()[MPI_EXCHANGE];
+    m_jv_be = std::make_shared<BoundaryExchangeST<Real>>();
+    m_jv_be->m_label = "Hyperviscosity-JV";
+    m_jv_be->set_buffers_manager(bm_exchange);
+    const int nlev = NUM_LEV;
+    if (m_process_nh_vars) {
+      m_jv_be->set_num_fields(0, 0, 6);
+    } else {
+      m_jv_be->set_num_fields(0, 0, 4);
+    }
+    m_jv_be->register_field(m_jv_buffers.dptens, nlev);
+    m_jv_be->register_field(m_jv_buffers.ttens,  nlev);
+    if (m_process_nh_vars) {
+      m_jv_be->register_field(m_jv_buffers.wtens,   nlev);
+      m_jv_be->register_field(m_jv_buffers.phitens, nlev);
+    }
+    m_jv_be->register_field(m_jv_buffers.vtens, 2, 0, nlev);
+    m_jv_be->registration_completed();
+
+    // Cache the Real sphere operators (set up in Context before this call).
+    m_real_sphere_ops = Context::singleton().get<SphereOperatorsST<Real>>();
+
+    Kokkos::fence();
   }
 
   template<typename MyST = ST>
   std::enable_if_t<not std::is_same_v<MyST, DxFadTypeHypervis>>
   run_JV (const int, const ElementsST<ST>&, ElementsStateST<Real>&) = delete;
 
+  // run_JV: propagate the perturbation V through each linear sub-step of
+  // run() directly, applying companion Real-typed BX at each exchange point.
+  // This avoids the cross-element FAD corruption that occurs when
+  // DxFadTypeHypervis derivatives are exchanged via MPI halo swaps.
   template<typename MyST = ST>
   std::enable_if_t<std::is_same_v<MyST, DxFadTypeHypervis>>
   run_JV (const int np1, const ElementsST<ST>& e, ElementsStateST<Real>& adj_state)
   {
-    const int nelem = e.m_state.num_elems();
-
-    auto dV_v   = ekat::scalarize(e.m_state.m_v);
-    auto ddp_v  = ekat::scalarize(e.m_state.m_dp3d);
-    auto dvth_v = ekat::scalarize(e.m_state.m_vtheta_dp);
-    auto dw_v   = ekat::scalarize(e.m_state.m_w_i);
-    auto dphi_v = ekat::scalarize(e.m_state.m_phinh_i);
-
-    auto l_V    = ekat::scalarize(adj_state.m_v);
-    auto l_dp   = ekat::scalarize(adj_state.m_dp3d);
-    auto l_vth  = ekat::scalarize(adj_state.m_vtheta_dp);
-    auto l_w    = ekat::scalarize(adj_state.m_w_i);
-    auto l_phi  = ekat::scalarize(adj_state.m_phinh_i);
-
-    ExecViewManaged<Real*[2][NP][NP][NUM_LEV]> out_V("", nelem);
-    ExecViewManaged<Real*[NP][NP][NUM_LEV]> out_dp("", nelem);
-    ExecViewManaged<Real*[NP][NP][NUM_LEV]> out_vth("", nelem);
-    ExecViewManaged<Real*[NP][NP][NUM_LEV_P]> out_w_pack("", nelem);
-    ExecViewManaged<Real*[NP][NP][NUM_LEV_P]> out_phi_pack("", nelem);
-    auto out_w = ekat::scalarize(out_w_pack);
-    auto out_phi = ekat::scalarize(out_phi_pack);
-
+    using PTr = PackType<Real>;
     using md_range_t = Kokkos::MDRangePolicy<ExecSpace,Kokkos::Rank<4>>;
+
+    const int nelem = e.m_state.num_elems();
     auto p4_mid = md_range_t({0,0,0,0}, {nelem,NP,NP,NUM_PHYSICAL_LEV});
     auto p4_int = md_range_t({0,0,0,0}, {nelem,NP,NP,NUM_INTERFACE_LEV});
 
-    // JV product rule for midpoint variables.
-    // Block-diagonal structure: Group A {u,v} and Group B {vth,dp} are decoupled.
-    // Slot gp_idx        = d/du[gp]  for u/v outputs = d/dvth[gp]  for vth/dp outputs
-    // Slot NP*NP+gp_idx  = d/dv[gp]  for u/v outputs = d/ddp[gp]   for vth/dp outputs
-    auto prod_rule_mid = KOKKOS_LAMBDA (const int ie, const int ip, const int jp, const int k) {
-      const auto& Ju   = dV_v  (ie,np1,0,ip,jp,k).dx();
-      const auto& Jv   = dV_v  (ie,np1,1,ip,jp,k).dx();
-      const auto& Jdp  = ddp_v (ie,np1,ip,jp,k).dx();
-      const auto& Jvth = dvth_v(ie,np1,ip,jp,k).dx();
+    // Store the adj_state views (V) in m_jv_v/dp/vtheta/w/phi so that
+    // the JV operator() tags can access them via member references.
+    m_jv_v       = adj_state.m_v;
+    m_jv_dp      = adj_state.m_dp3d;
+    m_jv_vtheta  = adj_state.m_vtheta_dp;
+    m_jv_w       = adj_state.m_w_i;
+    m_jv_phi     = adj_state.m_phinh_i;
+    m_np1_jv     = np1;
 
-      Real l_u_new   = 0;
-      Real l_v_new   = 0;
-      Real l_dp_new  = 0;
-      Real l_vth_new = 0;
-      for (int m = 0; m < NP; ++m) {
-        for (int n = 0; n < NP; ++n) {
-          const int gp_idx = m*NP + n;
-          // Group A {u,v}: slot gp_idx = d/du[gp], slot NP*NP+gp_idx = d/dv[gp]
-          l_u_new   += Ju [gp_idx      ] * l_V  (ie,np1,0,m,n,k)
-                    +  Ju [NP*NP+gp_idx] * l_V  (ie,np1,1,m,n,k);
-          l_v_new   += Jv [gp_idx      ] * l_V  (ie,np1,0,m,n,k)
-                    +  Jv [NP*NP+gp_idx] * l_V  (ie,np1,1,m,n,k);
-          // Group B {vth,dp}: slot gp_idx = d/dvth[gp], slot NP*NP+gp_idx = d/ddp[gp]
-          l_vth_new += Jvth[gp_idx      ] * l_vth(ie,np1,m,n,k)
-                    +  Jvth[NP*NP+gp_idx] * l_dp (ie,np1,m,n,k);
-          l_dp_new  += Jdp [gp_idx      ] * l_vth(ie,np1,m,n,k)
-                    +  Jdp [NP*NP+gp_idx] * l_dp (ie,np1,m,n,k);
-        }
+    // -----------------------------------------------------------------
+    // Step 1: linearise theta = vtheta_dp / dp at entry.
+    //   V_theta = (V_vtheta - theta0 * V_dp) / dp0
+    // We update m_jv_vtheta in-place to hold V_theta (theta perturbation)
+    // because run() internally converts vtheta_dp to theta before the
+    // Laplacians.  At the end we convert back.
+    // -----------------------------------------------------------------
+    {
+      auto bdp    = m_jv_base_dp;
+      auto btheta = m_jv_base_theta;
+      auto jvdp   = ekat::scalarize(m_jv_dp);
+      auto jvvth  = ekat::scalarize(m_jv_vtheta);
+      Kokkos::parallel_for(p4_mid, KOKKOS_LAMBDA(int ie, int ip, int jp, int k) {
+        const Real dp0     = bdp   (ie,ip,jp,k);
+        const Real theta0  = btheta(ie,ip,jp,k);
+        const Real Vdp     = jvdp  (ie,np1,ip,jp,k);
+        const Real Vvth    = jvvth (ie,np1,ip,jp,k);
+        // V_theta = (V_vtheta - theta0 * V_dp) / dp0
+        jvvth(ie,np1,ip,jp,k) = (Vvth - theta0 * Vdp) / dp0;
+      });
+    }
+
+    // -----------------------------------------------------------------
+    // Step 2: ncycles of biharmonic + pre/post exchange, applied to V.
+    // -----------------------------------------------------------------
+    const auto& params = m_data;
+    for (int ic = 0; ic < params.hypervis_subcycle; ++ic) {
+
+      // --- First Laplace: V_state -> JV buffers ---
+      auto p_first = Homme::get_default_team_policy<ExecSpace,TagFirstLaplaceHV_JV>(nelem);
+      Kokkos::parallel_for(p_first, *this);
+      Kokkos::fence();
+
+      // First BX: exchange JV buffers scaled by rspheremp (same as biharmonic_wk_theta)
+      m_jv_be->exchange(m_geometry.m_rspheremp);
+
+      // --- Second Laplace (const or tensor) ---
+      if (params.hypervis_scaling == 0) {
+        auto p_second = Homme::get_default_team_policy<ExecSpace,TagSecondLaplaceConstHV_JV>(nelem);
+        Kokkos::parallel_for(p_second, *this);
+      } else {
+        auto p_second = Homme::get_default_team_policy<ExecSpace,TagSecondLaplaceTensorHV_JV>(nelem);
+        Kokkos::parallel_for(p_second, *this);
       }
-      out_V  (ie,0,ip,jp,k) = l_u_new;
-      out_V  (ie,1,ip,jp,k) = l_v_new;
-      out_dp (ie,ip,jp,k) = l_dp_new;
-      out_vth(ie,ip,jp,k) = l_vth_new;
-    };
+      Kokkos::fence();
 
-    // JV product rule for interface variables.
-    // Group C {w_i}: at interior levels slot gp_idx = d/dw[gp].
-    //   At the surface level, run_w_surf overwrites w with f(u,v), so
-    //   slot gp_idx = d/du[gp] and slot NP*NP+gp_idx = d/dv[gp].
-    // Group D {phi}: slot gp_idx = d/dphi[gp] at all interface levels.
-    auto prod_rule_int = KOKKOS_LAMBDA (const int ie, const int ip, const int jp, const int k) {
-      const auto& Jw   = dw_v  (ie,np1,ip,jp,k).dx();
-      const auto& Jphi = dphi_v(ie,np1,ip,jp,k).dx();
-      constexpr int last_physical_lev_idx = NUM_PHYSICAL_LEV-1;
-      const int km = k < NUM_PHYSICAL_LEV ? k : last_physical_lev_idx;
-      const bool is_surf = (k >= NUM_PHYSICAL_LEV);
+      // Pre-exchange scale: multiply JV buffers by -nu factors
+      auto p_pre = Homme::get_default_team_policy<ExecSpace,TagHyperPreExchange_JV>(nelem);
+      Kokkos::parallel_for(p_pre, *this);
+      Kokkos::fence();
 
-      Real l_w_new   = 0;
-      Real l_phi_new = 0;
-      for (int m = 0; m < NP; ++m) {
-        for (int n = 0; n < NP; ++n) {
-          const int gp_idx = m*NP + n;
-          if (!is_surf) {
-            // Interior w (Group C): slot gp_idx = d(w)/d(w_init[gp])
-            l_w_new += Jw[gp_idx] * l_w(ie,np1,m,n,k);
-          } else {
-            // Surface w: slots carry d(w_surf)/d(u[gp]) and d(w_surf)/d(v[gp])
-            l_w_new += Jw[gp_idx      ] * l_V(ie,np1,0,m,n,km)
-                    +  Jw[NP*NP+gp_idx] * l_V(ie,np1,1,m,n,km);
-          }
-          // phi (Group D): slot gp_idx = d(phi)/d(phi_init[gp]) at all levels
-          l_phi_new += Jphi[gp_idx] * l_phi(ie,np1,m,n,k);
-        }
-      }
-      out_w  (ie,ip,jp,k) = l_w_new;
-      out_phi(ie,ip,jp,k) = l_phi_new;
-    };
+      // Second BX: exchange scaled JV buffers
+      m_jv_be->exchange();
 
-    auto copy_back_mid = KOKKOS_LAMBDA (const int ie, const int ip, const int jp, const int k) {
-      l_V  (ie,np1,0,ip,jp,k) = out_V  (ie,0,ip,jp,k);
-      l_V  (ie,np1,1,ip,jp,k) = out_V  (ie,1,ip,jp,k);
-      l_dp (ie,np1,ip,jp,k) = out_dp (ie,ip,jp,k);
-      l_vth(ie,np1,ip,jp,k) = out_vth(ie,ip,jp,k);
-    };
+      // --- Update V state from JV buffers ---
+      auto p_upd = Homme::get_default_team_policy<ExecSpace,TagUpdateStates_JV>(nelem);
+      Kokkos::parallel_for(p_upd, *this);
+      Kokkos::fence();
+    }
 
-    auto copy_back_int = KOKKOS_LAMBDA (const int ie, const int ip, const int jp, const int k) {
-      l_w  (ie,np1,ip,jp,k) = out_w  (ie,ip,jp,k);
-      l_phi(ie,np1,ip,jp,k) = out_phi(ie,ip,jp,k);
-    };
+    // -----------------------------------------------------------------
+    // Step 3: linearise theta -> vtheta_dp at exit.
+    //   After run(), e.m_state.m_vtheta_dp holds theta_end * dp_end.
+    //   V_vtheta = theta_end * V_dp + dp_end * V_theta
+    // m_jv_vtheta currently holds V_theta (from Step 1).
+    // -----------------------------------------------------------------
+    {
+      auto end_vth = ekat::scalarize(e.m_state.m_vtheta_dp);  // = theta_end*dp_end
+      auto end_dp  = ekat::scalarize(e.m_state.m_dp3d);
+      auto jvdp    = ekat::scalarize(m_jv_dp);
+      auto jvvth   = ekat::scalarize(m_jv_vtheta);
+      Kokkos::parallel_for(p4_mid, KOKKOS_LAMBDA(int ie, int ip, int jp, int k) {
+        const Real vth_end  = ADValue(end_vth(ie,np1,ip,jp,k));  // theta_end*dp_end
+        const Real dp_end   = ADValue(end_dp (ie,np1,ip,jp,k));
+        const Real theta_end = (dp_end > 0) ? vth_end / dp_end : 0;
+        const Real Vtheta   = jvvth(ie,np1,ip,jp,k);   // V_theta from Step 1
+        const Real Vdp      = jvdp (ie,np1,ip,jp,k);
+        // V_vtheta = dp_end * V_theta + theta_end * V_dp
+        jvvth(ie,np1,ip,jp,k) = dp_end * Vtheta + theta_end * Vdp;
+      });
+    }
 
-    Kokkos::parallel_for(p4_mid, prod_rule_mid);
-    Kokkos::parallel_for(p4_int, prod_rule_int);
-    Kokkos::parallel_for(p4_mid, copy_back_mid);
-    Kokkos::parallel_for(p4_int, copy_back_int);
+    // -----------------------------------------------------------------
+    // Step 4 (NH only): linearise surface-w fix.
+    //   run() sets w_i at the surface from velocity at the last physical
+    //   level: w_surf = (u_last * gradphis_x + v_last * gradphis_y) / g
+    //   Linearisation: V_w_surf = (V_u_last * gph_x + V_v_last * gph_y) / g
+    // -----------------------------------------------------------------
+    if (m_process_nh_vars) {
+      auto jvv   = ekat::scalarize(m_jv_v);
+      auto jvw   = ekat::scalarize(m_jv_w);
+      const auto gradphis = m_geometry.m_gradphis;
+      using md_range2_t = Kokkos::MDRangePolicy<ExecSpace,Kokkos::Rank<2>>;
+      auto p2 = md_range2_t({0,0}, {nelem,NP*NP});
+      constexpr int surf_lev  = NUM_INTERFACE_LEV - 1;
+      constexpr int last_phys = NUM_PHYSICAL_LEV  - 1;
+      constexpr Real g = PhysicalConstants::g;
+      Kokkos::parallel_for(p2, KOKKOS_LAMBDA(int ie, int gp) {
+        const int ip = gp / NP;
+        const int jp = gp % NP;
+        const Real Vu    = jvv(ie,np1,0,ip,jp,last_phys);
+        const Real Vv    = jvv(ie,np1,1,ip,jp,last_phys);
+        const Real gph_x = gradphis(ie,0,ip,jp);
+        const Real gph_y = gradphis(ie,1,ip,jp);
+        jvw(ie,np1,ip,jp,surf_lev) = (Vu*gph_x + Vv*gph_y) / g;
+      });
+    }
   }
 
   template<typename MyST = ST>
@@ -704,6 +785,149 @@ public:
     });//parallel 4
   } //taghyperpreexchange
 
+#ifdef HOMMEXX_ENABLE_FAD_TYPES
+  // JV sub-step operators.  These operate on the Real-typed companion buffers
+  // (m_jv_v/dp/vtheta/w/phi and m_jv_buffers) which hold the perturbation V
+  // being propagated through the linearised run() sub-steps.
+
+  KOKKOS_INLINE_FUNCTION
+  void operator()(const TagFirstLaplaceHV_JV&, const TeamMember& team) const {
+    KernelVariables kv(team, m_tu);
+    // dp Laplacian of the perturbation V_dp
+    m_real_sphere_ops.laplace_simple(kv,
+                   Homme::subview(m_jv_dp, kv.ie, m_np1_jv),
+                   Homme::subview(m_jv_buffers.dptens, kv.ie));
+    // theta Laplacian of V_theta (already converted to theta perturbation in run_JV)
+    m_real_sphere_ops.laplace_simple(kv,
+                   Homme::subview(m_jv_vtheta, kv.ie, m_np1_jv),
+                   Homme::subview(m_jv_buffers.ttens, kv.ie));
+    if (m_process_nh_vars) {
+      m_real_sphere_ops.template laplace_simple<NUM_LEV,NUM_LEV_P>(kv,
+                     Homme::subview(m_jv_w, kv.ie, m_np1_jv),
+                     Homme::subview(m_jv_buffers.wtens, kv.ie));
+      m_real_sphere_ops.template laplace_simple<NUM_LEV,NUM_LEV_P>(kv,
+                     Homme::subview(m_jv_phi, kv.ie, m_np1_jv),
+                     Homme::subview(m_jv_buffers.phitens, kv.ie));
+    }
+    m_real_sphere_ops.vlaplace_sphere_wk_contra(kv, m_data.nu_ratio1,
+                              Homme::subview(m_jv_v, kv.ie, m_np1_jv),
+                              Homme::subview(m_jv_buffers.vtens, kv.ie));
+  }
+
+  KOKKOS_INLINE_FUNCTION
+  void operator()(const TagSecondLaplaceConstHV_JV&, const TeamMember& team) const {
+    KernelVariables kv(team, m_tu);
+    m_real_sphere_ops.laplace_simple(kv,
+                   Homme::subview(m_jv_buffers.dptens, kv.ie),
+                   Homme::subview(m_jv_buffers.dptens, kv.ie));
+    m_real_sphere_ops.laplace_simple(kv,
+                   Homme::subview(m_jv_buffers.ttens, kv.ie),
+                   Homme::subview(m_jv_buffers.ttens, kv.ie));
+    if (m_process_nh_vars) {
+      m_real_sphere_ops.laplace_simple(kv,
+                     Homme::subview(m_jv_buffers.wtens, kv.ie),
+                     Homme::subview(m_jv_buffers.wtens, kv.ie));
+      m_real_sphere_ops.laplace_simple(kv,
+                     Homme::subview(m_jv_buffers.phitens, kv.ie),
+                     Homme::subview(m_jv_buffers.phitens, kv.ie));
+    }
+    m_real_sphere_ops.vlaplace_sphere_wk_contra(kv, m_data.nu_ratio2,
+                              Homme::subview(m_jv_buffers.vtens, kv.ie),
+                              Homme::subview(m_jv_buffers.vtens, kv.ie));
+  }
+
+  KOKKOS_INLINE_FUNCTION
+  void operator()(const TagSecondLaplaceTensorHV_JV&, const TeamMember& team) const {
+    KernelVariables kv(team, m_tu);
+    m_real_sphere_ops.laplace_tensor(kv,
+                   Homme::subview(m_geometry.m_tensorvisc, kv.ie),
+                   Homme::subview(m_jv_buffers.dptens, kv.ie),
+                   Homme::subview(m_jv_buffers.dptens, kv.ie));
+    m_real_sphere_ops.laplace_tensor(kv,
+                   Homme::subview(m_geometry.m_tensorvisc, kv.ie),
+                   Homme::subview(m_jv_buffers.ttens, kv.ie),
+                   Homme::subview(m_jv_buffers.ttens, kv.ie));
+    if (m_process_nh_vars) {
+      m_real_sphere_ops.laplace_tensor(kv,
+                     Homme::subview(m_geometry.m_tensorvisc, kv.ie),
+                     Homme::subview(m_jv_buffers.wtens, kv.ie),
+                     Homme::subview(m_jv_buffers.wtens, kv.ie));
+      m_real_sphere_ops.laplace_tensor(kv,
+                     Homme::subview(m_geometry.m_tensorvisc, kv.ie),
+                     Homme::subview(m_jv_buffers.phitens, kv.ie),
+                     Homme::subview(m_jv_buffers.phitens, kv.ie));
+    }
+    m_real_sphere_ops.vlaplace_sphere_wk_cartesian(kv,
+                   Homme::subview(m_geometry.m_tensorvisc, kv.ie),
+                   Homme::subview(m_geometry.m_vec_sph2cart, kv.ie),
+                   Homme::subview(m_jv_buffers.vtens, kv.ie),
+                   Homme::subview(m_jv_buffers.vtens, kv.ie));
+  }
+
+  KOKKOS_INLINE_FUNCTION
+  void operator()(const TagHyperPreExchange_JV&, const TeamMember& team) const {
+    KernelVariables kv(team, m_tu);
+    // Scale JV buffers by -nu factors; no ref-state restores or diagnostics needed.
+    Kokkos::parallel_for(Kokkos::TeamThreadRange(kv.team, NP*NP),
+                         [&](const int point_idx) {
+      const int igp = point_idx / NP;
+      const int jgp = point_idx % NP;
+      Kokkos::parallel_for(Kokkos::ThreadVectorRange(kv.team, NUM_LEV),
+                           [&](const int lev) {
+        m_jv_buffers.vtens (kv.ie, 0, igp, jgp, lev) *= -m_data.nu;
+        m_jv_buffers.vtens (kv.ie, 1, igp, jgp, lev) *= -m_data.nu;
+        m_jv_buffers.ttens (kv.ie, igp, jgp, lev)    *= -m_data.nu;
+        m_jv_buffers.dptens(kv.ie, igp, jgp, lev)    *= -m_data.nu_p;
+        if (m_process_nh_vars) {
+          m_jv_buffers.wtens  (kv.ie, igp, jgp, lev) *= -m_data.nu;
+          m_jv_buffers.phitens(kv.ie, igp, jgp, lev) *= -m_data.nu_s;
+        }
+      });
+    });
+  }
+
+  KOKKOS_INLINE_FUNCTION
+  void operator()(const TagUpdateStates_JV&, const TeamMember& team) const {
+    KernelVariables kv(team, m_tu);
+    Kokkos::parallel_for(Kokkos::TeamThreadRange(kv.team, NP*NP),
+                         [&](const int idx) {
+      const int igp = idx / NP;
+      const int jgp = idx % NP;
+      const Real rsm = m_geometry.m_rspheremp(kv.ie, igp, jgp);
+
+      auto Vu    = Homme::subview(m_jv_v,      kv.ie, m_np1_jv, 0, igp, jgp);
+      auto Vv    = Homme::subview(m_jv_v,      kv.ie, m_np1_jv, 1, igp, jgp);
+      auto Vth   = Homme::subview(m_jv_vtheta, kv.ie, m_np1_jv,    igp, jgp);
+      auto Vdp   = Homme::subview(m_jv_dp,     kv.ie, m_np1_jv,    igp, jgp);
+
+      auto jvut  = Homme::subview(m_jv_buffers.vtens,  kv.ie, 0, igp, jgp);
+      auto jvvt  = Homme::subview(m_jv_buffers.vtens,  kv.ie, 1, igp, jgp);
+      auto jvtt  = Homme::subview(m_jv_buffers.ttens,  kv.ie,    igp, jgp);
+      auto jvdpt = Homme::subview(m_jv_buffers.dptens, kv.ie,    igp, jgp);
+
+      Kokkos::parallel_for(Kokkos::ThreadVectorRange(kv.team, NUM_LEV),
+                           [&](const int lev) {
+        Vu (lev) += m_data.dt_hvs * rsm * jvut (lev);
+        Vv (lev) += m_data.dt_hvs * rsm * jvvt (lev);
+        Vth(lev) += m_data.dt_hvs * rsm * jvtt (lev);
+        Vdp(lev) += m_data.dt_hvs * rsm * jvdpt(lev);
+      });
+
+      if (m_process_nh_vars) {
+        auto Vw   = Homme::subview(m_jv_w,   kv.ie, m_np1_jv, igp, jgp);
+        auto Vphi = Homme::subview(m_jv_phi, kv.ie, m_np1_jv, igp, jgp);
+        auto jvwt = Homme::subview(m_jv_buffers.wtens,   kv.ie, igp, jgp);
+        auto jvpt = Homme::subview(m_jv_buffers.phitens, kv.ie, igp, jgp);
+        Kokkos::parallel_for(Kokkos::ThreadVectorRange(kv.team, NUM_LEV),
+                             [&](const int lev) {
+          Vw  (lev) += m_data.dt_hvs * rsm * jvwt(lev);
+          Vphi(lev) += m_data.dt_hvs * rsm * jvpt(lev);
+        });
+      }
+    });
+  }
+#endif // HOMMEXX_ENABLE_FAD_TYPES
+
 protected:
 
   const int                   m_num_elems;
@@ -733,6 +957,38 @@ protected:
 
   ExecViewManaged<PT[NUM_LEV]> m_nu_scale_top;
   int m_nu_scale_top_ilev_pack_lim;
+
+#ifdef HOMMEXX_ENABLE_FAD_TYPES
+  // Companion Real-typed state views, set in run_JV to point into adj_state.
+  // These hold the perturbation V being propagated through the linearised sub-steps.
+  using PTr = PackType<Real>;
+  ExecViewManaged<PTr*[NUM_TIME_LEVELS][2][NP][NP][NUM_LEV]>  m_jv_v;
+  ExecViewManaged<PTr*[NUM_TIME_LEVELS][NP][NP][NUM_LEV]>     m_jv_dp;
+  ExecViewManaged<PTr*[NUM_TIME_LEVELS][NP][NP][NUM_LEV]>     m_jv_vtheta;
+  ExecViewManaged<PTr*[NUM_TIME_LEVELS][NP][NP][NUM_LEV_P]>   m_jv_w;
+  ExecViewManaged<PTr*[NUM_TIME_LEVELS][NP][NP][NUM_LEV_P]>   m_jv_phi;
+
+  mutable int m_np1_jv;   // time level index for the JV pass
+
+  // Saved base-state scalarized views (for theta<->vtheta_dp linearisation)
+  ExecViewManaged<Real*[NP][NP][NUM_PHYSICAL_LEV]> m_jv_base_dp;
+  ExecViewManaged<Real*[NP][NP][NUM_PHYSICAL_LEV]> m_jv_base_theta;
+
+  // Real-typed companion work buffers (same layout as m_buffers but with PackType<Real>)
+  struct JVBuffers {
+    ExecViewManaged<PTr*[NP][NP][NUM_LEV]>    dptens;
+    ExecViewManaged<PTr*[NP][NP][NUM_LEV]>    ttens;
+    ExecViewManaged<PTr*[2][NP][NP][NUM_LEV]> vtens;
+    ExecViewManaged<PTr*[NP][NP][NUM_LEV_P]>  wtens;
+    ExecViewManaged<PTr*[NP][NP][NUM_LEV_P]>  phitens;
+  } m_jv_buffers;
+
+  // Real BX for exchanging m_jv_buffers between elements
+  std::shared_ptr<BoundaryExchangeST<Real>> m_jv_be;
+
+  // Real sphere operators (shared from Context after geometry is set up)
+  SphereOperatorsST<Real> m_real_sphere_ops;
+#endif // HOMMEXX_ENABLE_FAD_TYPES
 }; //HVfunctorImplST
 
 using HyperviscosityFunctorImpl = HyperviscosityFunctorImplST<ScalarValue>;
