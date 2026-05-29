@@ -23,11 +23,13 @@
 namespace Homme {
 namespace Remap {
 
+template<typename ST>
 struct RemapStateProvider {
+  using PT = PackType<ST>;
 
   EquationOfState<> m_eos;
   ElementOps        m_elem_ops;
-  ElementsState     m_state;
+  ElementsStateST<ST> m_state;
   ElementsGeometry  m_geometry;
   HybridVCoord      m_hvcoord;
   bool              m_process_nh_vars;
@@ -36,13 +38,13 @@ struct RemapStateProvider {
   // However, since in the remap we need to multiply by ds
   // (the layer thickness, aka dp), we simply compute
   // d(w_i) and d(phinh_i).
-  ExecViewManaged<Scalar*  [NP][NP][NUM_LEV]> m_delta_w;
-  ExecViewManaged<Scalar*  [NP][NP][NUM_LEV]> m_delta_phinh;
+  ExecViewManaged<PT*  [NP][NP][NUM_LEV]> m_delta_w;
+  ExecViewManaged<PT*  [NP][NP][NUM_LEV]> m_delta_phinh;
 
-  ExecViewUnmanaged<Scalar*  [NP][NP][NUM_LEV  ]> m_temp;
-  ExecViewUnmanaged<Scalar*  [NP][NP][NUM_LEV_P]> m_phi_ref;
+  ExecViewUnmanaged<PT*  [NP][NP][NUM_LEV  ]> m_temp;
+  ExecViewUnmanaged<PT*  [NP][NP][NUM_LEV_P]> m_phi_ref;
 
-  explicit RemapStateProvider(const Elements& elements)
+  explicit RemapStateProvider(const ElementsST<ST>& elements)
    : m_state(elements.m_state)
    , m_geometry(elements.m_geometry)
   {
@@ -85,7 +87,7 @@ struct RemapStateProvider {
       return;
     }
 
-    Scalar* mem = reinterpret_cast<Scalar*>(fbm.get_memory());
+    PT* mem = reinterpret_cast<PT*>(fbm.get_memory());
 
     m_temp = decltype(m_temp)(mem,num_teams);
     mem += m_temp.size();
@@ -125,7 +127,7 @@ struct RemapStateProvider {
   void preprocess_state (const KernelVariables& kv,
                          const int istate,
                          const int np1,
-                         ExecViewUnmanaged<const Scalar[NP][NP][NUM_LEV]> dp) const {
+                         ExecViewUnmanaged<const PT[NP][NP][NUM_LEV]> dp) const {
     assert (m_process_nh_vars);
     // Note: w/phi are the state 3/4, but when it comes to pre/post processing they are 0/1
     if (istate==0) {
@@ -176,7 +178,7 @@ struct RemapStateProvider {
   void postprocess_state (const KernelVariables& kv,
                           const int istate,
                           const int np1,
-                          ExecViewUnmanaged<const Scalar[NP][NP][NUM_LEV]> dp) const {
+                          ExecViewUnmanaged<const PT[NP][NP][NUM_LEV]> dp) const {
     assert (m_process_nh_vars);
     using InfoI = ColInfo<NUM_INTERFACE_LEV>;
     using InfoM = ColInfo<NUM_PHYSICAL_LEV>;
@@ -190,7 +192,7 @@ struct RemapStateProvider {
         auto w_i = Homme::subview(m_state.m_w_i,kv.ie,np1,igp,jgp);
         auto delta_w = Homme::subview(m_delta_w,kv.ie,igp,jgp);
 
-        auto minus_delta = [&](const int ilev)->Scalar { return -delta_w(ilev); };
+        auto minus_delta = [&](const int ilev)->PT { return -delta_w(ilev); };
         ColumnOps::column_scan_mid_to_int<false>(kv,minus_delta,w_i);
 
         // Since u changed, update w_i b.c. at the surface
@@ -232,7 +234,7 @@ struct RemapStateProvider {
                             phi_ref);
 
         // // phinh_i(k) = phinh_i(k+1) - delta_phinh(k), so do a backward scan sum of -delta_phinh
-        auto minus_delta = [&](const int ilev)->Scalar { return -delta_phinh(ilev); };
+        auto minus_delta = [&](const int ilev)->PT { return -delta_phinh(ilev); };
         ColumnOps::column_scan_mid_to_int<false>(kv,minus_delta,phinh_i);
 
         // Add hydrostatic phi
@@ -245,7 +247,7 @@ struct RemapStateProvider {
   }
 
   KOKKOS_INLINE_FUNCTION
-  ExecViewUnmanaged<Scalar[NP][NP][NUM_LEV]>
+  ExecViewUnmanaged<PT[NP][NP][NUM_LEV]>
   get_state(const KernelVariables &kv, int np1, int var) const {
     assert(var>=0 && var<=4);
     switch (var) {
@@ -261,7 +263,7 @@ struct RemapStateProvider {
       return Homme::subview(m_delta_phinh, kv.ie);
     default:
       Kokkos::abort("RemapStateProvider: invalid variable index.\n");
-      return ExecViewUnmanaged<Scalar[NP][NP][NUM_LEV]>();
+      return ExecViewUnmanaged<PT[NP][NP][NUM_LEV]>();
     }
   }
 };
