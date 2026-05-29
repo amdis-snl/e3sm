@@ -65,21 +65,21 @@ TEST_CASE("remap_interface", "vertical remap") {
   SECTION("states_only") {
     constexpr bool rsplit_non_zero = true;
     constexpr int qsize = 0;
-    using RF = RemapFunctor<rsplit_non_zero, PpmVertRemap<PpmMirrored>>;
+    using RF = RemapFunctor<rsplit_non_zero, PpmVertRemap<PpmMirrored<>>>;
     RF remap(qsize, elements, tracers, hvcoord);
     REQUIRE_NOTHROW(remap.run_remap(np1, n0_qdp, dt));
   }
   SECTION("tracers_only") {
     constexpr bool rsplit_non_zero = false;
     constexpr int qsize = QSIZE_D;
-    using RF = RemapFunctor<rsplit_non_zero, PpmVertRemap<PpmMirrored>>;
+    using RF = RemapFunctor<rsplit_non_zero, PpmVertRemap<PpmMirrored<>>>;
     RF remap(qsize, elements, tracers, hvcoord);
     REQUIRE_NOTHROW(remap.run_remap(np1, n0_qdp, dt));
   }
   SECTION("states_tracers") {
     constexpr bool rsplit_non_zero = true;
     constexpr int qsize = QSIZE_D;
-    using RF = RemapFunctor<rsplit_non_zero, PpmVertRemap<PpmMirrored>>;
+    using RF = RemapFunctor<rsplit_non_zero, PpmVertRemap<PpmMirrored<>>>;
     RF remap(qsize, elements, tracers, hvcoord);
     REQUIRE_NOTHROW(remap.run_remap(np1, n0_qdp, dt));
   }

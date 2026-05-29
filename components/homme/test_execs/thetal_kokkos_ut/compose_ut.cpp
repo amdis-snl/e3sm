@@ -186,7 +186,7 @@ struct Session {
     ct.init_buffers(fbm);
     ct.init_boundary_exchanges();
 
-    c.create<VerticalRemapManager>();
+    c.create<VerticalRemapManagerST<ScalarValue>>();
   }
 
   void cleanup () {

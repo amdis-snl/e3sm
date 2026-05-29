@@ -208,7 +208,7 @@ TEST_CASE("remap", "remap_testing") {
 
           // Create the remap functor
           // Note: ALL the options must be set in params *before* creating the vrm.
-          VerticalRemapManager vrm;
+          VerticalRemapManagerST<ScalarValue> vrm;
           FunctorsBuffersManager fbm;
           fbm.request_size(vrm.requested_buffer_size());
           fbm.allocate();
