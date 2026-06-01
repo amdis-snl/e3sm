@@ -16,8 +16,11 @@
 
 namespace Homme {
 
-struct VerticalRemapManager::Impl {
-  Impl(const SimulationParams &params, const Elements &e, const Tracers &t,
+template <typename ST>
+struct VerticalRemapManagerST<ST>::Impl {
+  using PT = PackType<ST>;
+
+  Impl(const SimulationParams &params, const ElementsST<ST> &e, const TracersST<ST> &t,
        const HybridVCoord &h, const bool remap_tracers)
     : m_hvcoord(h)
     , m_params(params)
@@ -44,21 +47,21 @@ struct VerticalRemapManager::Impl {
     if (m_params.remap_alg == RemapAlg::PPM_MIRRORED) {
       if (m_params.rsplit != 0) {
         remapper = std::make_shared<RemapFunctor<
-            true, PpmVertRemap<PpmMirrored>> >(
+            true, PpmVertRemap<PpmMirrored<ST>>, ST>>(
             qsize, m_elements, m_tracers, m_hvcoord, capacity);
       } else {
         remapper = std::make_shared<RemapFunctor<
-            false, PpmVertRemap<PpmMirrored>> >(
+            false, PpmVertRemap<PpmMirrored<ST>>, ST>>(
             qsize, m_elements, m_tracers, m_hvcoord, capacity);
       }
     } else if (m_params.remap_alg == RemapAlg::PPM_LIMITED_EXTRAP) {
       if (m_params.rsplit != 0) {
         remapper = std::make_shared<RemapFunctor<
-            true, PpmVertRemap<PpmLimitedExtrap>> >(
+            true, PpmVertRemap<PpmLimitedExtrap<ST>>, ST>>(
             qsize, m_elements, m_tracers, m_hvcoord, capacity);
       } else {
         remapper = std::make_shared<RemapFunctor<
-            false, PpmVertRemap<PpmLimitedExtrap>> >(
+            false, PpmVertRemap<PpmLimitedExtrap<ST>>, ST>>(
             qsize, m_elements, m_tracers, m_hvcoord, capacity);
       }
     } else {
@@ -67,7 +70,7 @@ struct VerticalRemapManager::Impl {
     }
   }
 
-  void setup (const Elements &e, const Tracers &t)
+  void setup (const ElementsST<ST> &e, const TracersST<ST> &t)
   {
     m_elements = e;
     m_tracers  = t;
@@ -75,28 +78,30 @@ struct VerticalRemapManager::Impl {
     setup_remapper();
   }
 
-  std::shared_ptr<Remap::Remapper> remapper;
+  std::shared_ptr<Remap::RemapperST<ST>> remapper;
 
   HybridVCoord     m_hvcoord;
   SimulationParams m_params;
-  Elements         m_elements;
-  Tracers          m_tracers;
+  ElementsST<ST>   m_elements;
+  TracersST<ST>    m_tracers;
   bool             m_remap_tracers;
 };
 
-VerticalRemapManager::VerticalRemapManager(const bool remap_tracers)
+template <typename ST>
+VerticalRemapManagerST<ST>::VerticalRemapManagerST(const bool remap_tracers)
   : is_setup(true)
 {
   const auto &h = Context::singleton().get<HybridVCoord>();
   const auto &p = Context::singleton().get<SimulationParams>();
-  const auto &e = Context::singleton().get<Elements>();
+  const auto &e = Context::singleton().get<ElementsST<ST>>();
   m_num_elems = e.num_elems();
-  const auto &t = Context::singleton().get<Tracers>();
+  const auto &t = Context::singleton().get<TracersST<ST>>();
   assert(p.params_set);
   p_.reset(new Impl(p, e, t, h, remap_tracers));
 }
 
-VerticalRemapManager::VerticalRemapManager(const int num_elems, const bool remap_tracers)
+template <typename ST>
+VerticalRemapManagerST<ST>::VerticalRemapManagerST(const int num_elems, const bool remap_tracers)
   : m_num_elems(num_elems)
   , is_setup(false)
 {
@@ -106,20 +111,22 @@ VerticalRemapManager::VerticalRemapManager(const int num_elems, const bool remap
   p_.reset(new Impl(p, h, remap_tracers));
 }
 
-void VerticalRemapManager::setup ()
+template <typename ST>
+void VerticalRemapManagerST<ST>::setup ()
 {
   assert(!is_setup);
 
-  const auto &e = Context::singleton().get<Elements>();
+  const auto &e = Context::singleton().get<ElementsST<ST>>();
   assert(m_num_elems == e.num_elems()); // Sanity check
 
-  const auto &t = Context::singleton().get<Tracers>();
+  const auto &t = Context::singleton().get<TracersST<ST>>();
   p_->setup(e,t);
 
   is_setup = true;
 }
 
-void VerticalRemapManager::run_remap(int np1, int np1_qdp, double dt) const {
+template <typename ST>
+void VerticalRemapManagerST<ST>::run_remap(int np1, int np1_qdp, double dt) const {
   assert(is_setup);
 
   assert(p_);
@@ -129,7 +136,8 @@ void VerticalRemapManager::run_remap(int np1, int np1_qdp, double dt) const {
 
 struct TempTagStruct  {};
 
-int VerticalRemapManager::requested_buffer_size () const {
+template <typename ST>
+int VerticalRemapManagerST<ST>::requested_buffer_size () const {
   assert (p_);
 
   if (is_setup) {
@@ -150,9 +158,10 @@ int VerticalRemapManager::requested_buffer_size () const {
       const int iters = 2;
       const int team_size = (iters*m_num_elems > 0 ? iters*m_num_elems : 1);
       TeamUtils<ExecSpace> dummy_tu(Homme::get_default_team_policy<ExecSpace,TempTagStruct>(team_size));
+      using PT = PackType<ST>;
 
-      using temp_type = ExecViewUnmanaged<Scalar*  [NP][NP][NUM_LEV  ]>;
-      using phi_type  = ExecViewUnmanaged<Scalar*  [NP][NP][NUM_LEV_P]>;
+      using temp_type = ExecViewUnmanaged<PT*  [NP][NP][NUM_LEV  ]>;
+      using phi_type  = ExecViewUnmanaged<PT*  [NP][NP][NUM_LEV_P]>;
 
       const int temp_size = temp_type::shmem_size(dummy_tu.get_num_ws_slots())/sizeof(Real);
       const int phi_size  = phi_type::shmem_size(dummy_tu.get_num_ws_slots())/sizeof(Real);
@@ -161,15 +170,23 @@ int VerticalRemapManager::requested_buffer_size () const {
   }
 }
 
-void VerticalRemapManager::init_buffers(const FunctorsBuffersManager& fbm) {
+template <typename ST>
+void VerticalRemapManagerST<ST>::init_buffers(const FunctorsBuffersManager& fbm) {
   assert (p_);
   assert (p_->remapper);
 
   p_->remapper->init_buffers(fbm);
 }
 
-std::shared_ptr<Remap::Remapper> VerticalRemapManager::get_remapper () const {
+template <typename ST>
+std::shared_ptr<Remap::RemapperST<ST>> VerticalRemapManagerST<ST>::get_remapper () const {
   return p_->remapper;
 }
+
+template struct VerticalRemapManagerST<Real>;
+
+#ifdef HOMMEXX_ENABLE_FAD_TYPES
+template struct VerticalRemapManagerST<DpFadType>;
+#endif
 
 } // namespace Homme

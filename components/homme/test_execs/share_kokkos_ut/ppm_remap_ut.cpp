@@ -405,7 +405,7 @@ public:
 TEST_CASE("ppm_mirrored", "vertical remap") {
   constexpr int num_elems = 2;
   constexpr int num_remap = 3;
-  ppm_remap_functor_test<PpmMirrored> remap_test_mirrored(num_elems, num_remap);
+  ppm_remap_functor_test<PpmMirrored<>> remap_test_mirrored(num_elems, num_remap);
   SECTION("grid") { remap_test_mirrored.test_grid(); }
   SECTION("ppm") { remap_test_mirrored.test_ppm(); }
   SECTION("remap") { remap_test_mirrored.test_remap(); }

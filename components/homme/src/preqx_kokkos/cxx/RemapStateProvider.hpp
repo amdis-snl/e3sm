@@ -19,11 +19,13 @@ class FunctorsBuffersManager;
 
 namespace Remap {
 
+template<typename ST>
 struct RemapStateProvider {
+  using PT = PackType<ST>;
 
-  ElementsState m_state;
+  ElementsStateST<ST> m_state;
 
-  explicit RemapStateProvider(const Elements& elements)
+  explicit RemapStateProvider(const ElementsST<ST>& elements)
    : m_state(elements.m_state) {}
 
   int requested_buffer_size (int /* num_teams */) const {
@@ -62,7 +64,7 @@ struct RemapStateProvider {
   void preprocess_state (const KernelVariables& /* kv */,
                          const int /* istate */,
                          const int /* np1 */,
-                         ExecViewUnmanaged<const Scalar[NP][NP][NUM_LEV]> /* dp */) const {
+                         ExecViewUnmanaged<const PT[NP][NP][NUM_LEV]> /* dp */) const {
     // Nothing to do here for preqx
   }
 
@@ -70,12 +72,12 @@ struct RemapStateProvider {
   void postprocess_state (const KernelVariables& /* kv */,
                           const int /* istate */,
                           const int /* np1 */,
-                          ExecViewUnmanaged<const Scalar[NP][NP][NUM_LEV]> /* dp */) const {
+                          ExecViewUnmanaged<const PT[NP][NP][NUM_LEV]> /* dp */) const {
     // Nothing to do here for preqx
   }
 
   KOKKOS_INLINE_FUNCTION
-  ExecViewUnmanaged<Scalar[NP][NP][NUM_LEV]>
+  ExecViewUnmanaged<PT[NP][NP][NUM_LEV]>
   get_state(const KernelVariables &kv, int np1, int var) const {
     assert(var>=0 && var<=2);
     switch (var) {
@@ -87,7 +89,7 @@ struct RemapStateProvider {
       return Homme::subview(m_state.m_t, kv.ie, np1);
     default:
       Kokkos::abort("RemapStateProvider: invalid variable index.\n");
-      return ExecViewUnmanaged<Scalar[NP][NP][NUM_LEV]>();
+      return ExecViewUnmanaged<PT[NP][NP][NUM_LEV]>();
     }
   }
 };

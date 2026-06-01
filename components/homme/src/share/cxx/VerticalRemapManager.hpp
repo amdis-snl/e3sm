@@ -9,23 +9,29 @@
 
 #include <memory>
 
+#include "Types.hpp"
+
 namespace Homme {
 
 class FunctorsBuffersManager;
 
-namespace Remap { class Remapper; }
+namespace Remap {
+template <typename ST> struct RemapperST;
+using Remapper = RemapperST<ScalarValue>;
+}
 
-struct VerticalRemapManager {
-  VerticalRemapManager(const bool remap_tracers=true);
+template <typename ST>
+struct VerticalRemapManagerST {
+  VerticalRemapManagerST(const bool remap_tracers=true);
 
-  VerticalRemapManager(const int num_elems, const bool remap_tracers=true);
+  VerticalRemapManagerST(const int num_elems, const bool remap_tracers=true);
 
   void run_remap(int np1, int np1_qdp, double dt) const;
 
   int requested_buffer_size () const;
   void init_buffers(const FunctorsBuffersManager& fbm);
 
-  std::shared_ptr<Remap::Remapper> get_remapper() const;
+  std::shared_ptr<Remap::RemapperST<ST>> get_remapper() const;
 
   bool setup_needed () { return !is_setup; }
 
@@ -38,6 +44,8 @@ private:
   int m_num_elems;
   bool is_setup;
 };
+
+using VerticalRemapManager = VerticalRemapManagerST<ScalarValue>;
 
 }
 
