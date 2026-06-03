@@ -33,6 +33,8 @@ template<typename ST>
 class HyperviscosityFunctorImplST
 {
   using PT = PackType<ST>;
+  template<typename Tag>
+  using MDRange = Kokkos::MDRangePolicy<Tag,ExecSpace,Kokkos::Rank<4>>;
 
   // TODO: don't pass nu_ratio1/2. Instead, do like in F90: compute them from
   //       nu, nu_div, and hv_scaling
@@ -84,12 +86,13 @@ class HyperviscosityFunctorImplST
 
 public:
 
-  struct TagFirstLaplaceHV {};
+  struct TagPreprocess {};
+  struct TagPostprocess {};
+  struct TagFirstLaplace {};
   struct TagSecondLaplaceConstHV {};
   struct TagSecondLaplaceTensorHV {};
   struct TagUpdateStates {};
-  struct TagApplyInvMass {};
-  struct TagHyperPreExchange {};
+
   struct TagNutopUpdateStates {};
   struct TagNutopLaplace {};
 
@@ -116,122 +119,65 @@ public:
 
   // first iter of laplace, const hv
   KOKKOS_INLINE_FUNCTION
-  void operator() (const TagFirstLaplaceHV&, const TeamMember& team) const {
-    using Column = decltype(Homme::subview(m_state.m_phinh_i,0,0,0,0));
-    using RefColumn = decltype(Homme::subview(m_state.m_ref_states.phi_i_ref,0,0,0));
+  void operator() (const TagPreprocess&, const int ie, const int igp, const int jgp, const int ilev) const
+  {
+    auto& vtheta = m_state.m_vtheta_dp(ie,m_data.np1,igp,jgp,ilev);
+    auto& dp     = m_state.m_dp3d (ie,m_data.np1,igp,jgp,ilev);
 
-    KernelVariables kv(team, m_tu);
-    // Subtract the reference states from the states
-    Kokkos::parallel_for(Kokkos::TeamThreadRange(kv.team,NP*NP),
-                         [&](const int idx) {
-      const int igp = idx / NP;
-      const int jgp = idx % NP;
+    vtheta /= dp;
+    vtheta -= m_state.m_ref_states.theta_ref(ie,igp,jgp,ilev);
+    dp -= m_state.m_ref_states.dp_ref(ie,igp,jgp,ilev);
 
-      auto vtheta = Homme::subview(m_state.m_vtheta_dp,kv.ie,m_data.np1,igp,jgp);
-      auto dp    = Homme::subview(m_state.m_dp3d,kv.ie,m_data.np1,igp,jgp);
-
-      auto theta_ref = Homme::subview(m_state.m_ref_states.theta_ref,kv.ie,igp,jgp);
-      auto dp_ref    = Homme::subview(m_state.m_ref_states.dp_ref,kv.ie,igp,jgp);
-
-      Column phi_i;
-      RefColumn phi_i_ref;
-
-      if (m_process_nh_vars) {
-        phi_i = Homme::subview(m_state.m_phinh_i,kv.ie,m_data.np1,igp,jgp);
-        phi_i_ref = Homme::subview(m_state.m_ref_states.phi_i_ref,kv.ie,igp,jgp);
-      }
-      Kokkos::parallel_for(Kokkos::ThreadVectorRange(kv.team,NUM_LEV),
-                           [&](const int ilev) {
-        vtheta(ilev) -= theta_ref(ilev);
-        dp(ilev)     -= dp_ref(ilev);
-        if (m_process_nh_vars) {
-          phi_i(ilev)  -= phi_i_ref(ilev);
-        }
-      });
-
-//defined/used where?
-#ifndef XX_NONBFB_COMING
-      // It would be fine to not even bother with the surface level, since
-      // phitens is only NUM_LEV long, so all the hv stuff does not even happen
-      // at NUM_LEV_P (unless NUM_LEV_P==NUM_LEV). However, removing the subtraction
-      // and addition of phi_i_ref at NUM_LEV_P introduces NON BFB diffs.
-      if (m_process_nh_vars && NUM_LEV!=NUM_LEV_P) {
-        Kokkos::single(Kokkos::PerThread(kv.team),[&](){
-          phi_i(NUM_LEV_P-1) -= phi_i_ref(NUM_LEV_P-1);
-        });
-      }
-#endif
-    }); //team thread range
-
-    //to ensure profiles are fully subtracted
-    kv.team_barrier();
-
-    // Laplacian of layer thickness
-    m_sphere_ops.laplace_simple(kv,
-                   Homme::subview(m_state.m_dp3d,kv.ie,m_data.np1),
-                   Homme::subview(m_buffers.dptens,kv.ie));
-    // Laplacian of theta
-    m_sphere_ops.laplace_simple(kv,
-                   Homme::subview(m_state.m_vtheta_dp,kv.ie,m_data.np1),
-                   Homme::subview(m_buffers.ttens,kv.ie));
+    m_buffers.dptens(ie,igp,jgp,ilev)  = dp;
+    m_buffers.ttens(ie,igp,jgp,ilev)   = vtheta;
+    m_buffers.vtens(ie,0,igp,jgp,ilev) = m_state.m_v(ie,m_data.np1,0,igp,jgp,ilev);
+    m_buffers.vtens(ie,1,igp,jgp,ilev) = m_state.m_v(ie,m_data.np1,1,igp,jgp,ilev);
 
     if (m_process_nh_vars) {
-      // Laplacian of vertical velocity (do not compute last interface)
-      m_sphere_ops.template laplace_simple<NUM_LEV,NUM_LEV_P>(kv,
-                     Homme::subview(m_state.m_w_i,kv.ie,m_data.np1),
-                     Homme::subview(m_buffers.wtens,kv.ie));
-      // Laplacian of geopotential (do not compute last interface)
-      m_sphere_ops.template laplace_simple<NUM_LEV,NUM_LEV_P>(kv,
-                     Homme::subview(m_state.m_phinh_i,kv.ie,m_data.np1),
-                     Homme::subview(m_buffers.phitens,kv.ie));
-    }//if
-
-    // Laplacian of velocity
-    m_sphere_ops.vlaplace_sphere_wk_contra(kv, m_data.nu_ratio1,
-                              Homme::subview(m_state.m_v,kv.ie,m_data.np1),
-                              Homme::subview(m_buffers.vtens,kv.ie));
-  }//TagFirstLaplaceHV
-
-  // Laplace for nu_top
-  KOKKOS_INLINE_FUNCTION
-  void operator()(const TagNutopLaplace&, const TeamMember& team) const;
-
-  KOKKOS_INLINE_FUNCTION
-  void operator()(const TagNutopUpdateStates&, const TeamMember& team) const;
-
-  //second iter of laplace, const hv
-  KOKKOS_INLINE_FUNCTION
-  void operator() (const TagSecondLaplaceConstHV&, const TeamMember& team) const {
-    KernelVariables kv(team, m_tu);
-    // Laplacian of layers thickness
-    m_sphere_ops.laplace_simple(kv,
-                   Homme::subview(m_buffers.dptens,kv.ie),
-                   Homme::subview(m_buffers.dptens,kv.ie));
-    // Laplacian of theta
-    m_sphere_ops.laplace_simple(kv,
-                   Homme::subview(m_buffers.ttens,kv.ie),
-                   Homme::subview(m_buffers.ttens,kv.ie));
-
-    if (m_process_nh_vars) {
-      // Laplacian of vertical velocity
-      m_sphere_ops.laplace_simple(kv,
-                     Homme::subview(m_buffers.wtens,kv.ie),
-                     Homme::subview(m_buffers.wtens,kv.ie));
-      // Laplacian of vertical geopotential
-      m_sphere_ops.laplace_simple(kv,
-                     Homme::subview(m_buffers.phitens,kv.ie),
-                     Homme::subview(m_buffers.phitens,kv.ie));
+      m_buffers.phitens = m_state.m_phinh_i(ie,m_data.np1,igp,jgp,ilev) - m_state.m_ref_states.phi_i_ref(ie,igp,jgp,ilev);
+      m_buffers.wtens = m_state.m_w_i(ie,m_data.np1,igp,jgp,ilev);
     }
-    // Laplacian of velocity
-    m_sphere_ops.vlaplace_sphere_wk_contra(kv, m_data.nu_ratio2,
-                              Homme::subview(m_buffers.vtens,kv.ie),
-                              Homme::subview(m_buffers.vtens,kv.ie));
-  } //tag second laplace const hv
+  }
+
+  KOKKOS_INLINE_FUNCTION
+  void operator() (const TagPostprocess&, const int ie, const int igp, const int jgp, const int ilev) const
+  {
+    auto& vtheta = m_state.m_vtheta_dp(ie,m_data.np1,igp,jgp,ilev);
+    auto& dp     = m_state.m_dp3d (ie,m_data.np1,igp,jgp,ilev);
+
+    vtheta += m_state.m_ref_states.theta_ref(ie,igp,jgp,ilev);
+    dp     += m_state.m_ref_states.dp_ref   (ie,igp,jgp,ilev);
+    vtheta *= dp;
+
+    dp = m_buffers.dptens(ie,igp,jgp,ilev);
+    vtheta = m_buffers.ttens(ie,igp,jgp,ilev);
+    m_state.m_v(ie,m_data.np1,0,igp,jgp,ilev) += m_data.dt_hvs*m_buffers.vtens(ie,0,igp,jgp,ilev);
+    m_state.m_v(ie,m_data.np1,1,igp,jgp,ilev) += m_data.dt_hvs*m_buffers.vtens(ie,1,igp,jgp,ilev);
+
+    if (m_process_nh_vars) {
+      m_state.m_phinh_i (ie,m_data.np1,igp,jgp,ilev) = m_buffers.phitens(ie,igp,jgp,ilev) +  m_state.m_ref_states.phi_i_ref(ie,igp,jgp,ilev);
+      m_state.m_w_i (ie,m_data.np1,igp,jgp,ilev) = m_buffers.wtens(ie,igp,jgp,ilev);
+      if (ilev==NUM_LEV) {
+        using InfoI = ColInfo<NUM_INTERFACE_LEV>;
+        using InfoM = ColInfo<NUM_PHYSICAL_LEV>;
+        constexpr Real g = PhysicalConstants::g;
+        constexpr int LAST_MID_PACK_END = InfoM::LastPackEnd;
+        constexpr int LAST_INT_PACK_END = InfoI::LastPackEnd;
+
+        const auto& u = m_state.m_v(ie,m_data.np1,0,igp,jgp,ilev)[LAST_MID_PACK_END];
+        const auto& v = m_state.m_v(ie,m_data.np1,1,igp,jgp,ilev)[LAST_MID_PACK_END];
+        const auto& grad_x = m_geometry.m_gradphis(ie,0,igp,jgp);
+        const auto& grad_y = m_geometry.m_gradphis(ie,1,igp,jgp);
+        auto& w = m_state.m_w_i(ie,m_data.np1,igp,jgp,ilev)[LAST_INT_PACK_END];
+        w = (u*grad_x+v*grad_y) / g;
+      }
+    }
+  }
 
   //second iter of laplace, tensor hv
   KOKKOS_INLINE_FUNCTION
-  void operator() (const TagSecondLaplaceTensorHV&, const TeamMember& team) const {
-    KernelVariables kv(team, m_tu);
+  void operator() (const TagLaplaceTensorHV&, const TeamMember& team) const {
+    KernelVariables kv(team);
     // Laplacian of layers thickness
     m_sphere_ops.laplace_tensor(kv,
                    Homme::subview(m_geometry.m_tensorvisc,kv.ie),
@@ -261,139 +207,43 @@ public:
                    Homme::subview(m_geometry.m_vec_sph2cart,kv.ie),
                    Homme::subview(m_buffers.vtens,kv.ie),
                    Homme::subview(m_buffers.vtens,kv.ie));
-  } //SecondLaplaceTensorHV
+  } // LaplaceTensorHV
+
+  // Laplace for nu_top
+  KOKKOS_INLINE_FUNCTION
+  void operator()(const TagNutopLaplace&, const TeamMember& team) const;
 
   KOKKOS_INLINE_FUNCTION
-  void operator() (const TagUpdateStates&, const TeamMember& team) const {
-    KernelVariables kv(team, m_tu);
+  void operator()(const TagNutopUpdateStates&, const TeamMember& team) const;
 
-    using MidColumn = decltype(Homme::subview(m_buffers.wtens,0,0,0));
-    using IntColumn = decltype(Homme::subview(m_state.m_w_i,0,0,0,0));
-    Kokkos::parallel_for(Kokkos::TeamThreadRange(kv.team,NP*NP),
-                         [&](const int idx) {
-      const int igp = idx / NP;
-      const int jgp = idx % NP;
-
-      // Add Xtens quantities back to the states, except for vtheta
-      auto u = Homme::subview(m_state.m_v,kv.ie,m_data.np1,0,igp,jgp);
-      auto v = Homme::subview(m_state.m_v,kv.ie,m_data.np1,1,igp,jgp);
-      auto vtheta = Homme::subview(m_state.m_vtheta_dp,kv.ie,m_data.np1,igp,jgp);
-      auto dp     = Homme::subview(m_state.m_dp3d,kv.ie,m_data.np1,igp,jgp);
-
-      auto utens   = Homme::subview(m_buffers.vtens,kv.ie,0,igp,jgp);
-      auto vtens   = Homme::subview(m_buffers.vtens,kv.ie,1,igp,jgp);
-      auto ttens   = Homme::subview(m_buffers.ttens,kv.ie,igp,jgp);
-      auto dptens  = Homme::subview(m_buffers.dptens,kv.ie,igp,jgp);
-      const auto& rspheremp = m_geometry.m_rspheremp(kv.ie,igp,jgp);
-
-      MidColumn wtens, phitens;
-      IntColumn w, phi_i;
-
-      if (m_process_nh_vars) {
-        wtens   = Homme::subview(m_buffers.wtens,kv.ie,igp,jgp);
-        phitens = Homme::subview(m_buffers.phitens,kv.ie,igp,jgp);
-        w       = Homme::subview(m_state.m_w_i,kv.ie,m_data.np1,igp,jgp);
-        phi_i   = Homme::subview(m_state.m_phinh_i,kv.ie,m_data.np1,igp,jgp);
-      }
-
-      Kokkos::parallel_for(Kokkos::ThreadVectorRange(kv.team,NUM_LEV),
-                           [&](const int ilev) {
-
-        utens(ilev)   *= m_data.dt_hvs*rspheremp;
-        vtens(ilev)   *= m_data.dt_hvs*rspheremp;
-        ttens(ilev)   *= m_data.dt_hvs*rspheremp;
-        dptens(ilev)  *= m_data.dt_hvs*rspheremp;
-
-
-        u(ilev)      += utens(ilev);
-        v(ilev)      += vtens(ilev);
-        vtheta(ilev) += ttens(ilev);
-        dp(ilev)     += dptens(ilev);
-        if (m_process_nh_vars) {
-          wtens(ilev)   *= m_data.dt_hvs * rspheremp;
-          phitens(ilev) *= m_data.dt_hvs * rspheremp;
-
-          w(ilev)      += wtens(ilev);
-          phi_i(ilev)  += phitens(ilev);
-        }
-      });
-    });
-  }  //tagupdatestates
-
+  //second iter of laplace, const hv
   KOKKOS_INLINE_FUNCTION
-  void operator()(const TagHyperPreExchange, const TeamMember &team) const {
-    using Column = decltype(Homme::subview(m_state.m_phinh_i,0,0,0,0));
-    using RefColumn = decltype(Homme::subview(m_state.m_ref_states.phi_i_ref,0,0,0));
-
+  void operator() (const TagLaplaceConstHV&, const TeamMember& team) const {
     KernelVariables kv(team, m_tu);
-    Kokkos::parallel_for(Kokkos::TeamThreadRange(kv.team, NP * NP),
-                         [&](const int &point_idx) {
-      const int igp = point_idx / NP;
-      const int jgp = point_idx % NP;
+    // Laplacian of layers thickness
+    m_sphere_ops.laplace_simple(kv,
+                   Homme::subview(m_buffers.dptens,kv.ie),
+                   Homme::subview(m_buffers.dptens,kv.ie));
+    // Laplacian of theta
+    m_sphere_ops.laplace_simple(kv,
+                   Homme::subview(m_buffers.ttens,kv.ie),
+                   Homme::subview(m_buffers.ttens,kv.ie));
 
-      const auto dpdiss_ave = Homme::subview(m_derived.m_dpdiss_ave,kv.ie, igp, jgp);
-      const auto dpdiss_bih = Homme::subview(m_derived.m_dpdiss_biharmonic,kv.ie, igp, jgp);
-      const auto dp3d = Homme::subview(m_state.m_dp3d,kv.ie, m_data.np1, igp, jgp);
-      const auto dp_ref = Homme::subview(m_state.m_ref_states.dp_ref,kv.ie, igp, jgp);
-      const auto theta = Homme::subview(m_state.m_vtheta_dp,kv.ie, m_data.np1, igp, jgp);
-      const auto theta_ref = Homme::subview(m_state.m_ref_states.theta_ref,kv.ie, igp, jgp);
-      const auto dptens = Homme::subview(m_buffers.dptens,kv.ie, igp, jgp);
-
-      Column phi;
-      RefColumn phi_ref;
-
-      if (m_process_nh_vars) {
-        phi = Homme::subview(m_state.m_phinh_i,kv.ie, m_data.np1, igp, jgp);
-        phi_ref = Homme::subview(m_state.m_ref_states.phi_i_ref,kv.ie, igp, jgp);
-      }
-
-      Kokkos::parallel_for(Kokkos::ThreadVectorRange(kv.team, NUM_LEV),
-                           [&](const int &ilev) {
-
-        dp3d(ilev) += dp_ref(ilev);
-        theta(ilev) += theta_ref(ilev);
-        if (m_process_nh_vars) {
-          phi(ilev) += phi_ref(ilev);
-        }
-        if (m_data.nu_p>0) {
-          dpdiss_ave(ilev) += m_data.eta_ave_w*dp3d(ilev) / m_data.hypervis_subcycle;
-          dpdiss_bih(ilev) += m_data.eta_ave_w*dptens(ilev) / m_data.hypervis_subcycle;
-        }
-      });
-
-//where is it set?
-#ifndef XX_NONBFB_COMING
-      // It would be fine to not even bother with the surface level, since
-      // phitens is only NUM_LEV long, so all the hv stuff does not even happen
-      // at NUM_LEV_P (unless NUM_LEV_P==NUM_LEV). However, removing the subtraction
-      // and addition of phi_i_ref at NUM_LEV_P introduces NON BFB diffs.
-      if (m_process_nh_vars && NUM_LEV!=NUM_LEV_P) {
-        Kokkos::single(Kokkos::PerThread(kv.team),[&](){
-          phi(NUM_LEV_P-1) += phi_ref(NUM_LEV_P-1);
-        });
-      }
-#endif
-    });//teamthreadrange loop
-    kv.team_barrier();
-
-    Kokkos::parallel_for(Kokkos::TeamThreadRange(kv.team, NP * NP),
-                         [&](const int &point_idx) {
-      const int igp = point_idx / NP;
-      const int jgp = point_idx % NP;
-      Kokkos::parallel_for(Kokkos::ThreadVectorRange(kv.team, NUM_LEV),
-                           [&](const int &lev) {
-        m_buffers.vtens(kv.ie, 0, igp, jgp, lev) *= -m_data.nu;
-        m_buffers.vtens(kv.ie, 1, igp, jgp, lev) *= -m_data.nu;
-        m_buffers.ttens(kv.ie, igp, jgp, lev) *= -m_data.nu;
-        m_buffers.dptens(kv.ie, igp, jgp, lev) *= -m_data.nu_p;
-        if (m_process_nh_vars) {
-          m_buffers.wtens(kv.ie, igp, jgp, lev) *= -m_data.nu;
-          m_buffers.phitens(kv.ie, igp, jgp, lev) *= -m_data.nu_s;
-        }
-      });//thread vector
-
-    });//parallel 4
-  } //taghyperpreexchange
+    if (m_process_nh_vars) {
+      // Laplacian of vertical velocity
+      m_sphere_ops.laplace_simple(kv,
+                     Homme::subview(m_buffers.wtens,kv.ie),
+                     Homme::subview(m_buffers.wtens,kv.ie));
+      // Laplacian of vertical geopotential
+      m_sphere_ops.laplace_simple(kv,
+                     Homme::subview(m_buffers.phitens,kv.ie),
+                     Homme::subview(m_buffers.phitens,kv.ie));
+    }
+    // Laplacian of velocity
+    m_sphere_ops.vlaplace_sphere_wk_contra(kv, m_data.nu_ratio2,
+                              Homme::subview(m_buffers.vtens,kv.ie),
+                              Homme::subview(m_buffers.vtens,kv.ie));
+  } //tag second laplace const hv
 
 protected:
 
@@ -411,9 +261,12 @@ protected:
   bool m_process_nh_vars;
 
   // Policies
-  Kokkos::TeamPolicy<ExecSpace,TagUpdateStates>     m_policy_update_states;
-  Kokkos::TeamPolicy<ExecSpace,TagFirstLaplaceHV>   m_policy_first_laplace;
-  Kokkos::TeamPolicy<ExecSpace,TagHyperPreExchange> m_policy_pre_exchange;
+  MDRange<TagPreprocess>   m_policy_pre_process;
+  MDRange<TagPostprocess>  m_policy_post_process;
+
+  Kokkos::TeamPolicy<ExecSpace,TagFirstLaplace>           m_policy_first_laplace;
+  Kokkos::TeamPolicy<ExecSpace,TagSecondLaplaceConstHV>   m_policy_second_laplace_const;
+  Kokkos::TeamPolicy<ExecSpace,TagSecondLaplaceTensorHV>  m_policy_second_laplace_tensor;
 
   Kokkos::TeamPolicy<ExecSpace,TagNutopLaplace>      m_policy_nutop_laplace;
   Kokkos::TeamPolicy<ExecSpace,TagNutopUpdateStates> m_policy_nutop_update_states;

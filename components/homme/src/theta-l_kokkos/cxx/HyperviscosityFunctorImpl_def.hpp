@@ -32,17 +32,21 @@ HyperviscosityFunctorImplST (const SimulationParams&           params,
  , m_geometry (geometry)
  , m_sphere_ops (Context::singleton().get<SphereOperatorsST<ST>>())
  , m_hvcoord (Context::singleton().get<HybridVCoord>())
- , m_policy_update_states (Homme::get_default_team_policy<ExecSpace,TagUpdateStates>(m_num_elems))
- , m_policy_first_laplace (Homme::get_default_team_policy<ExecSpace,TagFirstLaplaceHV>(m_num_elems))
- , m_policy_pre_exchange (Homme::get_default_team_policy<ExecSpace, TagHyperPreExchange>(m_num_elems))
+ // , m_policy_update_states (Homme::get_default_team_policy<ExecSpace,TagUpdateStates>(m_num_elems))
+ , m_policy_first_laplace (Homme::get_default_team_policy<ExecSpace,TagFirstLaplace>(m_num_elems))
+ , m_policy_second_laplace_const (Homme::get_default_team_policy<ExecSpace,TagSecondLaplaceConstHV>(m_num_elems))
+ , m_policy_second_laplace_tensor (Homme::get_default_team_policy<ExecSpace,TagSecondLaplaceTensorHV>(m_num_elems))
  , m_policy_nutop_laplace (Homme::get_default_team_policy<ExecSpace, TagNutopLaplace>(m_num_elems))
  , m_policy_nutop_update_states (Homme::get_default_team_policy<ExecSpace,TagNutopUpdateStates>(m_num_elems))
- , m_tu(m_policy_update_states)
+ , m_tu(m_policy_first_laplace)
 {
   init_params(params);
 
   // Make sure the sphere operators have buffers large enough to accommodate this functor's needs
   m_sphere_ops.allocate_buffers(m_tu);
+
+  m_policy_pre_process  = MDRange<TagPreprocess> ({0,0,0,0},{m_state.num_elems(),NP,NP,NUM_LEV});
+  m_policy_post_process = MDRange<TagPostprocess>({0,0,0,0},{m_state.num_elems(),NP,NP,NUM_LEV});
 }
 
 template<typename ST>
@@ -53,14 +57,18 @@ HyperviscosityFunctorImplST (const int num_elems, const SimulationParams &params
 		        params.nu_ratio1,params.nu_ratio2,params.nu_top,params.nu,
 		        params.nu_p,params.nu_s,params.hypervis_scaling)
   , m_hvcoord (Context::singleton().get<HybridVCoord>())
-  , m_policy_update_states (Homme::get_default_team_policy<ExecSpace,TagUpdateStates>(m_num_elems))
-  , m_policy_first_laplace (Homme::get_default_team_policy<ExecSpace,TagFirstLaplaceHV>(m_num_elems))
-  , m_policy_pre_exchange (Homme::get_default_team_policy<ExecSpace, TagHyperPreExchange>(m_num_elems))
+  // , m_policy_update_states (Homme::get_default_team_policy<ExecSpace,TagUpdateStates>(m_num_elems))
+ , m_policy_first_laplace (Homme::get_default_team_policy<ExecSpace,TagFirstLaplace>(m_num_elems))
+ , m_policy_second_laplace_const (Homme::get_default_team_policy<ExecSpace,TagSecondLaplaceConstHV>(m_num_elems))
+ , m_policy_second_laplace_tensor (Homme::get_default_team_policy<ExecSpace,TagSecondLaplaceTensorHV>(m_num_elems))
   , m_policy_nutop_laplace (Homme::get_default_team_policy<ExecSpace, TagNutopLaplace>(m_num_elems))
   , m_policy_nutop_update_states (Homme::get_default_team_policy<ExecSpace,TagNutopUpdateStates>(m_num_elems))
-  , m_tu(m_policy_update_states)
+  , m_tu(m_policy_first_laplace)
 {
   init_params(params);
+
+  m_policy_pre_process   = MDRange<TagPreprocess> ({0,0,0,0},{m_state.num_elems(),NP,NP,NUM_LEV});
+  m_policy_post_process  = MDRange<TagPostprocess>({0,0,0,0},{m_state.num_elems(),NP,NP,NUM_LEV});
 }
 
 template<typename ST>
@@ -268,91 +276,16 @@ void HyperviscosityFunctorImplST<ST>::run (const int np1, const Real dt, const R
   }
   m_data.eta_ave_w = eta_ave_w;
 
-  // Convert vtheta_dp -> theta
-  auto state = m_state;
-  Kokkos::parallel_for(Homme::get_default_team_policy<ExecSpace>(state.num_elems()),
-                       KOKKOS_LAMBDA(const TeamMember& team) {
-    const int ie = team.league_rank();
-    Kokkos::parallel_for(Kokkos::TeamThreadRange(team,NP*NP),
-                         [&](const int idx) {
-      const int igp = idx / NP;
-      const int jgp = idx % NP;
-
-      // theta->vtheta
-      auto vtheta = Homme::subview(state.m_vtheta_dp,ie,np1,igp,jgp);
-      auto dp = Homme::subview(state.m_dp3d,ie,np1,igp,jgp);
-      Kokkos::parallel_for(Kokkos::ThreadVectorRange(team,NUM_LEV),
-                           [&](const int ilev) {
-        vtheta(ilev) /= dp(ilev);
-      });
-    });
-  });
+  // Copy from state views into *tens views
+  Kokkos::parallel_for (m_policy_pre_process,*this);
   Kokkos::fence();
 
+  // Apply biharmonic difffusion
   for (int icycle = 0; icycle < m_data.hypervis_subcycle; ++icycle) {
     GPTLstart("hvf-bhwk");
     biharmonic_wk_theta ();
     GPTLstop("hvf-bhwk");
-
-    Kokkos::parallel_for(m_policy_pre_exchange, *this);
-    Kokkos::fence();
-
-    // Exchange
-    assert (m_be->is_registration_completed());
-    GPTLstart("hvf-bexch");
-    m_be->exchange();
-    GPTLstop("hvf-bexch");
-
-    // Update states
-    Kokkos::parallel_for(m_policy_update_states, *this);
-    Kokkos::fence();
-  } //subcycle
-
-  // Convert theta back to vtheta, and adjust w at surface
-  auto geo = m_geometry;
-  auto process_nh_vars = m_process_nh_vars;
-  Kokkos::parallel_for(Homme::get_default_team_policy<ExecSpace>(state.num_elems()),
-                       KOKKOS_LAMBDA(const TeamMember& team) {
-    const int ie = team.league_rank();
-    Kokkos::parallel_for(Kokkos::TeamThreadRange(team,NP*NP),
-                         [&](const int idx) {
-      const int igp = idx / NP;
-      const int jgp = idx % NP;
-
-      // theta->vtheta
-      auto vtheta = Homme::subview(state.m_vtheta_dp,ie,np1,igp,jgp);
-      auto dp = Homme::subview(state.m_dp3d,ie,np1,igp,jgp);
-      Kokkos::parallel_for(Kokkos::ThreadVectorRange(team,NUM_LEV),
-                           [&](const int ilev) {
-        vtheta(ilev) *= dp(ilev);
-      });
-
-      // Fix w at surface:
-      // Adjust w_i at the surface, since velocity has changed
-      if (process_nh_vars) {
-        Kokkos::single(Kokkos::PerThread(team),[&](){
-          using InfoI = ColInfo<NUM_INTERFACE_LEV>;
-          using InfoM = ColInfo<NUM_PHYSICAL_LEV>;
-          constexpr int LAST_MID_PACK     = InfoM::LastPack;
-          constexpr int LAST_MID_PACK_END = InfoM::LastPackEnd;
-          constexpr int LAST_INT_PACK     = InfoI::LastPack;
-          constexpr int LAST_INT_PACK_END = InfoI::LastPackEnd;
-          constexpr Real g = PhysicalConstants::g;
-
-          const auto& grad_x = geo.m_gradphis(ie,0,igp,jgp);
-          const auto& grad_y = geo.m_gradphis(ie,1,igp,jgp);
-          const auto& u = state.m_v(ie,np1,0,igp,jgp,LAST_MID_PACK)[LAST_MID_PACK_END];
-          const auto& v = state.m_v(ie,np1,1,igp,jgp,LAST_MID_PACK)[LAST_MID_PACK_END];
-
-          auto& w = state.m_w_i(ie,np1,igp,jgp,LAST_INT_PACK)[LAST_INT_PACK_END];
-
-          w = (u*grad_x+v*grad_y) / g;
-        });
-      }
-    });
-  });//conversion back to vtheta
-
-  Kokkos::fence();
+  }
 
   // sponge layer 
   if (m_data.nu_top > 0) {
@@ -366,19 +299,18 @@ void HyperviscosityFunctorImplST<ST>::run (const int np1, const Real dt, const R
       GPTLstart("hvf-bexch");
       m_be_tom->exchange();
       GPTLstop("hvf-bexch");
-
-      Kokkos::parallel_for(m_policy_nutop_update_states, *this);
-      Kokkos::fence();
     }
   } // for sponge layer
+
+  // Copy from *tens views back into state views
+  Kokkos::parallel_for (m_policy_post_process,*this);
+  Kokkos::fence();
+
 } // run()
 
 template<typename ST>
 void HyperviscosityFunctorImplST<ST>::biharmonic_wk_theta() const
 {
-  // For the first laplacian we use a differnt kernel, which uses directly the states
-  // at timelevel np1 as inputs, and subtracts the reference states.
-  // This way we avoid copying the states to *tens buffers.
   Kokkos::parallel_for(m_policy_first_laplace, *this);
   Kokkos::fence();
 
@@ -389,16 +321,18 @@ void HyperviscosityFunctorImplST<ST>::biharmonic_wk_theta() const
   GPTLstop("hvf-bexch");
 
   // Compute second laplacian, tensor or const hv
-  const int ne = m_geometry.num_elems();
   if ( m_data.consthv ) {
-    auto policy = Homme::get_default_team_policy<ExecSpace,TagSecondLaplaceConstHV>(ne);
-    Kokkos::parallel_for(policy, *this);
-  }else{
-    auto policy = Homme::get_default_team_policy<ExecSpace,TagSecondLaplaceTensorHV>(ne);
-    Kokkos::parallel_for(policy, *this);
+    Kokkos::parallel_for(m_policy_second_laplace_const, *this);
+  } else {
+    Kokkos::parallel_for(m_policy_second_laplace_tensor, *this);
   }
   Kokkos::fence();
-} //biharmonic
+
+  assert (m_be->is_registration_completed());
+  GPTLstart("hvf-bexch");
+  m_be->exchange(m_geometry.m_rspheremp);
+  GPTLstop("hvf-bexch");
+}
 
 // Laplace for nu_top
 template<typename ST>
