@@ -41,6 +41,8 @@ template <typename FadType, typename rngAlg, typename PDF>
 void genRandArray(FadType *const x, int length, rngAlg &engine, PDF &&pdf) {
   for (int i = 0; i < length; ++i) {
     x[i] = pdf(engine);
+    for (int k=0; k<x[i].size(); ++k)
+      x[i].fastAccessDx(k) = pdf(engine);
   }
 }
 #endif
