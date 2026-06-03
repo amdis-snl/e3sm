@@ -367,8 +367,16 @@ if (NOT HOMMEXX_ENABLE_FWD_SENS)
   cxx_unit_test_add_test(gllfvremap_planar_ut gllfvremap_ut ${NUM_CPUS} "hommexx -planar")
 endif()
 
+include (EkatCreateUnitTest)
+# State generic tests
+EkatCreateUnitTest (state_ut
+  state_ut.cpp
+  COMPILER_CXX_DEFS
+  LIBS thetal_kokkos_ut_lib
+  LABELS AMDIS
+)
+
 if (HOMMEXX_ENABLE_FAD_TYPES)
-  include (EkatCreateUnitTest)
 
   # Caar sacado derivatives tests
   EkatCreateUnitTest (caar_sacado_ut
