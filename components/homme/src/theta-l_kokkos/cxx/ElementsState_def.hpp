@@ -27,17 +27,6 @@
 
 namespace Homme {
 
-void RefStates::init(const int num_elems) {
-  dp_ref = decltype(dp_ref)("dp_ref",num_elems);
-  phi_i_ref = decltype(phi_i_ref)("phi_i_ref",num_elems);
-  theta_ref = decltype(theta_ref)("theta_ref",num_elems);
-
-  m_num_elems = num_elems;
-
-  m_policy = get_default_team_policy<ExecSpace>(num_elems);
-  m_tu     = TeamUtils<ExecSpace>(m_policy);
-}
-
 template<typename ST>
 void ElementsStateST<ST>::init(const int num_elems) {
   m_num_elems = num_elems;
