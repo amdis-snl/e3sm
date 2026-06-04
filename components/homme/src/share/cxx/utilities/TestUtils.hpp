@@ -41,6 +41,8 @@ template <typename FadType, typename rngAlg, typename PDF>
 void genRandArray(FadType *const x, int length, rngAlg &engine, PDF &&pdf) {
   for (int i = 0; i < length; ++i) {
     x[i] = pdf(engine);
+    for (int k=0; k<x[i].size(); ++k)
+      x[i].fastAccessDx(k) = pdf(engine);
   }
 }
 #endif
@@ -87,6 +89,82 @@ inline Real compare_answers(Real target, ScalarValue computed,
   return compare_answers(target,ADValue(computed),relative_coeff);
 }
 #endif
+
+// If last_extent=-1, views last extent must match. Otherwise we compare
+// entries (along last dim) only up to the provided extent.
+template<typename V1, typename V2>
+std::enable_if_t<Kokkos::is_view_v<V1> and Kokkos::is_view_v<V2>, bool>
+views_are_equal(const V1& v1, const V2& v2, int last_extent = 0)
+{
+  if constexpr (v1.rank!=v2.rank)
+    return false;
+
+  constexpr int N = v1.rank;
+  for (int i=0; i<N-1; ++i)
+    if (v1.extent(i)!=v2.extent(i))
+      return false;
+
+  if (last_extent>0) {
+    /// If views are smaller than provided extent, something is off
+    if (v1.extent(N-1)<last_extent or v2.extent(N-1)<last_extent)
+      return false;
+  } else {
+    if (v1.extent(N-1)!=v2.extent(N-1))
+    return false;
+  }
+
+  auto v1h = Kokkos::create_mirror_view(v1);
+  auto v2h = Kokkos::create_mirror_view(v2);
+  Kokkos::deep_copy(v1h,v1);
+  Kokkos::deep_copy(v2h,v2);
+
+  if constexpr (N==0) {
+    return v1h()==v2h();
+  } else if constexpr(N==1) {
+    for (int i=0; i<last_extent; ++i)
+      if (v1h(i)!=v2h(i))
+        return false;
+  } else if constexpr(N==2) {
+    for (int i=0; i<v1.extent(0); ++i)
+      for (int j=0; j<last_extent; ++j)
+        if (v1h(i,j)!=v2h(i,j))
+          return false;
+  } else if constexpr(N==3) {
+    for (int i=0; i<v1.extent(0); ++i)
+      for (int j=0; j<v1.extent(1); ++j)
+        for (int k=0; k<last_extent; ++k)
+          if (v1h(i,j,k)!=v2h(i,j,k))
+            return false;
+  } else if constexpr(N==4) {
+    for (int i=0; i<v1.extent(0); ++i)
+      for (int j=0; j<v1.extent(1); ++j)
+        for (int k=0; k<v1.extent(2); ++k)
+          for (int l=0; l<last_extent; ++l)
+            if (v1h(i,j,k,l)!=v2h(i,j,k,l))
+              return false;
+  } else if constexpr(N==5) {
+    for (int i=0; i<v1.extent(0); ++i)
+      for (int j=0; j<v1.extent(1); ++j)
+        for (int k=0; k<v1.extent(2); ++k)
+          for (int l=0; l<v1.extent(3); ++l)
+            for (int m=0; m<last_extent; ++m)
+              if (v1h(i,j,k,l,m)!=v2h(i,j,k,l,m))
+                return false;
+  } else if constexpr(N==6) {
+    for (int i=0; i<v1.extent(0); ++i)
+      for (int j=0; j<v1.extent(1); ++j)
+        for (int k=0; k<v1.extent(2); ++k)
+          for (int l=0; l<v1.extent(3); ++l)
+            for (int m=0; m<v1.extent(4); ++m)
+              for (int n=0; n<last_extent; ++n)
+                if (v1h(i,j,k,l,m,n)!=v2h(i,j,k,l,m,n))
+                  return false;
+  } else {
+    throw std::runtime_error("[views_are_equal] Unsupported rank (" + std::to_string(N) + ").\n");
+  }
+
+  return true;
+}
 
 } // namespace Homme
 
