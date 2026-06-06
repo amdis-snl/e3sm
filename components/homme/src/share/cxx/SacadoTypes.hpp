@@ -31,6 +31,20 @@ using DxFadTypeCaar = SFadN<double,16*NP*NP>;
 // {w_i,phinh_i} at NUM_INTERFACE_LEV interface levels, all per column.
 using DxFadTypeDirk = SFadN<double, NUM_PHYSICAL_LEV*4 + NUM_INTERFACE_LEV*2>;
 
+// The fad type for derivs w.r.t. state vars in Hyperviscosity.
+// Hyperviscosity does not couple vertical levels. The Jacobian is block-diagonal:
+//   Group A: {u, v}           - coupled by vector Laplacian
+//   Group B: {vtheta_dp, dp}  - coupled by theta<->vtheta conversion
+//   Group C: {w_i}            - independent (interior levels)
+//   Group D: {phinh_i}        - independent
+// Groups A-D are mutually decoupled, so slots can be reused across groups:
+//   Slots 0..NP*NP-1:     u (A), vtheta_dp (B), w_i interior (C), phinh_i (D)
+//   Slots NP*NP..2*NP*NP-1: v (A), dp3d (B)
+// Exception: at the surface interface level, run_w_surf overwrites w_i with
+// f(u_surf, v_surf), so those slots carry d(w_surf)/d(u) and d(w_surf)/d(v).
+// run_JV/run_JtV use ad-hoc logic to interpret slots correctly per variable.
+using DxFadTypeHypervis = SFadN<double, 2*NP*NP>;
+
 template<typename T, int N>
 KOKKOS_INLINE_FUNCTION
 T ADValue(const SFadN<T,N>& v) { return v.val(); }

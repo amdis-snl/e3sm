@@ -29,6 +29,7 @@ template class ElementsStateST<Real>;
 template class ElementsStateST<DpFadType>;
 template class ElementsStateST<DxFadTypeCaar>;
 template class ElementsStateST<DxFadTypeDirk>;
+template class ElementsStateST<DxFadTypeHypervis>;
 #endif
 
 } // namespace Homme

@@ -16,6 +16,7 @@ template class HyperviscosityFunctorImplST<Real>;
 
 #ifdef HOMMEXX_ENABLE_FAD_TYPES
 template class HyperviscosityFunctorImplST<DpFadType>;
+template class HyperviscosityFunctorImplST<DxFadTypeHypervis>;
 #endif
 
 } // namespace Homme
