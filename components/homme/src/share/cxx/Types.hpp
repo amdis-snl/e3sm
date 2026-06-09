@@ -35,6 +35,26 @@ using ScalarValue = DpFadType;
 using ScalarValue = Real;
 #endif
 
+template<typename T>
+struct STNameHelper;
+
+template<typename T>
+std::string st_name () {
+  return STNameHelper<T>::name();
+}
+
+template<>
+struct STNameHelper<Real> {
+  static std::string name () { return "real"; }
+};
+
+#ifdef HOMMEXX_ENABLE_FAD_TYPES
+template<typename T, int N>
+struct STNameHelper<SFadN<T,N>> {
+  static std::string name () { return "sfad<" + st_name<T>() + "," + std::to_string(N) + ">"; }
+};
+#endif
+
 KOKKOS_INLINE_FUNCTION
 Real ADValue(const Real& v) { return v; }
 
