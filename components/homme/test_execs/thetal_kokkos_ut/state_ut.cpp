@@ -38,8 +38,8 @@ TEST_CASE("state_tests")
     state.init(num_elems);
     state.randomize(seed);
 
-    auto slice0 = state.export_values(0,false);
-    auto slice1 = state.export_values(1,true);
+    auto slice0 = state.take_snapshot(0,false);
+    auto slice1 = state.take_snapshot(1,true);
 
     REQUIRE (slice0.ps_v.data()==nullptr);
     REQUIRE (slice1.ps_v.data()!=nullptr);

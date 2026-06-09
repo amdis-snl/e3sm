@@ -565,10 +565,17 @@ HashType ElementsStateST<ST>::hash (const int tl) const {
 }
 
 template<typename ST>
-StateSnapshot ElementsStateST<ST>::export_values (int tl, bool do_ps)
+StateSnapshot ElementsStateST<ST>::take_snapshot (int tl, bool do_ps)
+{
+  StateSnapshot snap(m_num_elems,do_ps);
+  take_snapshot(snap,tl,do_ps);
+  return snap;
+}
+
+template<typename ST>
+void ElementsStateST<ST>::take_snapshot (StateSnapshot& snap, int tl, bool do_ps)
 {
   constexpr auto NPL = NUM_PHYSICAL_LEV;
-  StateSnapshot snap(m_num_elems,do_ps);
 
   auto v   = ekat::scalarize(m_v);
   auto vth = ekat::scalarize(m_vtheta_dp);
@@ -600,7 +607,6 @@ StateSnapshot ElementsStateST<ST>::export_values (int tl, bool do_ps)
 
   Kokkos::MDRangePolicy<ExecSpace,Kokkos::Rank<4>> policy({0,0,0,0},{m_num_elems,NP,NP,NUM_PHYSICAL_LEV});
   Kokkos::parallel_for(policy,copy);
-  return snap;
 }
 
 } // namespace Homme

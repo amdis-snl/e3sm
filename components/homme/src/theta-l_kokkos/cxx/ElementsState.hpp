@@ -110,7 +110,8 @@ public:
   template<typename RST>
   void import_values (const ElementsStateST<RST>& rhs, int tl);
 
-  StateSnapshot export_values (int tl, bool do_ps = false);
+  StateSnapshot take_snapshot (int tl, bool do_ps = false);
+  void take_snapshot (StateSnapshot& snap, int tl, bool do_ps = false);
 
   // Check ElementsState for NaN or incorrectly signed values. The initial check
   // is fast and on device. If everything is fine, the routine returns
