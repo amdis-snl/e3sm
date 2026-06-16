@@ -142,6 +142,7 @@ public:
 
   StateSnapshot take_snapshot (int tl, bool do_ps = false);
   void take_snapshot (StateSnapshot& snap, int tl, bool do_ps = false);
+  void import_snapshot (const StateSnapshot& snap, int tl, bool do_ps = false);
 
   // Check ElementsState for NaN or incorrectly signed values. The initial check
   // is fast and on device. If everything is fine, the routine returns

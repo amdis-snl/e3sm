@@ -609,6 +609,43 @@ void ElementsStateST<ST>::take_snapshot (StateSnapshot& snap, int tl, bool do_ps
   Kokkos::parallel_for(policy,copy);
 }
 
+template<typename ST>
+void ElementsStateST<ST>::import_snapshot (StateSnapshot& snap, int tl, bool do_ps)
+{
+  constexpr auto NPL = NUM_PHYSICAL_LEV;
+
+  auto v   = ekat::scalarize(m_v);
+  auto vth = ekat::scalarize(m_vtheta_dp);
+  auto dp  = ekat::scalarize(m_dp3d);
+  auto w   = ekat::scalarize(m_w_i);
+  auto phi = ekat::scalarize(m_phinh_i);
+  auto ps  = ekat::scalarize(m_ps_v);
+  auto snap_v   = ekat::scalarize(snap.v);
+  auto snap_vth = ekat::scalarize(snap.vtheta_dp);
+  auto snap_dp  = ekat::scalarize(snap.dp3d);
+  auto snap_w   = ekat::scalarize(snap.w_i);
+  auto snap_phi = ekat::scalarize(snap.phinh_i);
+  auto snap_ps  = ekat::scalarize(snap.ps_v);
+  auto copy = KOKKOS_LAMBDA (int ie, int ip, int jp, int k) {
+    v  (ie,tl,0,ip,jp,k) = snap_v  (ie,0,ip,jp,k);
+    v  (ie,tl,1,ip,jp,k) = snap_v  (ie,1,ip,jp,k);
+    vth(ie,tl  ,ip,jp,k) = snap_vth(ie,  ip,jp,k);
+    dp (ie,tl  ,ip,jp,k) = snap_dp (ie,  ip,jp,k);
+    w  (ie,tl  ,ip,jp,k) = snap_w  (ie,  ip,jp,k);
+    phi(ie,tl  ,ip,jp,k) = snap_phi(ie,  ip,jp,k);
+    if (do_ps) {
+      ps(ie,tl,ip,jp) = snap_ps(ie,ip,jp);
+    }
+    if (k==NPL-1) {
+      w  (ie,tl,ip,jp,NPL) = snap_w  (ie,ip,jp,NPL);
+      phi(ie,tl,ip,jp,NPL) = snap_phi(ie,ip,jp,NPL);
+    }
+  };
+
+  Kokkos::MDRangePolicy<ExecSpace,Kokkos::Rank<4>> policy({0,0,0,0},{m_num_elems,NP,NP,NUM_PHYSICAL_LEV});
+  Kokkos::parallel_for(policy,copy);
+}
+
 } // namespace Homme
 
 #endif // HOMME_ELEMENTS_STATE_DEF_HPP
