@@ -306,7 +306,7 @@ TEST_CASE ("dirk_jv_testing") {
       //   init_J  - set d(X_n0[k])/d(X_n0[k]) = 1 per state variable per level k per column
       //   run     - Newton solve with FAD arithmetic, propagating J through the solve
       //   run_JV  - apply product rule: (J at np1) * (V at n0) -> result at np1
-      dirk_dx.init_J(n0, elems_dx);
+      dirk_dx.init_J(n0, elems_dx.m_state);
       dirk_dx.run(nm1_tl, alphadt_nm1, n0, alphadt_n0, np1, dt2,
                   elems_dx, hvcoord, bfb_solver);
       Kokkos::fence();
@@ -432,7 +432,7 @@ TEST_CASE ("dirk_jtv_testing") {
       elems_dx.m_state.randomize(seed, max_pressure, hvcoord.ps0, hvcoord.hybrid_ai0, geometry.m_phis);
 
       // Initialize Jacobian d/dx(n0) and run DIRK with FAD arithmetic
-      dirk_dx.init_J(n0, elems_dx);
+      dirk_dx.init_J(n0, elems_dx.m_state);
       dirk_dx.run(nm1_tl, alphadt_nm1, n0, alphadt_n0, np1, dt2, elems_dx, hvcoord, bfb_solver);
       Kokkos::fence();
 

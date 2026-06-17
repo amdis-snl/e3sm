@@ -173,17 +173,17 @@ struct DirkFunctorImplST {
   // same per-level FAD indices.
   template<typename MyST = ST>
   std::enable_if_t<std::is_same_v<MyST, DxFadTypeDirk>>
-  init_J (const int n0, const ElementsST<ST>& e) {
+  init_J (const int n0, const ElementsStateST<ST>& state) {
     using md_range_t = Kokkos::MDRangePolicy<ExecSpace, Kokkos::Rank<4>>;
-    const int nelem = e.m_state.num_elems();
+    const int nelem = state.num_elems();
     auto p4_mid = md_range_t({0,0,0,0}, {nelem, NP, NP, NUM_PHYSICAL_LEV});
     auto p4_int = md_range_t({0,0,0,0}, {nelem, NP, NP, NUM_INTERFACE_LEV});
 
-    auto dvdx_v   = ekat::scalarize(e.m_state.m_v);
-    auto dvthdx_v = ekat::scalarize(e.m_state.m_vtheta_dp);
-    auto ddpdx_v  = ekat::scalarize(e.m_state.m_dp3d);
-    auto dwdx_v   = ekat::scalarize(e.m_state.m_w_i);
-    auto dphidx_v = ekat::scalarize(e.m_state.m_phinh_i);
+    auto dvdx_v   = ekat::scalarize(state.m_v);
+    auto dvthdx_v = ekat::scalarize(state.m_vtheta_dp);
+    auto ddpdx_v  = ekat::scalarize(state.m_dp3d);
+    auto dwdx_v   = ekat::scalarize(state.m_w_i);
+    auto dphidx_v = ekat::scalarize(state.m_phinh_i);
 
     // Local copies of offsets for lambda capture (KOKKOS_LAMBDA uses [=])
     const int offset_u   = fad_offset_u;
