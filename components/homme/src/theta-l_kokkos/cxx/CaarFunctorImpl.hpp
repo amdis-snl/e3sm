@@ -355,7 +355,9 @@ struct CaarFunctorImplST {
 
   void run (const RKStageData& data)
   {
-    auto& limiter  = Context::singleton().get<LimiterFunctorST<ST>>();
+    auto& c = Context::singleton();
+    auto& limiter = c.get<LimiterFunctorST<ST>>();
+    auto save = c.get<SimulationParams>().store_fwd_state;
 
     set_rk_stage_data(data);
 
@@ -374,11 +376,21 @@ struct CaarFunctorImplST {
 
     if (!m_theta_hydrostatic_mode) {
       GPTLstart("caar compute");
+      if (save) {
+        auto& tape = c.get<StateTape>();
+        auto& snap = tape.emplace_back();
+        m_state.take_snapshot(data.np1);
+      }
       Kokkos::parallel_for("caar loop post-boundary exchange", m_policy_post, *this);
       Kokkos::fence();
       GPTLstop("caar compute");
     }
 
+    if (save) {
+      auto& tape = c.get<StateTape>();
+      auto& snap = tape.emplace_back();
+      m_state.take_snapshot(data.np1);
+    }
     limiter.run(data.np1);
   }
 
