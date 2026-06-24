@@ -42,7 +42,7 @@ void prim_advance_exp (TimeLevel& tl, const Real dt, const bool compute_diagnost
   auto& context = Context::singleton();
 
   // Get simulation params
-  SimulationParams& params = context.get<SimulationParams>();
+  SimulationParams& params = context.get<SimulationParams>("simulation_params");
 
   // Determine the tracers time level
   tl.update_tracers_levels(params.dt_tracer_factor);
@@ -52,7 +52,7 @@ void prim_advance_exp (TimeLevel& tl, const Real dt, const bool compute_diagnost
 
   // From f90 code: "this should not be needed, but in case physics update u without updating w b.c."
   if (!params.theta_hydrostatic_mode) {
-    auto e = context.get<Elements>();
+    auto e = context.get<Elements>("elements");
     auto w_i = e.m_state.m_w_i;
     auto v = e.m_state.m_v;
     auto gradphis = e.m_geometry.m_gradphis;
@@ -106,13 +106,13 @@ void prim_advance_exp (TimeLevel& tl, const Real dt, const bool compute_diagnost
   }
 
   if (compute_diagnostics) {
-    auto& diags = context.get<Diagnostics>();
+    auto& diags = context.get<Diagnostics>("diagnostics");
     diags.run_diagnostics(false,4);
   }
 
   //// case nu=0 but nu_top>0?  
   if (params.hypervis_order==2 && params.nu>0) {
-    HyperviscosityFunctor& functor = context.get<HyperviscosityFunctor>();
+    HyperviscosityFunctor& functor = context.get<HyperviscosityFunctor>("hyperviscosity_functor");
     GPTLstart("tl-ae advance_hypervis_dp");
     functor.run(tl.np1,dt,eta_ave_w);
     GPTLstop("tl-ae advance_hypervis_dp");
@@ -123,7 +123,7 @@ void prim_advance_exp (TimeLevel& tl, const Real dt, const bool compute_diagnost
   }
 
   if (compute_diagnostics) {
-    auto& diags = context.get<Diagnostics>();
+    auto& diags = context.get<Diagnostics>("diagnostics");
     diags.run_diagnostics(false,5);
   }
 
@@ -135,11 +135,11 @@ void ttype5_timestep(const TimeLevel& tl, const Real dt, const Real eta_ave_w)
 {
   GPTLstart("ttype5_timestep");
   // Get elements structure
-  Elements& elements = Context::singleton().get<Elements>();
-  SimulationParams& params = Context::singleton().get<SimulationParams>();
+  Elements& elements = Context::singleton().get<Elements>("elements");
+  SimulationParams& params = Context::singleton().get<SimulationParams>("simulation_params");
 
   // Create the functor
-  CaarFunctor& functor = Context::singleton().get<CaarFunctor>();
+  CaarFunctor& functor = Context::singleton().get<CaarFunctor>("caar_functor");
 
   const int nm1 = tl.nm1;
   const int n0  = tl.n0;
@@ -227,14 +227,14 @@ void ttype9_imex_timestep(const TimeLevel& tl,
 
   // The context
   const auto& c = Context::singleton();
-  SimulationParams& params = Context::singleton().get<SimulationParams>();
+  SimulationParams& params = Context::singleton().get<SimulationParams>("simulation_params");
 
   // Get elements, hvcoord, and functors
-  auto& elements = c.get<Elements>();
-  auto& hvcoord  = c.get<HybridVCoord>();
-  auto& dirk     = c.get<DirkFunctor>();
-  auto& caar     = c.get<CaarFunctor>();
-  auto& limiter  = c.get<LimiterFunctor>();
+  auto& elements = c.get<Elements>("elements");
+  auto& hvcoord  = c.get<HybridVCoord>("hybrid_vcoord");
+  auto& dirk     = c.get<DirkFunctor>("dirk_functor");
+  auto& caar     = c.get<CaarFunctor>("caar_functor");
+  auto& limiter  = c.get<LimiterFunctor>("limiter_functor");
 
   const int nm1 = tl.nm1;
   const int n0  = tl.n0;
@@ -333,10 +333,10 @@ void ttype10_imex_timestep(const TimeLevel& tl,
   const auto& c = Context::singleton();
 
   // Get elements, hvcoord, and functors
-  auto& elements = c.get<Elements>();
-  auto& hvcoord  = c.get<HybridVCoord>();
-  auto& dirk     = c.get<DirkFunctor>();
-  auto& caar     = c.get<CaarFunctor>();
+  auto& elements = c.get<Elements>("elements");
+  auto& hvcoord  = c.get<HybridVCoord>("hybrid_vcoord");
+  auto& dirk     = c.get<DirkFunctor>("dirk_functor");
+  auto& caar     = c.get<CaarFunctor>("caar_functor");
 
   const int nm1 = tl.nm1;
   const int n0  = tl.n0;

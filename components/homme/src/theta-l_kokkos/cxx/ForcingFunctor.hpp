@@ -36,11 +36,11 @@ public:
   struct TagTracersPost {};
 
   ForcingFunctorST ()
-   : m_state(Context::singleton().get<ElementsStateST<ST>>())
-   , m_forcing(Context::singleton().get<ElementsForcingST<ST>>())
-   , m_geometry(Context::singleton().get<ElementsGeometry>())
-   , m_tracers(Context::singleton().get<TracersST<ST>>())
-   , m_hvcoord(Context::singleton().get<HybridVCoord>())
+   : m_state(Context::singleton().get<ElementsStateST<ST>>("elem_state_" + st_name<ST>()))
+   , m_forcing(Context::singleton().get<ElementsForcingST<ST>>("elem_forcing" + st_name<ST>()))
+   , m_geometry(Context::singleton().get<ElementsGeometry>("elem_geometry"))
+   , m_tracers(Context::singleton().get<TracersST<ST>>("tracers" + st_name<ST>()))
+   , m_hvcoord(Context::singleton().get<HybridVCoord>("hvcoord"))
    , m_num_state_elems(m_state.num_elems())
    , m_num_tracer_elems(m_tracers.num_elems())
    , m_num_tracers(m_tracers.num_tracers())
@@ -72,7 +72,7 @@ public:
   // If this constructor is used, the setup() function must be called
   // before using any other ForcingFunctor functions.
   ForcingFunctorST (const int num_state_elems, const int num_tracer_elems, const int num_tracers)
-    : m_hvcoord(Context::singleton().get<HybridVCoord>())
+    : m_hvcoord(Context::singleton().get<HybridVCoord>("hvcoord"))
     , m_num_state_elems(num_state_elems)
     , m_num_tracer_elems(num_tracer_elems)
     , m_num_tracers(num_tracers)
@@ -97,7 +97,7 @@ public:
   void init_params ()
   {
     const auto& c = Context::singleton();
-    const auto& p = c.get<SimulationParams>();
+    const auto& p = c.get<SimulationParams>("simulation_params");
 
     m_hydrostatic = p.theta_hydrostatic_mode;
     m_qsize = p.qsize;
@@ -129,10 +129,10 @@ public:
 
     const auto& c = Context::singleton();
 
-    m_state    = c.get<ElementsStateST<ST>>();
-    m_forcing  = c.get<ElementsForcingST<ST>>();
-    m_geometry = c.get<ElementsGeometry>();
-    m_tracers  = c.get<TracersST<ST>>();
+    m_state    = c.get<ElementsStateST<ST>>("elem_state_" + st_name<ST>());
+    m_forcing  = c.get<ElementsForcingST<ST>>("elem_forcing_" + st_name<ST>());
+    m_geometry = c.get<ElementsGeometry>("elem_geometry");
+    m_tracers  = c.get<TracersST<ST>>("tracers_" + st_name<ST>());
 
     // Check everything is init-ed
     assert (m_state.num_elems()>0);

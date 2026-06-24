@@ -177,11 +177,11 @@ void Diagnostics::prim_diag_scalars (const bool before_advance, const int ivar)
   m_ivar = ivar;
 
   // Get simulation params
-  SimulationParams& params = Context::singleton().get<SimulationParams>();
+  SimulationParams& params = Context::singleton().get<SimulationParams>("simulation_params");
   assert(params.params_set);
 
   // Get time info
-  TimeLevel& tl = Context::singleton().get<TimeLevel>();
+  TimeLevel& tl = Context::singleton().get<TimeLevel>("time_level");
 
   // Make sure tracers timelevels are updated
   tl.update_tracers_levels(params.dt_tracer_factor);
@@ -201,11 +201,11 @@ void Diagnostics::prim_energy_halftimes (const bool before_advance, const int iv
   m_ivar = ivar;
 
   // Get simulation params
-  SimulationParams& params = Context::singleton().get<SimulationParams>();
+  SimulationParams& params = Context::singleton().get<SimulationParams>("simulation_params");
   assert(params.params_set);
 
   // Get time info
-  TimeLevel& tl = Context::singleton().get<TimeLevel>();
+  TimeLevel& tl = Context::singleton().get<TimeLevel>("time_level");
 
   // Make sure tracers timelevels are updated
   tl.update_tracers_levels(params.dt_tracer_factor);

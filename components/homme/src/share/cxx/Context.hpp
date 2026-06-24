@@ -31,15 +31,21 @@ class Context {
 public:
 
   // Getters for a managed object.
-  template<typename ConcreteType>
-  bool has () const;
+  bool has (const std::string& key) const {
+    return m_members.find(key)!=m_members.end();
+  }
 
   // Setters for a managed object.
   template<typename ConcreteType, typename... Args>
-  ConcreteType& create (Args&&... args);
+  ConcreteType& create (const std::string& key, Args&&... args);
+
+  template<typename ConcreteType, typename... Args>
+  ConcreteType& create (Args&&... args) {
+    return create<ConcreteType>(std::string(typeid(ConcreteType).name()),args...);
+  }
 
   template<typename ConcreteType>
-  void create_ref (ConcreteType& src);
+  void create_ref (const std::string& key, ConcreteType& src);
 
   // More relaxed than create, it won't throw if the
   // object already exists, and simply return it.
@@ -51,14 +57,16 @@ public:
   //       or make sure that the function that calls 'create<T>'
   //       is *always* invoked *before* those that call 'get<T>'.
   template<typename ConcreteType, typename... Args>
-  ConcreteType& create_if_not_there (Args&&... args);
+  ConcreteType& create_if_not_there (const std::string& key, Args&&... args);
 
   // Getters for a managed object.
   template<typename ConcreteType>
-  ConcreteType& get () const;
+  ConcreteType& get (const std::string& key);
+
+  std::any& get (const std::string& key);
 
   template<typename ConcreteType>
-  std::shared_ptr<ConcreteType> get_ptr () const;
+  std::shared_ptr<ConcreteType> get_ptr (const std::string& key) const;
 
   // Exactly one singleton.
   static Context& singleton() {
@@ -83,22 +91,14 @@ private:
 
 // ==================== IMPLEMENTATION =================== //
 
-template<typename ConcreteType>
-bool Context::has () const {
-  const std::string& name = typeid(ConcreteType).name();
-  auto it = m_members.find(name);
-  return it!=m_members.end();
-}
-
 template<typename ConcreteType, typename... Args>
-ConcreteType& Context::create_if_not_there (Args&&... args)
+ConcreteType& Context::create_if_not_there (const std::string& key, Args&&... args)
 {
-  const std::string name = typeid(ConcreteType).name();
-  auto it = m_members.find(name);
+  auto it = m_members.find(key);
   if (it==m_members.end()) {
     auto ptr = std::make_shared<ConcreteType>(std::forward<Args>(args)...);
-    m_members[name] = ptr;
-    m_is_ref_wrapper[name] = false;
+    m_members[key] = ptr;
+    m_is_ref_wrapper[key] = false;
     return *ptr;
   }
   auto ptr = *std::any_cast<std::shared_ptr<ConcreteType>>(&it->second);
@@ -106,53 +106,55 @@ ConcreteType& Context::create_if_not_there (Args&&... args)
 }
 
 template<typename ConcreteType, typename... Args>
-ConcreteType& Context::create (Args&&... args)
+ConcreteType& Context::create (const std::string& key, Args&&... args)
 {
-  const std::string name = typeid(ConcreteType).name();
-  EKAT_REQUIRE_MSG(!has<ConcreteType>(),
-      "Error! An object for the concrete type " + name +
+  EKAT_REQUIRE_MSG(!has(key),
+      "Error! An object for the concrete type " + key +
       " is already stored. The 'Context' class does not allow overwriting or duplicates.\n");
 
   auto ptr = std::make_shared<ConcreteType>(std::forward<Args>(args)...);
-  m_members[name] = ptr;
-  m_is_ref_wrapper[typeid(ConcreteType).name()] = false;
+  m_members[key] = ptr;
+  m_is_ref_wrapper[key] = false;
 
   return *ptr;
 }
 
 template<typename ConcreteType>
-void Context::create_ref (ConcreteType& src)
+void Context::create_ref (const std::string& key, ConcreteType& src)
 {
-  const std::string name = typeid(ConcreteType).name();
-  EKAT_REQUIRE_MSG(!has<ConcreteType>(),
-      "Error! An object for the concrete type " + name +
+  EKAT_REQUIRE_MSG(!has(key),
+      "Error! An object for the concrete type " + key +
       " is already stored. The 'Context' class does not allow overwriting or duplicates.\n");
 
-  m_members[name] = std::reference_wrapper<ConcreteType>(src);
-  m_is_ref_wrapper[name] = true;
+  m_members[key] = std::reference_wrapper<ConcreteType>(src);
+  m_is_ref_wrapper[key] = true;
 }
 
 template<typename ConcreteType>
-ConcreteType& Context::get () const
+ConcreteType& Context::get (const std::string& key)
 {
-  const std::string name = typeid(ConcreteType).name();
-  auto it = m_members.find(name);
-  EKAT_REQUIRE_MSG(it!=m_members.end(), "Error! Context member '" + name + "' not found.\n");
-  if (m_is_ref_wrapper.at(name)) {
-    return std::any_cast<std::reference_wrapper<ConcreteType>>(it->second).get();
+  auto& any = this->get(key);
+  if (m_is_ref_wrapper.at(key)) {
+    return std::any_cast<std::reference_wrapper<ConcreteType>>(any).get();
   } else {
-    return *std::any_cast<std::shared_ptr<ConcreteType>>(it->second);
+    return *std::any_cast<std::shared_ptr<ConcreteType>>(any);
   }
 }
 
-template<typename ConcreteType>
-std::shared_ptr<ConcreteType> Context::get_ptr() const
+std::any& Context::get (const std::string& key)
 {
-  const std::string& name = typeid(ConcreteType).name();
-  auto it = m_members.find(name);
-  EKAT_REQUIRE_MSG(it!=m_members.end(), "Error! Context member '" + name + "' not found.\n");
-  EKAT_REQUIRE_MSG(!m_is_ref_wrapper.at(name),
-      "Error! Context member '" + name + "' is only available as a reference.\n");
+  auto it = m_members.find(key);
+  EKAT_REQUIRE_MSG(it!=m_members.end(), "Error! Context member '" + key + "' not found.\n");
+  return it->second;
+}
+
+template<typename ConcreteType>
+std::shared_ptr<ConcreteType> Context::get_ptr(const std::string& key) const
+{
+  auto it = m_members.find(key);
+  EKAT_REQUIRE_MSG(it!=m_members.end(), "Error! Context member '" + key + "' not found.\n");
+  EKAT_REQUIRE_MSG(!m_is_ref_wrapper.at(key),
+      "Error! Context member '" + key + "' is only available as a reference.\n");
 
   return std::any_cast<std::shared_ptr<ConcreteType>>(it->second);
 }

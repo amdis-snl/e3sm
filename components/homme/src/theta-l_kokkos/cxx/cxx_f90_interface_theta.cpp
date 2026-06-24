@@ -41,7 +41,7 @@ template<typename ST>
 void init_elements_impl (const int& num_elems)
 {
   auto& c = Context::singleton();
-  const SimulationParams& params = c.get<SimulationParams>();
+  const SimulationParams& params = c.get<SimulationParams>("simulation_params");
   const bool consthv = (params.hypervis_scaling==0.0);
 
   auto& e = c.create<ElementsST<ST>> ();
@@ -86,7 +86,7 @@ void create_functors_impl ()
   auto& tracers  = c.get<TracersST<ST>>();
   auto& ref_FE   = c.get<ReferenceElement>();
   auto& hvcoord  = c.get<HybridVCoord>();
-  auto& params   = c.get<SimulationParams>();
+  auto& params   = c.get<SimulationParams>("simulation_params");
   auto& geometry = c.get<ElementsGeometry>();
   auto& state    = c.get<ElementsStateST<ST>>();
   auto& derived  = c.get<ElementsDerivedStateST<ST>>();
@@ -166,7 +166,7 @@ template<typename ST>
 void request_buffers_impl (FunctorsBuffersManager& fbm)
 {
   auto& c = Context::singleton();
-  const auto& params = Context::singleton().get<SimulationParams>();
+  const auto& params = Context::singleton().get<SimulationParams>("simulation_params");
 
   auto& limiter = c.get<LimiterFunctorST<ST>>();
   auto& caar    = c.get<CaarFunctorST<ST>>();
@@ -203,7 +203,7 @@ template<typename ST>
 void init_buffers_impl (FunctorsBuffersManager& fbm)
 {
   auto& c = Context::singleton();
-  const auto& params = Context::singleton().get<SimulationParams>();
+  const auto& params = Context::singleton().get<SimulationParams>("simulation_params");
 
   auto& limiter = c.get<LimiterFunctorST<ST>>();
   auto& caar    = c.get<CaarFunctorST<ST>>();
@@ -252,7 +252,7 @@ void init_boundary_exchanges_impl ()
 {
   auto& c = Context::singleton();
 
-  auto& params = c.get<SimulationParams>();
+  auto& params = c.get<SimulationParams>("simulation_params");
   auto& bmm    = c.get<MpiBuffersManagerMap>();
 
   if (params.qsize > 0) {
@@ -318,7 +318,7 @@ void init_simulation_params_c (const int& ne, const int& remap_alg, const int& l
 #endif
 
   // Get the simulation params struct
-  SimulationParams& params = Context::singleton().create<SimulationParams>();
+  SimulationParams& params = Context::singleton().create<SimulationParams>("simulation_params");
 
   if (remap_alg==1) {
     params.remap_alg = RemapAlg::PPM_MIRRORED;
@@ -475,7 +475,7 @@ void cxx_push_sensitivities_to_f90(F90Ptr &elem_sens_v_ptr,     F90Ptr &elem_sen
                                    F90Ptr &elem_sens_Qdp_ptr)
 {
 #ifdef HOMMEXX_ENABLE_FWD_SENS
-  SimulationParams& params = Context::singleton().get<SimulationParams>();
+  SimulationParams& params = Context::singleton().get<SimulationParams>("simulation_params");
   ElementsState &state = Context::singleton().get<ElementsState>();
   Tracers &tracers = Context::singleton().get<Tracers>();
   TimeLevel& tl = Context::singleton().get<TimeLevel>();
@@ -693,7 +693,7 @@ void init_elements_2d_c (const int& ie,
 {
   auto& c = Context::singleton();
   ElementsGeometry& geo = c.get<ElementsGeometry> ();
-  const SimulationParams& params = c.get<SimulationParams>();
+  const SimulationParams& params = c.get<SimulationParams>("simulation_params");
 
   const bool consthv = (params.hypervis_scaling==0.0);
   geo.set_elem_data(ie,D,Dinv,fcor,spheremp,rspheremp,metdet,metinv,tensorvisc,
@@ -745,7 +745,7 @@ void init_elements_states_c (CF90Ptr& elem_state_v_ptr,       CF90Ptr& elem_stat
   const auto  dp = state.m_dp3d;
   auto& tl = c.get<TimeLevel>();
   const auto n0 = tl.n0;
-  const SimulationParams& params = c.get<SimulationParams>();
+  const SimulationParams& params = c.get<SimulationParams>("simulation_params");
   tl.update_tracers_levels(params.qsplit);
   const auto n0_qdp = tl.n0_qdp;
   const auto qsize = tracers.num_tracers();
@@ -801,7 +801,7 @@ void init_boundary_exchanges_c ()
 {
   auto& c = Context::singleton();
 
-  auto& params       = c.get<SimulationParams>();
+  auto& params       = c.get<SimulationParams>("simulation_params");
   auto  connectivity = c.get_ptr<Connectivity>();
   assert (connectivity->is_finalized());
 

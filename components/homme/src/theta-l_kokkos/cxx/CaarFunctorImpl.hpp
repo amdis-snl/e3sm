@@ -302,7 +302,7 @@ struct CaarFunctorImplST {
   }
 
   void init_boundary_exchanges (const std::shared_ptr<MpiBuffersManager>& bm_exchange) {
-    const auto& sp = Context::singleton().get<SimulationParams>();
+    const auto& sp = Context::singleton().get<SimulationParams>("simulation_params");
     for (int tl=0; tl<NUM_TIME_LEVELS; ++tl) {
       m_bes[tl] = std::make_shared<BoundaryExchangeST<ST>>();
       auto& be = *m_bes[tl];
@@ -355,7 +355,7 @@ struct CaarFunctorImplST {
 
   void run (const RKStageData& data)
   {
-    auto& limiter  = Context::singleton().get<LimiterFunctorST<ST>>();
+    auto& limiter  = Context::singleton().get<LimiterFunctorST<ST>>("limiter_functor_" + st_name<ST>());
 
     set_rk_stage_data(data);
 

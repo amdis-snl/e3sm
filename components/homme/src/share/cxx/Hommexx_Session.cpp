@@ -43,7 +43,7 @@ void initialize_hommexx_session ()
     }
 
     // Note: at this point, the Comm *should* already be created.
-    const auto& comm = Context::singleton().get<ekat::Comm>();
+    const auto& comm = Context::singleton().get<ekat::Comm>("comm");
     if (comm.am_i_root()) {
       ExecSpace().print_configuration(std::cout, true);
       std::cout << homme_config_settings_string () << "\n";

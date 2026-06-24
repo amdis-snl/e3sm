@@ -484,8 +484,8 @@ check_print_abort_on_bad_elems (const std::string& label, const int tlvl) const
   // Now that we know there is an error, we can do the rest inefficiently.
   const int nelem = num_elems();
   const int nplev = NUM_PHYSICAL_LEV, ntl = NUM_TIME_LEVELS, vecsz = VECTOR_SIZE;
-  const auto& comm = Context::singleton().get<ekat::Comm>();
-  const auto& geometry = Context::singleton().get<ElementsGeometry>();
+  const auto& comm = Context::singleton().get<ekat::Comm>("comm");
+  const auto& geometry = Context::singleton().get<ElementsGeometry>("elem_geometry");
 
   const auto vtheta_dp_h = Kokkos::create_mirror_view(m_vtheta_dp);
   Kokkos::deep_copy(vtheta_dp_h, m_vtheta_dp);

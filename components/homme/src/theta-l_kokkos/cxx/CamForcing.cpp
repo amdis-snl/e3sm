@@ -46,23 +46,23 @@ static void apply_cam_forcing_dynamics(const Real dt, ForcingFunctor& ff,
 }
 
 void apply_cam_forcing(const Real dt) {
-  const auto& p  = Context::singleton().get<SimulationParams>();
-  const auto& tl = Context::singleton().get<TimeLevel>();
-  auto& ff = Context::singleton().get<ForcingFunctor>();
+  const auto& p  = Context::singleton().get<SimulationParams>("simulation_params");
+  const auto& tl = Context::singleton().get<TimeLevel>("time_level");
+  auto& ff = Context::singleton().get<ForcingFunctor>("forcing_functor");
   apply_cam_forcing_tracers(dt, ff, tl, p);
   apply_cam_forcing_dynamics(dt, ff, tl);
 }
 
 void apply_cam_forcing_tracers(const Real dt) {
-  const auto& p  = Context::singleton().get<SimulationParams>();
-  const auto& tl = Context::singleton().get<TimeLevel>();
-  auto& ff = Context::singleton().get<ForcingFunctor>();
+  const auto& p  = Context::singleton().get<SimulationParams>("simulation_params");
+  const auto& tl = Context::singleton().get<TimeLevel>("time_level");
+  auto& ff = Context::singleton().get<ForcingFunctor>("forcing_functor");
   apply_cam_forcing_tracers(dt, ff, tl, p);
 }
 
 void apply_cam_forcing_dynamics(const Real dt) {
-  const auto& tl = Context::singleton().get<TimeLevel>();
-  auto& ff = Context::singleton().get<ForcingFunctor>();
+  const auto& tl = Context::singleton().get<TimeLevel>("time_level");
+  auto& ff = Context::singleton().get<ForcingFunctor>("forcing_functor");
   apply_cam_forcing_dynamics(dt, ff, tl);
 }
 
