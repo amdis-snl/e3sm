@@ -39,11 +39,6 @@ public:
   template<typename ConcreteType, typename... Args>
   ConcreteType& create (const std::string& key, Args&&... args);
 
-  template<typename ConcreteType, typename... Args>
-  ConcreteType& create (Args&&... args) {
-    return create<ConcreteType>(std::string(typeid(ConcreteType).name()),args...);
-  }
-
   template<typename ConcreteType>
   void create_ref (const std::string& key, ConcreteType& src);
 
