@@ -10,6 +10,7 @@
 #include "Types.hpp"
 #include "kokkos_utils.hpp"
 #include "utilities/Hash.hpp"
+#include "utilities/MiscUtils.hpp"
 
 #include <ekat_pack_kokkos.hpp>
 #include <ekat_assert.hpp>
@@ -63,33 +64,7 @@ struct StateSnapshot {
 };
 
 // Much like a vector, but push/pop don't destroy data, simply move an index
-struct StateTape {
-  StateTape () = default;
-  StateTape (int num_snaps, int nelem) {
-    EKAT_REQUIRE_MSG (num_snaps>0,
-        "[StateTape::StateTape] Error! Invalid state tape length.\n");
-    len = num_snaps;
-    tape.reserve(num_snaps);
-    for (int i=0; i<num_snaps; ++i) {
-      tape.emplace_back(nelem,true);
-    }
-  }
-
-  StateSnapshot& emplace_back() {
-    EKAT_REQUIRE_MSG (end<len,
-        "[StateTape::emplace_back] Error! No more room in the state tape.\n");
-    return tape[end++];
-  }
-  StateSnapshot& pop_back() {
-    EKAT_REQUIRE_MSG (end>0,
-        "[StateTape::pop_back] Error! No snapshot stored in the state tape.\n");
-    return tape[--end];
-  }
-
-  int len = 0;
-  int end = 0;
-  std::vector<StateSnapshot> tape;
-};
+struct ImexTape : public Tape<StateSnapshot> {};
 
 /* Per element data - specific velocity, temperature, pressure, etc. */
 template<typename ST>

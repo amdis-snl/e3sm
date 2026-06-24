@@ -610,7 +610,7 @@ void ElementsStateST<ST>::take_snapshot (StateSnapshot& snap, int tl, bool do_ps
 }
 
 template<typename ST>
-void ElementsStateST<ST>::import_snapshot (StateSnapshot& snap, int tl, bool do_ps)
+void ElementsStateST<ST>::import_snapshot (const StateSnapshot& snap, int tl, bool do_ps)
 {
   constexpr auto NPL = NUM_PHYSICAL_LEV;
 

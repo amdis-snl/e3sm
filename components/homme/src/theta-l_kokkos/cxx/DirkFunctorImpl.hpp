@@ -167,13 +167,13 @@ struct DirkFunctorImplST {
   static constexpr int fad_offset_w   = 4*NUM_PHYSICAL_LEV;
   static constexpr int fad_offset_phi = 4*NUM_PHYSICAL_LEV + NUM_INTERFACE_LEV;
 
-  // Initialize the d/dx derivatives of the n0 state so that each state variable
+  // Initialize the d/dx derivatives of the itl state so that each state variable
   // gets a unique FAD index encoding its level. Since DIRK has no horizontal
   // (GaussPoint) coupling, each column (ip,jp) is independent and uses the
   // same per-level FAD indices.
   template<typename MyST = ST>
   std::enable_if_t<std::is_same_v<MyST, DxFadTypeDirk>>
-  init_J (const int n0, const ElementsStateST<ST>& state) {
+  init_J (const int itl, const ElementsStateST<ST>& state) {
     using md_range_t = Kokkos::MDRangePolicy<ExecSpace, Kokkos::Rank<4>>;
     const int nelem = state.num_elems();
     auto p4_mid = md_range_t({0,0,0,0}, {nelem, NP, NP, NUM_PHYSICAL_LEV});
@@ -194,10 +194,10 @@ struct DirkFunctorImplST {
     const int offset_phi = fad_offset_phi;
 
     auto init_dx_mid = KOKKOS_LAMBDA (int ie, int ip, int jp, int k) {
-      auto& dudx   = dvdx_v  (ie, n0, 0, ip, jp, k);
-      auto& dvdx   = dvdx_v  (ie, n0, 1, ip, jp, k);
-      auto& dvthdx = dvthdx_v(ie, n0,    ip, jp, k);
-      auto& ddpdx  = ddpdx_v (ie, n0,    ip, jp, k);
+      auto& dudx   = dvdx_v  (ie, itl, 0, ip, jp, k);
+      auto& dvdx   = dvdx_v  (ie, itl, 1, ip, jp, k);
+      auto& dvthdx = dvthdx_v(ie, itl,    ip, jp, k);
+      auto& ddpdx  = ddpdx_v (ie, itl,    ip, jp, k);
 
       dudx.zero();   dudx.fastAccessDx  (offset_u   + k) = 1;
       dvdx.zero();   dvdx.fastAccessDx  (offset_v   + k) = 1;
@@ -206,8 +206,8 @@ struct DirkFunctorImplST {
     };
 
     auto init_dx_int = KOKKOS_LAMBDA (int ie, int ip, int jp, int k) {
-      auto& dwdx   = dwdx_v  (ie, n0, ip, jp, k);
-      auto& dphidx = dphidx_v(ie, n0, ip, jp, k);
+      auto& dwdx   = dwdx_v  (ie, itl, ip, jp, k);
+      auto& dphidx = dphidx_v(ie, itl, ip, jp, k);
 
       dwdx.zero();   dwdx.fastAccessDx  (offset_w   + k) = 1;
       dphidx.zero(); dphidx.fastAccessDx(offset_phi + k) = 1;
@@ -217,21 +217,21 @@ struct DirkFunctorImplST {
     Kokkos::parallel_for(p4_int, init_dx_int);
   }
 
-  // Compute the product J*V where J = d(state(np1)) / d(state(n0)).
+  // Compute the product J*V where J = d(state(np1)) / d(state(itl)).
   // DIRK only updates w_i and phinh_i at np1; for v, vtheta_dp, dp3d the
   // Jacobian is the identity (DIRK leaves them unchanged).
-  // Preconditions: init_J(n0,e) and run(...) must have been called first.
-  // On entry:  adj_state at n0 holds the vector V.
+  // Preconditions: init_J(itl,e) and run(...) must have been called first.
+  // On entry:  adj_state at itl holds the vector V.
   // On exit:   adj_state at np1 holds J*V for w_i and phinh_i;
   //            adj_state at np1 holds V unchanged for v, vtheta_dp, dp3d.
   template<typename MyST = ST>
   std::enable_if_t<not std::is_same_v<MyST, DxFadTypeDirk>>
-  run_JV (const int /*n0*/, const int /*np1*/, const ElementsST<ST>& /*e*/,
+  run_JV (const int /*itl*/, const int /*np1*/, const ElementsST<ST>& /*e*/,
           ElementsStateST<Real>& /*adj_state*/) = delete;
 
   template<typename MyST = ST>
   std::enable_if_t<std::is_same_v<MyST, DxFadTypeDirk>>
-  run_JV (const int n0, const int np1, const ElementsST<ST>& e,
+  run_JV (const int itl, const int np1, const ElementsST<ST>& e,
           ElementsStateST<Real>& adj_state)
   {
     // Extract the Jacobian-vector product using the product rule.
@@ -270,21 +270,21 @@ struct DirkFunctorImplST {
 
       // Contributions from midpoint variables (u, v, vtheta_dp, dp3d)
       for (int k2 = 0; k2 < NUM_PHYSICAL_LEV; ++k2) {
-        l_w_new   += Jw  [offset_u   + k2] * l_V  (ie, n0, 0, ip, jp, k2)
-                   + Jw  [offset_v   + k2] * l_V  (ie, n0, 1, ip, jp, k2)
-                   + Jw  [offset_vth + k2] * l_vth(ie, n0,    ip, jp, k2)
-                   + Jw  [offset_dp  + k2] * l_dp (ie, n0,    ip, jp, k2);
-        l_phi_new += Jphi[offset_u   + k2] * l_V  (ie, n0, 0, ip, jp, k2)
-                   + Jphi[offset_v   + k2] * l_V  (ie, n0, 1, ip, jp, k2)
-                   + Jphi[offset_vth + k2] * l_vth(ie, n0,    ip, jp, k2)
-                   + Jphi[offset_dp  + k2] * l_dp (ie, n0,    ip, jp, k2);
+        l_w_new   += Jw  [offset_u   + k2] * l_V  (ie, itl, 0, ip, jp, k2)
+                   + Jw  [offset_v   + k2] * l_V  (ie, itl, 1, ip, jp, k2)
+                   + Jw  [offset_vth + k2] * l_vth(ie, itl,    ip, jp, k2)
+                   + Jw  [offset_dp  + k2] * l_dp (ie, itl,    ip, jp, k2);
+        l_phi_new += Jphi[offset_u   + k2] * l_V  (ie, itl, 0, ip, jp, k2)
+                   + Jphi[offset_v   + k2] * l_V  (ie, itl, 1, ip, jp, k2)
+                   + Jphi[offset_vth + k2] * l_vth(ie, itl,    ip, jp, k2)
+                   + Jphi[offset_dp  + k2] * l_dp (ie, itl,    ip, jp, k2);
       }
       // Contributions from interface variables (w_i, phinh_i)
       for (int k2 = 0; k2 < NUM_INTERFACE_LEV; ++k2) {
-        l_w_new   += Jw  [offset_w   + k2] * l_w  (ie, n0, ip, jp, k2)
-                   + Jw  [offset_phi + k2] * l_phi(ie, n0, ip, jp, k2);
-        l_phi_new += Jphi[offset_w   + k2] * l_w  (ie, n0, ip, jp, k2)
-                   + Jphi[offset_phi + k2] * l_phi(ie, n0, ip, jp, k2);
+        l_w_new   += Jw  [offset_w   + k2] * l_w  (ie, itl, ip, jp, k2)
+                   + Jw  [offset_phi + k2] * l_phi(ie, itl, ip, jp, k2);
+        l_phi_new += Jphi[offset_w   + k2] * l_w  (ie, itl, ip, jp, k2)
+                   + Jphi[offset_phi + k2] * l_phi(ie, itl, ip, jp, k2);
       }
 
       l_w  (ie, np1, ip, jp, k) = l_w_new;
@@ -293,10 +293,10 @@ struct DirkFunctorImplST {
 
     // Identity blocks: DIRK does not modify v, vtheta_dp, or dp3d
     auto prod_rule_mid_id = KOKKOS_LAMBDA (const int ie, const int ip, const int jp, const int k) {
-      l_V  (ie, np1, 0, ip, jp, k) = l_V  (ie, n0, 0, ip, jp, k);
-      l_V  (ie, np1, 1, ip, jp, k) = l_V  (ie, n0, 1, ip, jp, k);
-      l_vth(ie, np1,    ip, jp, k) = l_vth(ie, n0,    ip, jp, k);
-      l_dp (ie, np1,    ip, jp, k) = l_dp (ie, n0,    ip, jp, k);
+      l_V  (ie, np1, 0, ip, jp, k) = l_V  (ie, itl, 0, ip, jp, k);
+      l_V  (ie, np1, 1, ip, jp, k) = l_V  (ie, itl, 1, ip, jp, k);
+      l_vth(ie, np1,    ip, jp, k) = l_vth(ie, itl,    ip, jp, k);
+      l_dp (ie, np1,    ip, jp, k) = l_dp (ie, itl,    ip, jp, k);
     };
 
     Kokkos::parallel_for(p4_int, prod_rule_int);
@@ -304,31 +304,31 @@ struct DirkFunctorImplST {
   }
 
   // Computes the transpose Jacobian-vector product: l_new = J^T * l_old,
-  // where J = d(state(np1)) / d(state(n0)) is the same Jacobian used in run_JV.
+  // where J = d(state(np1)) / d(state(itl)) is the same Jacobian used in run_JV.
   // DIRK only updates w_i and phinh_i at np1; for v, vtheta_dp, dp3d the
   // Jacobian is the identity (DIRK leaves them unchanged), so J^T also
   // contributes an identity block for those variables.
-  // Preconditions: init_J(n0,e) and run(...) must have been called first.
-  // On entry:  adj_state at n0 holds the vector l_old.
+  // Preconditions: init_J(itl,e) and run(...) must have been called first.
+  // On entry:  adj_state at itl holds the vector l_old.
   // On exit:   adj_state at np1 holds J^T*l_old.
   template<typename MyST = ST>
   std::enable_if_t<not std::is_same_v<MyST, DxFadTypeDirk>>
-  run_JtV (const int /*n0*/, const int /*np1*/, const ElementsST<ST>& /*e*/,
+  run_JtV (const int /*itl*/, const int /*np1*/, const ElementsST<ST>& /*e*/,
            ElementsStateST<Real>& /*adj_state*/) = delete;
 
   template<typename MyST = ST>
   std::enable_if_t<std::is_same_v<MyST, DxFadTypeDirk>>
-  run_JtV (const int n0, const int np1, const ElementsST<ST>& e,
+  run_JtV (const int itl, const int np1, const ElementsST<ST>& e,
            ElementsStateST<Real>& adj_state)
   {
-    // J has the following block structure (rows = np1 outputs, cols = n0 inputs):
+    // J has the following block structure (rows = np1 outputs, cols = itl inputs):
     //   - Identity block for u, v, vtheta_dp, dp3d (DIRK does not modify them)
     //   - Full blocks for w_i and phinh_i (computed by the Newton solve)
     //
     // J^T therefore:
     //   - For interface inputs (w, phi): sum Jacobian rows of w/phi at np1
     //   - For midpoint inputs (u, v, vth, dp): identity + cross-contributions
-    //     from the w/phi rows of J (since J[w_np1(k), u_n0(k2)] != 0 in general)
+    //     from the w/phi rows of J (since J[w_np1(k), u_itl(k2)] != 0 in general)
     const int nelem = e.m_state.num_elems();
 
     auto dw_v   = ekat::scalarize(e.m_state.m_w_i);
@@ -354,16 +354,16 @@ struct DirkFunctorImplST {
 
     // Compute (J^T * l)_w(k2) and (J^T * l)_phi(k2) for interface inputs k2.
     // Each output sums contributions from all interface levels k of the w and phi rows of J.
-    // J^T[w_n0(k2), w_np1(k)]   = J[w_np1(k), w_n0(k2)]   = dw_v(k).dx(offset_w + k2)
-    // J^T[w_n0(k2), phi_np1(k)] = J[phi_np1(k), w_n0(k2)] = dphi_v(k).dx(offset_w + k2)
+    // J^T[w_itl(k2), w_np1(k)]   = J[w_np1(k), w_itl(k2)]   = dw_v(k).dx(offset_w + k2)
+    // J^T[w_itl(k2), phi_np1(k)] = J[phi_np1(k), w_itl(k2)] = dphi_v(k).dx(offset_w + k2)
     // (and similarly for phi input)
     auto jtv_int = KOKKOS_LAMBDA (const int ie, const int ip, const int jp, const int k2) {
       Real l_w_new   = 0;
       Real l_phi_new = 0;
 
       for (int k = 0; k < NUM_INTERFACE_LEV; ++k) {
-        const Real l_w_k   = l_w  (ie, n0, ip, jp, k);
-        const Real l_phi_k = l_phi(ie, n0, ip, jp, k);
+        const Real l_w_k   = l_w  (ie, itl, ip, jp, k);
+        const Real l_phi_k = l_phi(ie, itl, ip, jp, k);
 
         l_w_new   += dw_v  (ie, np1, ip, jp, k).dx(offset_w   + k2) * l_w_k
                    + dphi_v(ie, np1, ip, jp, k).dx(offset_w   + k2) * l_phi_k;
@@ -378,10 +378,10 @@ struct DirkFunctorImplST {
     // Compute (J^T * l)_u(k2), _v(k2), _vth(k2), _dp(k2) for midpoint inputs k2.
     // The identity block contributes the original l_old value; the off-diagonal
     // contributions come from the w and phi rows of J (since w_np1 and phi_np1
-    // depend on u, v, vtheta_dp, dp3d at n0).
-    // J^T[u_n0(k2), u_np1(k)]   = delta(k,k2)  (identity)
-    // J^T[u_n0(k2), w_np1(k)]   = J[w_np1(k), u_n0(k2)]   = dw_v(k).dx(offset_u + k2)
-    // J^T[u_n0(k2), phi_np1(k)] = J[phi_np1(k), u_n0(k2)] = dphi_v(k).dx(offset_u + k2)
+    // depend on u, v, vtheta_dp, dp3d at itl).
+    // J^T[u_itl(k2), u_np1(k)]   = delta(k,k2)  (identity)
+    // J^T[u_itl(k2), w_np1(k)]   = J[w_np1(k), u_itl(k2)]   = dw_v(k).dx(offset_u + k2)
+    // J^T[u_itl(k2), phi_np1(k)] = J[phi_np1(k), u_itl(k2)] = dphi_v(k).dx(offset_u + k2)
     auto jtv_mid = KOKKOS_LAMBDA (const int ie, const int ip, const int jp, const int k2) {
       Real contrib_u   = 0;
       Real contrib_v   = 0;
@@ -389,8 +389,8 @@ struct DirkFunctorImplST {
       Real contrib_dp  = 0;
 
       for (int k = 0; k < NUM_INTERFACE_LEV; ++k) {
-        const Real l_w_k   = l_w  (ie, n0, ip, jp, k);
-        const Real l_phi_k = l_phi(ie, n0, ip, jp, k);
+        const Real l_w_k   = l_w  (ie, itl, ip, jp, k);
+        const Real l_phi_k = l_phi(ie, itl, ip, jp, k);
 
         contrib_u   += dw_v  (ie, np1, ip, jp, k).dx(offset_u   + k2) * l_w_k
                      + dphi_v(ie, np1, ip, jp, k).dx(offset_u   + k2) * l_phi_k;
@@ -403,10 +403,10 @@ struct DirkFunctorImplST {
       }
 
       // Identity block: DIRK does not modify u, v, vtheta_dp, dp3d at np1
-      l_V  (ie, np1, 0, ip, jp, k2) = l_V  (ie, n0, 0, ip, jp, k2) + contrib_u;
-      l_V  (ie, np1, 1, ip, jp, k2) = l_V  (ie, n0, 1, ip, jp, k2) + contrib_v;
-      l_vth(ie, np1,    ip, jp, k2) = l_vth(ie, n0,    ip, jp, k2) + contrib_vth;
-      l_dp (ie, np1,    ip, jp, k2) = l_dp (ie, n0,    ip, jp, k2) + contrib_dp;
+      l_V  (ie, np1, 0, ip, jp, k2) = l_V  (ie, itl, 0, ip, jp, k2) + contrib_u;
+      l_V  (ie, np1, 1, ip, jp, k2) = l_V  (ie, itl, 1, ip, jp, k2) + contrib_v;
+      l_vth(ie, np1,    ip, jp, k2) = l_vth(ie, itl,    ip, jp, k2) + contrib_vth;
+      l_dp (ie, np1,    ip, jp, k2) = l_dp (ie, itl,    ip, jp, k2) + contrib_dp;
     };
 
     Kokkos::parallel_for(p4_int, jtv_int);
