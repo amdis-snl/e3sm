@@ -14,15 +14,47 @@
 #include "PhysicalConstants.hpp"
 #include "SimulationParams.hpp"
 #include "TimeLevel.hpp"
+#include "mpi/BoundaryExchange.hpp"
 
 #include "profiling.hpp"
 
 namespace Homme
 {
 
+struct AdjBE : public std::vector<BoundaryExchangeST<Real>> {};
+
 void init_adj_state_be (ElementsStateST<Real>& adj_state)
 {
+  auto& c = Context::singleton();
+  if (c.has<AdjBE>())
+    return;
 
+  const auto& params = c.get<SimulationParams>();
+  auto& bmm = c.get<MpiBuffersManagerMap>();
+
+  auto& be = c.create<AdjBE>(NUM_TIME_LEVELS);
+  for (int itl=0; itl<NUM_TIME_LEVELS; ++itl) {
+    be[itl].m_label = std::string("AdjState-") + std::to_string(itl);
+    be[itl].set_buffers_manager(bmm[MPI_EXCHANGE]);
+    be[itl].m_diagnostics_level = params.internal_diagnostics_level;
+    if (params.theta_hydrostatic_mode) {
+      be[itl].set_num_fields(0,0,4);
+    } else {
+      be[itl].set_num_fields(0,0,4,2);
+    }
+      be[itl].register_field(m_state.m_v,tl,2,0);
+      be[itl].register_field(m_state.m_vtheta_dp,1,tl);
+      be[itl].register_field(m_state.m_dp3d,1,tl);
+      if (!m_theta_hydrostatic_mode) {
+        // Note: phinh_i at the surface (last level) is constant, so it doesn't *need* bex.
+        //       If bex(constant)=constant, we might just do it. This would not eliminate
+        //       the need for halo-exchange of interface-based quantities though, since
+        //       we would still need to exchange w_i.
+        be[itl].register_field(m_state.m_w_i,1,tl);
+        be[itl].register_field(m_state.m_phinh_i,1,tl);
+      }
+      be[itl].registration_completed();
+  }
 }
 
 void ttype9_imex_adjoint (const TimeLevel& tl,
@@ -32,7 +64,6 @@ void ttype9_imex_adjoint (const TimeLevel& tl,
 {
   GPTLstart("ttype9_imex_adjoint");
 
-  // The context
   const auto& c = Context::singleton();
   SimulationParams& params = c.get<SimulationParams>();
 
